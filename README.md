@@ -1,28 +1,28 @@
 <h3 align="center">
-  <img src="https://raw.githubusercontent.com/bcb-unl/run_dbcan_new/master/docs/source/_static/img/run_dbcan_v5_logo.png" width="400" alt="dbCAN-logo"/><br/>
+  <img src="https://raw.githubusercontent.com/bcb-unl/run_dbcan/master/docs/source/_static/img/run_dbcan_v5_logo.png" width="400" alt="dbCAN-logo"/><br/>
 
   run_dbcan - Standalone Tool of <a href="http://bcb.unl.edu/dbCAN2/">dbCAN3</a>
 
 </h3>
 
 <p align="center">
-  <a href="https://github.com/bcb-unl/run_dbcan_new/stargazers"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/bcb-unl/run_dbcan_new?style=for-the-badge&logo=starship&labelColor=363a4f&color=b7bdf8"></a>
+  <a href="https://github.com/bcb-unl/run_dbcan/stargazers"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/bcb-unl/run_dbcan?style=for-the-badge&logo=starship&labelColor=363a4f&color=b7bdf8"></a>
   <a href="https://pypi.org/p/dbcan/"><img alt="PyPI - Version" src="https://img.shields.io/pypi/v/dbcan?style=for-the-badge&logo=pypi&color=74c7ec"></a>
   <a href="https://anaconda.org/bioconda/dbcan"><img alt="Conda Downloads" src="https://img.shields.io/conda/dn/bioconda/dbcan?style=for-the-badge&logo=anaconda&labelColor=363a4f&color=a6da95"></a>
   <a href="https://run-dbcan-new.readthedocs.io/en/latest/"><img alt="Read the Docs" src="https://img.shields.io/readthedocs/dbcan?style=for-the-badge&logo=Read%20the%20Docs&labelColor=363a4f&color=cba6f7"></a>
-  <a href="https://github.com/bcb-unl/run_dbcan_new/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/bcb-unl/run_dbcan_new?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij4KPHBhdGggZD0iTTIxNiwzMlYxOTJhOCw4LDAsMCwxLTgsOEg3MmExNiwxNiwwLDAsMC0xNiwxNkgxOTJhOCw4LDAsMCwxLDAsMTZINDhhOCw4LDAsMCwxLTgtOFY1NkEzMiwzMiwwLDAsMSw3MiwyNEgyMDhBOCw4LDAsMCwxLDIxNiwzMloiIHN0eWxlPSJmaWxsOiAjQ0FEM0Y1OyIvPgo8L3N2Zz4%3D&labelColor=363a4f&color=f5a97f"></a>
+  <a href="https://github.com/bcb-unl/run_dbcan/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/bcb-unl/run_dbcan?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij4KPHBhdGggZD0iTTIxNiwzMlYxOTJhOCw4LDAsMCwxLTgsOEg3MmExNiwxNiwwLDAsMC0xNiwxNkgxOTJhOCw4LDAsMCwxLDAsMTZINDhhOCw4LDAsMCwxLTgtOFY1NkEzMiwzMiwwLDAsMSw3MiwyNEgyMDhBOCw4LDAsMCwxLDIxNiwzMloiIHN0eWxlPSJmaWxsOiAjQ0FEM0Y1OyIvPgo8L3N2Zz4%3D&labelColor=363a4f&color=f5a97f"></a>
   <br/>
   <a href="#"><img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/dbcan?style=for-the-badge&logo=python&labelColor=363a4f&color=99d1db"></a>
-  <a href="https://github.com/bcb-unl/run_dbcan_new/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/bcb-unl/run_dbcan_new?style=for-the-badge&logo=github&labelColor=363a4f&color=89dceb"></a>
-  <a href="https://github.com/bcb-unl/run_dbcan_new/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/bcb-unl/run_dbcan_new?style=for-the-badge&labelColor=363a4f&color=eba0ac"></a>
-  <a href="https://github.com/bcb-unl/run_dbcan_new/actions/workflows/build_dbcan_docker.yml"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/bcb-unl/run_dbcan_new/build_dbcan_docker.yml?branch=master&style=for-the-badge&logo=github&labelColor=363a4f&color=f2cdcd"></a>
-  <a href="https://github.com/bcb-unl/run_dbcan_new/actions/workflows/test_dbcan.yml"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/bcb-unl/run_dbcan_new/test_dbcan.yml?branch=master&style=for-the-badge&logo=github&label=Test&labelColor=363a4f&color=a6d189"></a>
+  <a href="https://github.com/bcb-unl/run_dbcan/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/bcb-unl/run_dbcan?style=for-the-badge&logo=github&labelColor=363a4f&color=89dceb"></a>
+  <a href="https://github.com/bcb-unl/run_dbcan/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/bcb-unl/run_dbcan?style=for-the-badge&labelColor=363a4f&color=eba0ac"></a>
+  <a href="https://github.com/bcb-unl/run_dbcan/actions/workflows/build_dbcan_docker.yml"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/bcb-unl/run_dbcan/build_dbcan_docker.yml?branch=master&style=for-the-badge&logo=github&labelColor=363a4f&color=f2cdcd"></a>
+  <a href="https://github.com/bcb-unl/run_dbcan/actions/workflows/test_dbcan.yml"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/bcb-unl/run_dbcan/test_dbcan.yml?branch=master&style=for-the-badge&logo=github&label=Test&labelColor=363a4f&color=a6d189"></a>
 </p>
 
 ## Update
 
 3/16/2025:
-1. Rewrite the structure of run_dbcan_new (suggested by Haidong), using object-oriented programming (OOP) to improve maintainability and readability.
+1. Rewrite the structure of run_dbcan (suggested by Haidong), using object-oriented programming (OOP) to improve maintainability and readability.
 2. Added new function: cgc_circle, which can visualize CGC in genome.
 
 **Future plans** Add prediction of food consumption through CAZyme. If you have new suggestions, please contact Dr. Yanbin Yin (yyin@unl.edu), Xinpeng Zhang (xzhang55@huskers.unl.edu), and Dr. Haidong Yi (hyi@stjude.org).
@@ -35,7 +35,7 @@ This is the updated version of run_dbcan. There are many changes compared to the
 
 **run_dbcan** is the standalone version of the [dbCAN3](http://bcb.unl.edu/dbCAN2/) annotation tool for automated CAZyme annotation. This tool, known as `run_dbcan`, incorporates HMMER, Diamond, and dbCAN_sub for annotating CAZyme families, and integrates Cazyme Gene Clusters (CGCs) and substrate predictions.
 
-For usage discussions, visit our [issue tracker](https://github.com/bcb-unl/run_dbcan_new/issues). To learn more, read the [dbcan doc]. If you're interested in contributing, whether through issues or pull requests, please review our contribution guide.
+For usage discussions, visit our [issue tracker](https://github.com/bcb-unl/run_dbcan/issues). To learn more, read the [dbcan doc]. If you're interested in contributing, whether through issues or pull requests, please review our contribution guide.
 
 ## Reference
 
