@@ -9,7 +9,7 @@
   <a href="https://github.com/bcb-unl/run_dbcan/stargazers"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/bcb-unl/run_dbcan?style=for-the-badge&logo=starship&labelColor=363a4f&color=b7bdf8"></a>
   <a href="https://pypi.org/p/dbcan/"><img alt="PyPI - Version" src="https://img.shields.io/pypi/v/dbcan?style=for-the-badge&logo=pypi&color=74c7ec"></a>
   <a href="https://anaconda.org/bioconda/dbcan"><img alt="Conda Downloads" src="https://img.shields.io/conda/dn/bioconda/dbcan?style=for-the-badge&logo=anaconda&labelColor=363a4f&color=a6da95"></a>
-  <a href="https://run-dbcan-new.readthedocs.io/en/latest/"><img alt="Read the Docs" src="https://img.shields.io/readthedocs/dbcan?style=for-the-badge&logo=Read%20the%20Docs&labelColor=363a4f&color=cba6f7"></a>
+  <a href="https://run-dbcan.readthedocs.io/en/latest/"><img alt="Read the Docs" src="https://img.shields.io/readthedocs/dbcan?style=for-the-badge&logo=Read%20the%20Docs&labelColor=363a4f&color=cba6f7"></a>
   <a href="https://github.com/bcb-unl/run_dbcan/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/bcb-unl/run_dbcan?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij4KPHBhdGggZD0iTTIxNiwzMlYxOTJhOCw4LDAsMCwxLTgsOEg3MmExNiwxNiwwLDAsMC0xNiwxNkgxOTJhOCw4LDAsMCwxLDAsMTZINDhhOCw4LDAsMCwxLTgtOFY1NkEzMiwzMiwwLDAsMSw3MiwyNEgyMDhBOCw4LDAsMCwxLDIxNiwzMloiIHN0eWxlPSJmaWxsOiAjQ0FEM0Y1OyIvPgo8L3N2Zz4%3D&labelColor=363a4f&color=f5a97f"></a>
   <br/>
   <a href="#"><img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/dbcan?style=for-the-badge&logo=python&labelColor=363a4f&color=99d1db"></a>
@@ -59,4 +59,4 @@ Please cite the following `dbCAN` publications if you use `run_dbcan` in your re
 >
 > Nucleic Acids Research, Volume 46, Issue D1, 4 January 2018, Pages D516–D521, doi: [10.1093/nar/gkx894\*](https://doi.org/10.1093/nar/gkx894*).
 
-[dbcan doc]: https://run-dbcan-new.readthedocs.io/en/latest/
+[dbcan doc]: https://run-dbcan.readthedocs.io/en/latest/
