@@ -164,7 +164,7 @@ class OverviewGenerator:
                     sub_overlap = False
                     for _, hr in hmm_results.iterrows():
                         if self.calculate_overlap(sr[TARGET_FROM_FIELD], sr[TARGET_TO_FIELD], hr[TARGET_FROM_FIELD], hr[TARGET_TO_FIELD]):
-                            if "_" in hr[HMM_NAME_FIELD] or sr[I_EVALUE_FIELD] > hr[I_EVALUE_FIELD]:
+                            if "_" in hr[HMM_NAME_FIELD]:
                                 overlap_results.append((hr[HMM_NAME_FIELD], hr[TARGET_FROM_FIELD]))
                             else:
                                 overlap_results.append((sr[SUBFAMILY_NAME_FIELD], sr[TARGET_FROM_FIELD]))
