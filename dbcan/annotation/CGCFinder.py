@@ -189,6 +189,8 @@ class CGCFinder:
 
     def validate_cluster(self, cluster_df):
         """validate if a cluster meets the criteria for being a CGC"""
+        if len(cluster_df) < 2:
+            return False
         has_core = cluster_df[IS_CORE_COLUMN].any()
 
         # special case: CAZyme-only mode, need at least 2 CAZymes

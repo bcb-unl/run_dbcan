@@ -200,7 +200,7 @@ class GFFProcessor:
 
             start = feature.location.start + 1
             end = feature.location.end
-            strand = '+' if feature.location.strand >= 0 else '-'
+            strand = feature.location.strand
             line = f"{record.id}\t.\t{feature.type}\t{start}\t{end}\t.\t{strand}\t.\tprotein_id={protein_id};CGC_annotation={cgc_annotation}\n"
             output_file.write(line)
         except Exception as e:
