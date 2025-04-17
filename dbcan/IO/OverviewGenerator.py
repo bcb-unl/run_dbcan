@@ -130,6 +130,22 @@ class OverviewGenerator:
         length2 = end2 - start2 + 1
         return overlap / min(length1, length2) > self.overlap_threshold
 
+    def select_best_result(self, group):
+        """choose the best result from a group of overlapping annotations"""
+        for entry in group:
+            if "_" in entry[0]:
+                return entry
+
+        for entry in group:
+            if entry[3] == 'sub':
+                return entry
+
+        for entry in group:
+            if entry[3] == 'hmm':
+                return entry
+
+        return group[0]
+
     def determine_best_result(self, gene_id, data):
         """Determine best result for a gene"""
         results = {EC_FIELD: EMPTY_RESULT_PLACEHOLDER, DBCAN_HMM_FIELD: EMPTY_RESULT_PLACEHOLDER, DBCAN_SUB_FIELD: EMPTY_RESULT_PLACEHOLDER, DIAMOND_FIELD: EMPTY_RESULT_PLACEHOLDER, TOOLS_COUNT_FIELD: 0, RECOMMEND_RESULTS_FIELD: EMPTY_RESULT_PLACEHOLDER}
@@ -159,22 +175,34 @@ class OverviewGenerator:
         # Only add Recommend Results if at least 2 tools detected the gene
         if results[TOOLS_COUNT_FIELD] >= MIN_TOOLS_FOR_RECOMMENDATION:
             if results[DBCAN_HMM_FIELD] != EMPTY_RESULT_PLACEHOLDER and results[DBCAN_SUB_FIELD] != EMPTY_RESULT_PLACEHOLDER:
-                overlap_results = []
-                for _, sr in sub_results.iterrows():
-                    sub_overlap = False
-                    for _, hr in hmm_results.iterrows():
-                        if self.calculate_overlap(sr[TARGET_FROM_FIELD], sr[TARGET_TO_FIELD], hr[TARGET_FROM_FIELD], hr[TARGET_TO_FIELD]):
-                            if "_" in hr[HMM_NAME_FIELD]:
-                                overlap_results.append((hr[HMM_NAME_FIELD], hr[TARGET_FROM_FIELD]))
-                            else:
-                                overlap_results.append((sr[SUBFAMILY_NAME_FIELD], sr[TARGET_FROM_FIELD]))
-                            sub_overlap = True
-                    if not sub_overlap:
-                        overlap_results.append((sr[SUBFAMILY_NAME_FIELD], sr[TARGET_FROM_FIELD]))
+                # combine HMM and subfamily results
+                all_results = []
                 for _, hr in hmm_results.iterrows():
-                    if all(not self.calculate_overlap(sr[TARGET_FROM_FIELD], sr[TARGET_TO_FIELD], hr[TARGET_FROM_FIELD], hr[TARGET_TO_FIELD]) for _, sr in sub_results.iterrows()):
-                        overlap_results.append((hr[HMM_NAME_FIELD], hr[TARGET_FROM_FIELD]))
+                    all_results.append((hr[HMM_NAME_FIELD], hr[TARGET_FROM_FIELD], hr[TARGET_TO_FIELD], 'hmm'))
+                for _, sr in sub_results.iterrows():
+                    all_results.append((sr[SUBFAMILY_NAME_FIELD], sr[TARGET_FROM_FIELD], sr[TARGET_TO_FIELD], 'sub'))
+                all_results.sort(key=lambda x: x[1])  # sort by start position
 
+                # separate overlapping groups
+                overlap_results = []
+                current_group = [all_results[0]]  # current overlapping group
+                for i in range(1, len(all_results)):
+                    prev = current_group[-1]
+                    curr = all_results[i]
+                    if self.calculate_overlap(prev[1], prev[2], curr[1], curr[2]):  # adjusted to use start and end positions
+                        current_group.append(curr)
+                    else:
+                        # process current group
+                        best_result = self.select_best_result(current_group)
+                        overlap_results.append(best_result)
+                        current_group = [curr]
+
+                # process any remaining group
+                if current_group:
+                    best_result = self.select_best_result(current_group)
+                    overlap_results.append(best_result)
+
+                # sort results by start position and recommend results
                 sorted_results = sorted(overlap_results, key=lambda x: x[1])
                 results[RECOMMEND_RESULTS_FIELD] = EC_SEPARATOR.join([str(res[0]) for res in sorted_results])
             elif results[DBCAN_HMM_FIELD] != EMPTY_RESULT_PLACEHOLDER:
