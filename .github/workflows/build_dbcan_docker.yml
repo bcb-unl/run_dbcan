@@ -1,9 +1,6 @@
 name: Build and Publish dbCAN Docker Image
 
 on:
-  push:
-    tags:
-      - "v*"
   release:
     types: [published]
 

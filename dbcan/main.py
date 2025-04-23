@@ -18,6 +18,13 @@ def cli():
     """use dbCAN tools to annotate and analyze CAZymes and CGCs."""
     pass
 
+@cli.command('version')
+@click.pass_context
+def version_cmd(ctx):
+    """show version information."""
+    from dbcan._version import __version__
+    click.echo(f"dbCAN version: {__version__}")
+
 @cli.command('database')
 @database_options
 @click.pass_context
