@@ -24,7 +24,7 @@ def fq_file_line_count(file_name):
 
 def total_mapped_reads_count(file_name):
     ### sum the total mapped reads count
-    total_mapped_reads = 0 
+    total_mapped_reads = 0
     for line in open(file_name):
         lines = line.split()
         total_mapped_reads += float(lines[-1])
@@ -38,12 +38,12 @@ class abund_parameters():
         self.bedtools = args.bedtools
         #self.output = args.function + "_" + args.output
         self.CAZyme_annotation  = self.input + "overview.tsv"
-        self.dbCANsub_substrate_annotation  = self.input + "dbCAN-sub.substrate.tsv"
-        self.PUL_substrate_annotation  = self.input + "substrate.out"
+        self.dbCANsub_substrate_annotation  = self.input + "dbCANsub_hmm_results.tsv"
+        self.PUL_substrate_annotation  = self.input + "substrate_prediction.tsv"
         self.PUL_annotation  = self.input + "cgc_standard_out.tsv"
         self.function = args.function
         self.parameters_check()
-    
+
     def parameters_check(self):
         if self.function.startswith("fam_abund"):
             print("You are estimating the abundance of CAZyme!")
@@ -170,7 +170,7 @@ class DbcanSub_line():
         self.substrate = lines[3]
         self.hmmlen  = lines[4]
         self.seqid = lines[5]
-        self.protlen = lines[6] 
+        self.protlen = lines[6]
         self.evalue = lines[7]
     def __repr__(self):
         return "\t".join([str(getattr(self, value)) for value in vars(self)])
@@ -207,7 +207,7 @@ def Read_cgc_standard_out(filename):
 
 ## the prediction of cgc substrate includes two results, homologous searach and major votting
 #cgcid	PULID	dbCAN-PUL substrate	bitscore	signature pairs	dbCAN-sub substrate	dbCAN-sub substrate score
-#k141_145965|CGC1	PUL0538	galactomannan	3075.0	TC-TC;CAZyme-CAZyme;CAZyme-CAZyme;CAZyme-CAZyme;CAZyme-CAZyme;TC-TC		
+#k141_145965|CGC1	PUL0538	galactomannan	3075.0	TC-TC;CAZyme-CAZyme;CAZyme-CAZyme;CAZyme-CAZyme;CAZyme-CAZyme;TC-TC
 
 class cgc_substrate():
     def __init__(self,lines):
@@ -243,10 +243,10 @@ class CAZyme_Abundance_estimate():
         print(f"Total reads count: {self.fq_reads_count}!")
         seqid2readcount,normalized_tpm = ReadBedtools(parameters.bedtools)
         self.normalized_tpm = normalized_tpm
-        ### read overview to 
+        ### read overview to
         if parameters.function == "fam_abund":
             seqid2dbcan_annotation = ReadOverView(parameters.CAZyme_annotation)
-        ### read dbsub.out to 
+        ### read dbsub.out to
         if parameters.function == "fam_substrate_abund":
             seqid2dbcan_annotation = Read_dbcansub_out(parameters.dbCANsub_substrate_annotation)
         ### read cgc_standard.out
@@ -259,10 +259,10 @@ class CAZyme_Abundance_estimate():
             cgcid2cgc_substrate = Read_cgc_substrate(parameters.PUL_substrate_annotation)
             self.cgcid2cgc_standard = cgcid2cgc_standard
             self.cgcid2cgc_substrate = cgcid2cgc_substrate
-        
+
         get_length_readcount(seqid2dbcan_annotation,seqid2readcount)
         self.seqid2dbcan_annotation = seqid2dbcan_annotation
-    
+
     ###             reads per transcript
     ### FPKM  =  -------------------------------
     ###          total reads   transcript length
@@ -274,7 +274,7 @@ class CAZyme_Abundance_estimate():
             for seqid in self.seqid2dbcan_annotation: ### for each protein
                 annotation = self.seqid2dbcan_annotation[seqid]
                 normalized_total_reads_counts = self.fq_reads_count/pow(10,6)
-                normalized_seq_length = annotation.length/1000.0 ## CDS length 
+                normalized_seq_length = annotation.length/1000.0 ## CDS length
                 annotation.abund = annotation.read_count/normalized_total_reads_counts/normalized_seq_length
         if method == "RPM":
             for seqid in self.seqid2dbcan_annotation:
@@ -293,14 +293,14 @@ class CAZyme_Abundance_estimate():
             annotation = self.seqid2dbcan_annotation[seqid]
             if annotation.preds: ### if dbcan has predecitions
                 for family in annotation.preds:
-                    family2seqid.setdefault(family,[]).append(seqid) 
+                    family2seqid.setdefault(family,[]).append(seqid)
         self.family2seqid = family2seqid
         family2abund = {familyid:0.0 for familyid in family2seqid}
         for familyid in family2seqid:
             for seqid in family2seqid[familyid]:
                 family2abund[familyid] += self.seqid2dbcan_annotation[seqid].abund  ### sum of all seqs
-        self.family2abund = family2abund 
-    
+        self.family2abund = family2abund
+
     def Cal_Substrate_Abundance(self):
         substrate2seqid = {}
         for seqid in self.seqid2dbcan_annotation:
@@ -309,14 +309,14 @@ class CAZyme_Abundance_estimate():
             substrates = list(set([tmp.strip() for tmp in substrates_tmp if tmp != "-" and tmp]))
             for sub in substrates:
                 substrate2seqid.setdefault(sub,[]).append(seqid)
-        
+
         substrate2abund = {sub:0.0 for sub in substrate2seqid}
         for sub in substrate2seqid:
             for seqid in substrate2seqid[sub]:
                 substrate2abund[sub] += self.seqid2dbcan_annotation[seqid].abund
         self.substrate2abund = substrate2abund
         self.substrate2seqid = substrate2seqid
-    
+
     def Cal_PUL_Abundance(self):
         cgcid2seqid = {}; cgcid2_standard_cgc_lines = {};
         for seqid in self.seqid2dbcan_annotation:
@@ -337,7 +337,7 @@ class CAZyme_Abundance_estimate():
         self.cgcid2abund = cgcid2abund
         self.cgcid2seqid = cgcid2seqid
         self.cgcid2seqabund = cgcid2seqabund
-    
+
     ### self.seqid2dbcan_annotation,self.cgcid2cgc_standard
     ### self.cgcid2seqid, cgcid2seqabund
     ### self.cgcid2cgc_substrate
@@ -347,15 +347,15 @@ class CAZyme_Abundance_estimate():
         cgcsubstrate2cgcid_homo = {}; cgcsubstrate2cgcid_major_votting = {}
         for cgcid in self.cgcid2cgc_substrate:
             cgc_substrate_line = self.cgcid2cgc_substrate[cgcid]
-            if cgc_substrate_line.homo_sub and cgc_substrate_line.homo_sub != "X":### homo has prediction 
+            if cgc_substrate_line.homo_sub and cgc_substrate_line.homo_sub != "X":### homo has prediction
                 cgcsubstrate2cgcid_homo.setdefault(cgc_substrate_line.homo_sub,[]).append(cgcid)
-            
+
             if cgc_substrate_line.major_voting_sub: ### homo has prediction
                 substrates = cgc_substrate_line.major_voting_sub.split(",")
                 for tmp_sub in substrates:
                     cgcsubstrate2cgcid_major_votting.setdefault(tmp_sub,[]).append(cgcid)
-        
-        ### for homologous search substrate 
+
+        ### for homologous search substrate
         cgcsubstrate2abunds_homo = {}; self.cgcsubstrate2cgcid_homo = cgcsubstrate2cgcid_homo
         for substrate in cgcsubstrate2cgcid_homo:
             cgcids = cgcsubstrate2cgcid_homo[substrate]
@@ -365,7 +365,7 @@ class CAZyme_Abundance_estimate():
                 cgcsubstrate2abunds_homo.setdefault(substrate,[]).append(np.mean(cgc_abunds))
         self.cgcsubstrate2abunds_homo = cgcsubstrate2abunds_homo
         ### for major votting substrate
-        cgcsubstrate2abunds_major_votting = {}; 
+        cgcsubstrate2abunds_major_votting = {};
         self.cgcsubstrate2cgcid_major_votting = cgcsubstrate2cgcid_major_votting
         for substrate in cgcsubstrate2cgcid_major_votting:
             cgcids = cgcsubstrate2cgcid_major_votting[substrate]
@@ -374,7 +374,7 @@ class CAZyme_Abundance_estimate():
                 #cgcsubstrate2abunds_major_votting.setdefault(substrate,[]).extend(cgc_abunds)
                 cgcsubstrate2abunds_major_votting.setdefault(substrate,[]).append(np.mean(cgc_abunds))
         self.cgcsubstrate2abunds_major_votting = cgcsubstrate2abunds_major_votting
-    
+
     def output_cgcsubstrate_abund(self):
         ### for cgc substrate homologous
         cgc_substrates = []; abunds = [] ; cgcids = [] ; cgcids_abund = [] # list
@@ -393,7 +393,7 @@ class CAZyme_Abundance_estimate():
                 cgc = ";".join(cgcids[idx])
                 abunds_tmp = ";".join([str(round(abund,3)) for abund in cgcids_abund[idx]])
                 f.write(f"{cgc_substrates[idx]}\t{round(abunds[idx],3)}\t{cgc}\t{abunds_tmp}\n")
-        
+
         ### for cgc substrate major votting
         cgc_substrates = []; abunds = [] ; cgcids = []; cgcids_abund = [] # list
         for cgc_substrate in self.cgcsubstrate2abunds_major_votting:
@@ -409,7 +409,7 @@ class CAZyme_Abundance_estimate():
                 cgc = ";".join(cgcids[idx])
                 abunds_tmp = ";".join([str(round(abund,3)) for abund in cgcids_abund[idx]])
                 f.write(f"{cgc_substrates[idx]}\t{round(abunds[idx],3)}\t{cgc}\t{abunds_tmp}\n")
-    
+
 
     ### need to consider HMM model, subfamily and EC
     def output_family_abund(self,method="family"):
@@ -438,7 +438,7 @@ class CAZyme_Abundance_estimate():
                 subfam_file.write(f"{fams[idx]}\t{round(abunds[idx],3)}\t{len(seqs[idx])}\n")
             else:
                 fam_file.write(f"{fams[idx]}\t{round(abunds[idx],3)}\t{len(seqs[idx])}\n")
-    
+
     def output_substrate_abund(self):
         subs = [] ; abunds = [] ; genes = []
         for sub in self.substrate2abund:
@@ -452,7 +452,7 @@ class CAZyme_Abundance_estimate():
             for idx in abund_sortidx:
                 if subs[idx]:
                     f.write(f"{subs[idx]}\t{round(abunds[idx],3)}\t{';'.join(genes[idx])}\n")
-    
+
     def output_cgc_abund(self):
         cgcids = [] ; abunds = []; seqids = []; seq_abunds = []
         cgc_standard_records = []
@@ -500,8 +500,8 @@ class inStrain_record():
 def CAZyme_abundance(args):
     paras = abund_parameters(args)
     CAZyme_abund = CAZyme_Abundance_estimate(paras)
-    CAZyme_abund.Cal_Seq_Abundance(args.abundance) ### calculate abundance 
-    CAZyme_abund.Cal_Famliy_Abundance() ### calculate abundance 
+    CAZyme_abund.Cal_Seq_Abundance(args.abundance) ### calculate abundance
+    CAZyme_abund.Cal_Famliy_Abundance() ### calculate abundance
     CAZyme_abund.output_family_abund()
 
 def CAZymeSub_abundance(args):
@@ -559,12 +559,12 @@ def read_cgcgff(filename):
     return geneID2feature
 
 def generate_PULfaa(args):
-    ''' read protein sequence from PUL.faa,cgc.gff and PUL.gff ''' 
+    ''' read protein sequence from PUL.faa,cgc.gff and PUL.gff '''
     ''' cgc.gff provide coordinate information and gene, locus and protid'''
-    
+
     if not args.input.endswith("/"):
         args.input = args.input +"/"
-    
+
     ### get all dbCAN_PUL folders
     dbCAN_PUL_folders = os.listdir(args.input+"dbCAN-PUL")
     seqs = []
@@ -635,9 +635,9 @@ class GFF_record(object):
 ### read alignment results API
 
 ### aligned_pairs -> deprecated
-### bin -> properties bin 
-### blocks deprecated 
-### cigar deprecated 
+### bin -> properties bin
+### blocks deprecated
+### cigar deprecated
 
 ### cigarstring -> the cigar alignment as a string.
 #M	BAM_CMATCH	0
@@ -672,10 +672,10 @@ def cal_coverage(args):
 
     '''
     genes = [GFF_record(line.rstrip("\n").split("\t")) for line in open(args.gff) if not line.startswith("#")]
-    ### read bamfiles 
+    ### read bamfiles
 
     coverage_file = open(args.output,'w')
-    
+
     ### need mutil-processes
     if args.threads >= 2: ### works
         gene_abunds = multi_masks(args,genes,args.input)
@@ -779,10 +779,10 @@ def justify_reads_alignment_properties(args,read,gene):
     '''
     overlap_base_numer = read.get_overlap(gene.start,gene.end)
     tags = read.get_tags()
-    
-    if not overlap_base_numer: ### not aligned 
+
+    if not overlap_base_numer: ### not aligned
         return False
-    
+
     if args.hifi:### for hifi reads
         ### for hifi, we may consider the overlap region with gene length or
         ### in some case, the read.query_length return None, so using infer_read_length instead
@@ -793,22 +793,22 @@ def justify_reads_alignment_properties(args,read,gene):
         print(overlap_base_ratio)
     else: ### for not hifi reads
         overlap_base_ratio = overlap_base_numer / read.query_length
-        
+
     if overlap_base_ratio < args.overlap_base_ratio:
         return False
 
     mapping_quality = read.mapping_quality
-    
+
     if mapping_quality < args.mapping_quality:
         return False
-    
+
     sequence_identity = cal_identity_based_on_MDtag(tags)
-    
+
     if sequence_identity == -1:
         print(f"Can not find MD tag of read: {read.query_name} in bam file ")
         return False
-    
-    if sequence_identity < args.identity : ### 
+
+    if sequence_identity < args.identity : ###
         #print(tags,sequence_identity) ### for debug
         return False
     #print(sequence_identity)
@@ -826,9 +826,9 @@ def pep_fasta_analysis(filename):
     return ID2geneID
 
 def gff_refine(args):
-    
+
     ID2geneID = pep_fasta_analysis(args.input)
-    
+
     gff_filename,ext = os.path.splitext(args.gff)
     gff = open(gff_filename+".fix.gff",'w')
 
