@@ -56,7 +56,7 @@ class CGC(object):
         return "\t".join([self.ID,str(self.start),str(self.end),str(self.gene_num)])
     def __len__(self):
         return len(self.genes)
-    
+
     def get_positions(self):
         starts = [] ; ends = [] ; strands = []
         for gene in self:
@@ -64,7 +64,7 @@ class CGC(object):
             ends.append(gene.gene_end)
             strands.append(gene.strand)
         return starts,ends,strands
-    
+
     def get_proteinID(self):
         return [gene.seqid for gene in self]
     def get_cgc_CAZyme(self):
@@ -78,7 +78,7 @@ class CGC_standard_out_2CGC(object):
             self.CGCs.append(CGC(cgcdict[cgc]))
     def __iter__(self):
         return iter(self.CGCs)
-    
+
     def cgcid2CGC(self):
         return {cgc.ID:cgc for cgc in self}
 
@@ -115,19 +115,19 @@ def CGC_plot_reads_count(args):
     cgc_fig_plot_abund(starts,ends,strands,types,genetypes,paras)
 
 def Get_Position(starts,ends,strands,labels,yshift=0):
-    Width = 1000 ; Height = 160; 
+    Width = 1000 ; Height = 160;
     poly_heigth = 10
     Triangle_length = 4
     plot_start_x, plot_start_y = [0,Height/2 - poly_heigth-yshift]
     shfit_pos = starts[0]
     maxbp = max(ends) - min(starts)
-    pixeachbp =  Width / maxbp  
+    pixeachbp =  Width / maxbp
     for i in range(len(starts)):
         starts[i] = starts[i] - shfit_pos
         ends[i]   = ends[i] - shfit_pos
-    #maxbp = max(ends) - min(starts)  
+    #maxbp = max(ends) - min(starts)
     ###  5     4
-    ###            3         
+    ###            3
     ###  1     2
     lines = [] ;polygens = [];texts = []
     for i in range(len(starts)):
@@ -150,11 +150,11 @@ def Get_Position(starts,ends,strands,labels,yshift=0):
             positions_str += str( starts[i+1]*pixeachbp) + " " + str(plot_start_y + poly_heigth)
             lines.append(positions_str)
         texts.append(labels[i].split('.')[0])
-    
+
     scale_number = 10
     each_scale_bp = maxbp / scale_number
     each_scale_pix = each_scale_bp * pixeachbp
-    
+
     plot_start_y -= 50
     scale_positions = []; scale_positions_texts = [] ; scale_text = []
     scale_positions.append("0 " + str(plot_start_y + 3*poly_heigth) + " " + str(10*each_scale_pix) + " " + str(plot_start_y + 3*poly_heigth))
@@ -276,7 +276,7 @@ def cgc_fig_plot_abund(starts,ends,strands,types,labels,parameters):
     plt.xlim(xlim_x1,xlim_x2)
     #plt.tight_layout(pad=0.1)
     plt.axis('off')
-    
+
     ### here we need to plot the reads_count of each position
     ### layout 2
     xs2ys = read_location_reads_count(parameters.reads_count)
@@ -300,7 +300,7 @@ def add_readcount_layout(fig,starts,ends,xs2ys,max_y,ylim_y1,ylim_y2,xlim_x1,xli
     plt.plot((0,1000),(0,0),color='gray',lw=1)
     all_xs = []; all_ys = []
     start = min(starts)
-    for i in range(1,maxbp+1): ### 
+    for i in range(1,maxbp+1): ###
         all_xs.append(pixeachbp*i)
         if i+start in xs2ys:
             all_ys.append(xs2ys[i+start])
@@ -323,13 +323,13 @@ class plot_parameters():
         self.bedtools = args.bedtools
         self.reads_count = args.readscount
         self.output = args.function + "_" + args.output
-        self.CAZyme_annotation  = self.input + "overview.txt"
-        self.dbCANsub_substrate_annotation  = self.input + "dbcan-sub.hmm.out"
-        self.PUL_substrate_annotation  = self.input + "substrate.out"
+        self.CAZyme_annotation  = self.input + "overview.tsv"
+        self.dbCANsub_substrate_annotation  = self.input + "dbCANsub_hmm_results.tsv"
+        self.PUL_substrate_annotation  = self.input + "substrate_prediction.tsv"
         self.PUL_annotation  = self.input + "cgc_standard_out.tsv"
         self.function = args.function
         self.parameters_check()
-    
+
     def parameters_check(self):
         if self.function == "CGC_plot":
             print("You are plotting the CGC regarding abundance!")
@@ -344,7 +344,7 @@ class plot_parameters():
             if not os.path.exists(self.reads_count):
                 print(f"Reads count file {self.reads_count} dose not exit, please run samtools depth first!")
                 exit(1)
-        
+
         if self.function == "CGC_synteny_plot":
             self.blastp = self.input + "PUL_blast.out"
         if self.function == "CGC_synteny_coverage_plot":
@@ -427,7 +427,7 @@ def syntenic_plot_with_abund(starts,starts1,ends,ends1,strands,strands1,Types,Ty
         Line2D([0], [0], color="cyan", lw=4,alpha=0.5),
         Line2D([0], [0], color="gray", lw=4,alpha=0.5)]
     #print(starts,starts1,ends,ends1,strands,strands1,Types,Types1,blocks,cgcid,pulid)
-    ### syntenic block colors 
+    ### syntenic block colors
     labelcolor=["red","blue","green","cyan"]
     labels    = ["80-100","60-80","40-60","20-40"]
     genecustom_lines = [Patch(color="#FF0000",alpha=0.5),
@@ -445,27 +445,27 @@ def syntenic_plot_with_abund(starts,starts1,ends,ends1,strands,strands1,Types,Ty
 
     fig = plt.figure(figsize=(Width*px,Height*px*2/2.5))
     ax  = fig.add_subplot(212)
-    ### decide which 
+    ### decide which
     maxbp = max([max(ends) - min(starts),max(ends1) - min(starts1)])
 
     ori_starts = starts.copy(); ori_ends = ends.copy() #### starts will be shift, kept them
 
-    ### get postion for all elements of CGC 
+    ### get postion for all elements of CGC
     polygens,blocks_coor,lines_coor,scale_positions,scale_text = synGet_Position(starts,ends,strands,maxbp,yshift=40,up=2) ## CGC
     plot_scale_line(scale_positions,scale_text,ax)
-    
+
     polygens1,blocks1_coor,lines_coor1,_,_ = synGet_Position(starts1,ends1,strands1,maxbp,yshift=0,up=1) ### PUL
-    ### 
+    ###
     plot_Polygon_homologous(polygens,polygens1,Types,Types1,2,ax)
     ###
     plot_syntenic_block(blocks,blocks_coor,blocks1_coor,ax)
     synplot_genome_line(lines_coor,lines_coor1,ax)
-    ### need to add the genome postion scale 
+    ### need to add the genome postion scale
     ### legend1
     legend1 = pyplot.legend(custom_lines,labels,frameon=False,labelcolor=labelcolor,
         loc='upper right',title="Identity")
     ax.add_artist(legend1)
-    
+
     legend2 = pyplot.legend(genecustom_lines,geneslabels,frameon=False,
         labelcolor=genelabelcolor,loc='lower right',title="Gene")
     ax.add_artist(legend2)
@@ -480,7 +480,7 @@ def syntenic_plot_with_abund(starts,starts1,ends,ends1,strands,strands1,Types,Ty
     ax.plot()
     #plt.tight_layout(pad=0.1)
     cgcid = cgcid.replace("|","_") ### need to replace "|" to "_", because | is a special chara for system
-    ### for local 
+    ### for local
     xs2ys = read_location_reads_count(paras.reads_count)
     max_y = max(xs2ys.values())
     add_readcount_layout(fig,ori_starts,ori_ends,xs2ys,max_y,ylim_y1,max_y,xlim_x1,xlim_x2,maxbp)
@@ -496,12 +496,12 @@ def combined_datafram_based_on_first_col(pd_lists,samples):
         col_name = pd_lists[0].columns
         on_merge_col = col_name[0] ###
         merged_table = pd.merge(pd_lists[0],pd_lists[1],on=[on_merge_col],how="outer")
-        
+
         for i in range(len(pd_lists)):
             ori_names = pd_lists[i].columns
             mod_names = [ori_names[0]] + [ori_names[j] +"_"+ samples[i] for j in range(1,len(ori_names))]
             pd_lists[i].columns = mod_names
-        
+
         for i in range(2,len(pd_lists)):
             merged_table = pd.merge(merged_table,pd_lists[i],on=[on_merge_col],how="outer")
     #print(merged_table.columns)
@@ -509,11 +509,11 @@ def combined_datafram_based_on_first_col(pd_lists,samples):
     merged_table.fillna(0,inplace=True)
     merged_table["diff_abs"] = np.abs(merged_table[abundance_col+"_x"] - merged_table[abundance_col+"_y"])
     merged_table["diff"] = merged_table[abundance_col+"_x"] - merged_table[abundance_col+"_y"]
-    
+
     ### rename columns names
     merged_columns = merged_table.columns
     rename_columns = []
-    abund_index = 0 
+    abund_index = 0
     for column in merged_columns:
         if abundance_col in column:
             rename_columns.append(samples[abund_index])
@@ -539,7 +539,7 @@ def filter_out_enzyme_number(table):
     return table
 
 import re
-def add_column_type(table): ### Like 
+def add_column_type(table): ### Like
     cols = []
     for i in table["CAZy"]:
         fam = re.sub(r'[0-9]+', '', i)
@@ -558,7 +558,7 @@ def heatmap_plot(args):
     for i in range(len(pds)):
         pds[i]["sample"] = samples[i]
     data,x = combined_datafram_based_on_first_col(pds,samples)
-    
+
     if not args.col:
         data = data.iloc[0:int(args.top),:]
     else:
@@ -570,16 +570,16 @@ def heatmap_plot(args):
     data = data[samples]
     sns.set_style("whitegrid")
     sns.set_context("paper")
-    ### user defined color map 
+    ### user defined color map
 
-    ### default color 
+    ### default color
     if args.palette:
         cmap = args.palette
     else:
         mycolor=['aliceblue','skyblue','deepskyblue','orange','tomato','red']
         cmap = colors.LinearSegmentedColormap.from_list('my_list', mycolor)
         cmap.set_under('white')
-    
+
     if args.cluster_map:
         sns.clustermap(data, cmap=cmap,cbar=True,vmin=0.1,dendrogram_ratio=0.03,cbar_pos=(0.1, 1, 0.1, 0.1),
                        col_cluster=False,cbar_kws={"shrink": 0.3},
@@ -598,7 +598,7 @@ def heatmap_plot(args):
             ax = sns.heatmap(data, cmap=cmap,yticklabels=True,annot=args.show_abund,fmt=".0f",linewidths=0,cbar=True,vmin=0.1,
                          cbar_kws={"shrink": 0.3,"anchor":(0, 0.0)})
         ax.collections[0].colorbar.ax.tick_params(labelsize=6)
-    
+
         plt.xticks(rotation=30)
         plt.tight_layout(pad=0.1)
         if args.show_fig:
@@ -646,7 +646,7 @@ def bar_plot(args):
     #for item in leg.legendHandles:
     #    item.set_visible(False)
     #axins = inset_axes(ax,  "30%", "30%" ,loc="upper center", borderpad=1)
-    
+
     plt.title(f"The most top{args.top} different families")
     #plt.show()
 
