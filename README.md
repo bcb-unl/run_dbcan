@@ -22,7 +22,7 @@
 ## Update
 
 3/16/2025:
-1. Rewrite the structure of run_dbcan (suggested by Haidong), using object-oriented programming (OOP) to improve maintainability and readability.
+1. Rewrite the structure of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> (suggested by Haidong), using object-oriented programming (OOP) to improve maintainability and readability.
 2. Added new function: cgc_circle, which can visualize CGC in genome.
 
 **Future plans** Add prediction of food consumption through CAZyme. If you have new suggestions, please contact Dr. Yanbin Yin (yyin@unl.edu), Xinpeng Zhang (xzhang55@huskers.unl.edu), and Dr. Haidong Yi (hyi@stjude.org).
@@ -31,7 +31,7 @@
 
 **Notice**
 
-This is the updated version of run_dbcan. There are many changes compared to the old version, and the relevant REPO address has been moved to bcb-unl (new organization). We will try our best to keep the two versions updated synchronously.
+This is the updated version of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a>. Many changes have been made and described in https://run-dbcan.readthedocs.io/en/latest/. From now on, this repo is the official run_dbcan site, and the site at <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> will be no longer maintained. 
 
 **run_dbcan** is the standalone version of the [dbCAN3](http://bcb.unl.edu/dbCAN2/) annotation tool for automated CAZyme annotation. This tool, known as `run_dbcan`, incorporates HMMER, Diamond, and dbCAN_sub for annotating CAZyme families, and integrates Cazyme Gene Clusters (CGCs) and substrate predictions.
 
