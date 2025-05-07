@@ -1,8 +1,9 @@
 import rich_click as click
 from dbcan.parameter import (
-    create_config, GeneralConfig, DBDownloaderConfig, DiamondConfig, DiamondTCConfig,
+    create_config, GeneralConfig, DBDownloaderConfig, DiamondConfig, DiamondTCConfig, DiamondPeptidaseConfig, DiamondSulfataseConfig,
     PyHMMERConfig, DBCANSUBProcessorConfig, PyHMMERTFConfig, PyHMMERSTPConfig,OverviewGeneratorConfig, GFFConfig, CGCFinderConfig, CGCSubstrateConfig,
     SynPlotConfig, CGCPlotConfig,
+
     general_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,
     pyhmmer_dbcan_options, dbcansub_options ,pyhmmer_tf, pyhmmer_stp, cgc_gff_option, cgc_options, cgc_sub_options, syn_plot_options,
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options
@@ -71,8 +72,11 @@ def gff_process_cmd(ctx, **kwargs):
     diamond_tc_config = create_config(DiamondTCConfig, **kwargs)
     pyhmmer_tf_config = create_config(PyHMMERTFConfig, **kwargs)
     pyhmmer_stp_config = create_config(PyHMMERSTPConfig, **kwargs)
+    diamond_sulfatlas_config = create_config(DiamondSulfataseConfig, **kwargs)
+    diamond_peptidase_config = create_config(DiamondPeptidaseConfig, **kwargs)
+
     gff_config = create_config(GFFConfig, **kwargs)
-    run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, gff_config)
+    run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
 
 
 
@@ -145,9 +149,10 @@ def easy_cgc_cmd(ctx, **kwargs):
         diamond_tc_config = create_config(DiamondTCConfig, **kwargs)
         pyhmmer_tf_config = create_config(PyHMMERTFConfig, **kwargs)
         pyhmmer_stp_config = create_config(PyHMMERSTPConfig, **kwargs)
+        diamond_sulfatlas_config = create_config(DiamondSulfataseConfig, **kwargs)
+        diamond_peptidase_config = create_config(DiamondPeptidaseConfig, **kwargs)
         gff_config = create_config(GFFConfig, **kwargs)
-        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, gff_config)
-
+        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
         # step 3: CGC identification
         click.echo("step 3/3  CGC identification...")
         cgc_config = create_config(CGCFinderConfig, **kwargs)
@@ -201,8 +206,10 @@ def easy_substrate_cmd(ctx, **kwargs):
         diamond_tc_config = create_config(DiamondTCConfig, **kwargs)
         pyhmmer_tf_config = create_config(PyHMMERTFConfig, **kwargs)
         pyhmmer_stp_config = create_config(PyHMMERSTPConfig, **kwargs)
+        diamond_sulfatlas_config = create_config(DiamondSulfataseConfig, **kwargs)
+        diamond_peptidase_config = create_config(DiamondPeptidaseConfig, **kwargs)
         gff_config = create_config(GFFConfig, **kwargs)
-        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, gff_config)
+        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
 
         # step 3: CGC identification
         click.echo("step 3/4  CGC identification...")

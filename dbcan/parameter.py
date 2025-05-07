@@ -41,6 +41,27 @@ class DiamondTCConfig(BaseConfig):
     coverage_threshold_tc: float = 0.35
     verbose_option: bool = False
 
+@dataclass
+class DiamondSulfataseConfig(BaseConfig):
+    db_dir: str
+    threads: int
+    output_dir: str
+
+    e_value_threshold_tc: float = 1e-4
+    coverage_threshold_tc: float = 0.35
+    verbose_option: bool = False
+
+
+@dataclass
+class DiamondPeptidaseConfig(BaseConfig):
+    db_dir: str
+    threads: int
+    output_dir: str
+
+    e_value_threshold_tc: float = 1e-4
+    coverage_threshold_tc: float = 0.35
+    verbose_option: bool = False
+
 
 
 @dataclass
@@ -190,6 +211,11 @@ class SynPlotConfig(BaseConfig):
 @dataclass
 class CGCPlotConfig(BaseConfig):
     output_dir: str
+
+
+
+
+
 
 def create_config(config_class, **kwargs):
     return config_class.from_dict(config_class, kwargs)

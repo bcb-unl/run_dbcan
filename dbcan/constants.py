@@ -162,6 +162,9 @@ TCDB_COLUMN_NAMES = [
 ]
 
 
+
+
+
 ################################################################################################
 
 ####################################### Constants for pyhmmer_search.py ##############################
@@ -469,3 +472,47 @@ COLUMN_NAMES = {
 
 
 
+#############constants for newly added sulfatlas and peptidase database ##############################
+# Sulfatlas Constants
+SULFATLAS = "SULFATLAS"
+SULFATLAS_DIAMOND_DB = "sulfatlas_db.dmnd"
+SULFATLAS_DIAMOND_OUTPUT = "diamond.out.sulfatlas"
+SULFATLAS_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+SULFATLAS_ID_COLUMN = 'Sul ID'
+
+SULFATLAS_COLUMN_NAMES = [
+    'Sul ID',
+    'Sul Length',
+    'Target ID',
+    'Target Length',
+    'EVALUE',
+    'Sul START',
+    'Sul END',
+    'QSTART',
+    'QEND',
+    'COVERAGE'
+]
+DIAMOND_SULFATLAS_EVALUE_DEFAULT = 1e-5
+DIAMOND_SULFATLAS_COVERAGE_DEFAULT = 0.3
+
+# Peptidase Constants
+PEPTIDASE = "PEPTIDASE"
+PEPTIDASE_DIAMOND_DB = "peptidase_db.dmnd"
+PEPTIDASE_DIAMOND_OUTPUT = "diamond.out.peptidase"
+PEPTIDASE_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+PEPTIDASE_ID_COLUMN = 'Peptidase ID'
+
+PEPTIDASE_COLUMN_NAMES = [
+    'Peptidase ID',
+    'Peptidase Length',
+    'Target ID',
+    'Target Length',
+    'EVALUE',
+    'Peptidase START',
+    'Peptidase END',
+    'QSTART',
+    'QEND',
+    'COVERAGE'
+]
+DIAMOND_PEPTIDASE_EVALUE_DEFAULT = 1e-5
+DIAMOND_PEPTIDASE_COVERAGE_DEFAULT = 0.3
