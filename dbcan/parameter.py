@@ -288,7 +288,7 @@ def cgc_options(func):
     func = click.option('--additional_genes', multiple=True, default=["TC"], help='Specify additional gene types for CGC annotation, including TC, TF, and STP')(func)
     func = click.option('--num_null_gene', type=int, default=2, help='Maximum number of null genes allowed between signature genes.')(func)
     func = click.option('--base_pair_distance', type=int, default=15000, help='Base pair distance of signature genes.')(func)
-    func = click.option('--use_null_genes', is_flag=True, default=True, help='Use null genes in CGC annotation.')(func)
+    func = click.option('--use_null_genes/--no-use_null_genes', is_flag=True, default=True, help='Use null genes in CGC annotation.')(func)
     func = click.option('--use_distance', is_flag=True, default=False, help='Use base pair distance in CGC annotation.')(func)
     func = output_dir_option(func)
     return func
