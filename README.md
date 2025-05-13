@@ -20,6 +20,10 @@
 </p>
 
 ## Update
+5/12/2025:
+`dev-dbcan` branch is used to test new function and fix issues. After testing, this branch will be merged into main branch and update docker/conda/pypi. If you want to use those beta-function, please replace the code folder (dbcan) with your current package.
+
+
 
 3/16/2025:
 1. Rewrite the structure of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> (suggested by Haidong), using object-oriented programming (OOP) to improve maintainability and readability.
@@ -31,7 +35,7 @@
 
 **Notice**
 
-This is the updated version of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a>. Many changes have been made and described in https://run-dbcan.readthedocs.io/en/latest/. From now on, this repo is the official run_dbcan site, and the site at <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> will be no longer maintained. 
+This is the updated version of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a>. Many changes have been made and described in https://run-dbcan.readthedocs.io/en/latest/. From now on, this repo is the official run_dbcan site, and the site at <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> will be no longer maintained.
 
 **run_dbcan** is the standalone version of the [dbCAN3](http://bcb.unl.edu/dbCAN2/) annotation tool for automated CAZyme annotation. This tool, known as `run_dbcan`, incorporates HMMER, Diamond, and dbCAN_sub for annotating CAZyme families, and integrates Cazyme Gene Clusters (CGCs) and substrate predictions.
 
