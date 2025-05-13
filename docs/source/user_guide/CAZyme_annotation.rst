@@ -19,7 +19,7 @@ Command Syntax
 
 .. code-block:: shell
 
-   run_dbcan CAZyme_annotation --input_raw_data <INPUT_FILE> --out_dir <OUTPUT_DIRECTORY> --db_dir <DATABASE_DIRECTORY> --mode <MODE>
+   run_dbcan CAZyme_annotation --input_raw_data <INPUT_FILE> --output_dir <OUTPUT_DIRECTORY> --db_dir <DATABASE_DIRECTORY> --mode <MODE>
 
 Key Parameters
 ~~~~~~~~~~~~~~~~
@@ -32,7 +32,7 @@ Key Parameters
      - Description
    * - ``--input_raw_data``
      - Path to input sequence file (FASTA format)
-   * - ``--out_dir``
+   * - ``--output_dir``
      - Directory for output files
    * - ``--db_dir``
      - Directory containing database files
@@ -52,7 +52,7 @@ When working with bacterial or archaeal genomes, use the ``prok`` mode:
 
 .. code-block:: shell
 
-   run_dbcan CAZyme_annotation --input_raw_data EscheriaColiK12MG1655.fna --out_dir output_EscheriaColiK12MG1655_fna --db_dir db --mode prok
+   run_dbcan CAZyme_annotation --input_raw_data EscheriaColiK12MG1655.fna --output_dir output_EscheriaColiK12MG1655_fna --db_dir db --mode prok
 
 Analyzing Protein Sequences
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,7 +61,7 @@ For pre-translated protein sequences, use the ``protein`` mode:
 
 .. code-block:: shell
 
-   run_dbcan CAZyme_annotation --input_raw_data EscheriaColiK12MG1655.faa --out_dir output_EscheriaColiK12MG1655_faa --db_dir db --mode protein
+   run_dbcan CAZyme_annotation --input_raw_data EscheriaColiK12MG1655.faa --output_dir output_EscheriaColiK12MG1655_faa --db_dir db --mode protein
 
 Analyzing Eukaryotic Proteins
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -70,11 +70,11 @@ Eukaryotic proteins are processed the same way using ``protein`` mode:
 
 .. code-block:: shell
 
-   run_dbcan CAZyme_annotation --input_raw_data Xylona_heveae_TC161.faa --out_dir output_Xylona_heveae_TC161_faa --db_dir db --mode protein
+   run_dbcan CAZyme_annotation --input_raw_data Xylona_heveae_TC161.faa --output_dir output_Xylona_heveae_TC161_faa --db_dir db --mode protein
 
 .. code-block:: shell
 
-   run_dbcan CAZyme_annotation --input_raw_data Xylhe1_GeneCatalog_proteins_20130827.aa.fasta --out_dir output_Xylhe1_faa --db_dir db --mode protein
+   run_dbcan CAZyme_annotation --input_raw_data Xylhe1_GeneCatalog_proteins_20130827.aa.fasta --output_dir output_Xylhe1_faa --db_dir db --mode protein
 
 .. tip::
 
@@ -100,7 +100,7 @@ To customize which analytical methods are used:
 .. code-block:: shell
    :caption: Using specific tools
 
-   run_dbcan CAZyme_annotation --input_raw_data input.fna --out_dir output --db_dir db --mode prok --methods hmm --methods diamond
+   run_dbcan CAZyme_annotation --input_raw_data input.fna --output_dir output --db_dir db --mode prok --methods hmm --methods diamond
 
 Available method combinations: ``hmm``, ``diamond``, ``dbCANsub``, or any combination.
 

@@ -81,7 +81,7 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
 
 .. toctree::
    :maxdepth: 1
-   :caption: Getting start
+   :caption: Getting started
 
    getting_started/installation
    getting_started/quick_start
