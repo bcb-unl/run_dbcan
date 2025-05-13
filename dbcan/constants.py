@@ -460,6 +460,9 @@ TCDB_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/tcdb
 TF_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/TF.hmm"
 STP_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/STP.hmm"
 
+PEPTIDASE_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/peptidase_db.dmnd"
+SULFATLAS_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/sulfatlas_db.dmnd"
+
 PUL_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/PUL.dmnd"
 PUL_MAP_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/dbCAN-PUL.xlsx"
 PUL_ALL_URL ="https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/dbCAN-PUL.tar.gz"

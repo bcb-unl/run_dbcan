@@ -220,7 +220,7 @@ class CGCCircosPlot:
                 # basic line
                 line_track.line([min(x), max(x)], [20, 20], lw=1.5, ls="dotted", color="gray", vmin=vmin, vmax=vmax)
                 # log2fc line
-                line_track.line(x, y, color="purple", lw=1.5, vmin=vmin, vmax=vmax)
+                line_track.line(x, y, color="pink", lw=1.5, vmin=vmin, vmax=vmax)
 
     def plot_deg_marker_circle(self, circos=None, sector_name=None):
         "add DEGs marker circle"
