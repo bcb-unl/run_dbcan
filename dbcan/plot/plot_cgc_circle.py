@@ -72,7 +72,7 @@ class CGCCircosPlot:
         self.deg_data = deg_df[deg_df["log2FC"].notnull()]
         self.deg_data["log2FC"] = pd.to_numeric(self.deg_data["log2FC"], errors='coerce')
 
-        
+
 
     def plot_feature_outer(self, circos=None):
         """Plot outer track with position markers"""
@@ -212,14 +212,14 @@ class CGCCircosPlot:
                         log2fc = self.deg_data.loc[self.deg_data['protein_id'] == protein_id, 'log2FC'].iloc[0]
                         y_val = log2fc + 20
                     else:
-                        y_val = 20 
+                        y_val = 20
                     x.append(pos)
                     y.append(y_val)
 
             if len(x) > 1:
                 x, y = zip(*sorted(zip(x, y)))
-                vmin = min(y) - 1  
-                vmax = max(y) + 1  
+                vmin = min(y) - 1
+                vmax = max(y) + 1
                 # basic line
                 line_track.line([min(x), max(x)], [20, 20], lw=1.5, ls="dotted", color="gray", vmin=vmin, vmax=vmax)
                 # log2fc line
@@ -266,8 +266,8 @@ class CGCCircosPlot:
         for idx, color in enumerate(legend_colors):
             rect_handles.append(Patch(color=color, label=CGC_FEATURE_LEGEND[idx]))
         # add DEG legend
-        rect_handles.append(Patch(color="#FF0000", label="DEG upgraded"))
-        rect_handles.append(Patch(color="#4169E1", label="DEG downgraded"))
+        rect_handles.append(Patch(color="#FF0000", label="DEG up regulated"))
+        rect_handles.append(Patch(color="#4169E1", label="DEG down regulated"))
         _ = circos.ax.legend(
             handles=rect_handles,
             bbox_to_anchor=CGC_LEGEND_POSITION,
