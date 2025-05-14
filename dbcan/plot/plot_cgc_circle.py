@@ -45,7 +45,10 @@ class CGCCircosPlot:
         # Load GFF data
         self.gff = Gff(self.gff_file)
         self.seqid2size = self.gff.get_seqid2size()
-        self.space = 0 if len(self.seqid2size) == 1 else 2
+        contig_count = len(self.seqid2size)
+        # Set space based on contig count
+        max_space = max(0, int(360 // contig_count) - 1)
+        self.space = 0 if contig_count == 1 else min(2, max_space)
         self.circos = Circos(sectors=self.seqid2size, space=self.space)
         self.feature_type = CGC_FEATURE_TYPE
         self.seqid2features = self.gff.get_seqid2features(feature_type=self.feature_type)
