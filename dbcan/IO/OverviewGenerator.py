@@ -191,8 +191,9 @@ class OverviewGenerator:
                 
                 sorted_results = sorted(overlap_results, key=lambda x: x[1])
                 domain_with_range = [f"{res[0]}({res[1]}-{res[2]})" for res in sorted_results]
-                domain_with_range = list(dict.fromkeys(domain_with_range))
+                #domain_with_range = list(dict.fromkeys(domain_with_range))
                 domain_names = [d.split('(')[0] for d in domain_with_range]
+                #domain_names = domain_with_range
                 results[RECOMMEND_RESULTS_FIELD] = EC_SEPARATOR.join(domain_names)
 
                 #results[RECOMMEND_RESULTS_FIELD] = EC_SEPARATOR.join([str(res[0]) for res in sorted_results])
@@ -232,20 +233,21 @@ class OverviewGenerator:
         if len(hmm_results) == 1 and len(sub_results) > 1:
             hmm = hmm_results[0]
             # Check if all subfamilies have the same name
-            sub_names = set(sub[0] for sub in sub_results)
-            if len(sub_names) == 1:
-                # Check if HMM spans all these subfamilies
-                spans_all = True
-                for sub in sub_results:
-                    if not self.calculate_overlap(hmm[1], hmm[2], sub[1], sub[2]):
-                        spans_all = False
-                        break
-                        
-                if spans_all:
-                    # If one HMM spans all same-name subfamilies, use selection rules
-                    all_annotations = [hmm] + sub_results
-                    best = self.select_best_result(all_annotations)
-                    return [best]
+            if "_" in hmm[0]:
+                sub_names = set(sub[0] for sub in sub_results)
+                if len(sub_names) == 1:
+                    # Check if HMM spans all these subfamilies
+                    spans_all = True
+                    for sub in sub_results:
+                        if not self.calculate_overlap(hmm[1], hmm[2], sub[1], sub[2]):
+                            spans_all = False
+                            break
+                            
+                    if spans_all:
+                        # If one HMM spans all same-name subfamilies, use selection rules
+                        all_annotations = [hmm] + sub_results
+                        best = self.select_best_result(all_annotations)
+                        return [best]
         
         # Create domain groups based on position overlap
         domain_groups = []
