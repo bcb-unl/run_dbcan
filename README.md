@@ -20,9 +20,10 @@
 </p>
 
 ## Update
-
 5/12/2025:
-This branch is used to test new function and fix issues. After testing, this branch will be merged into main branch and update docker/conda/pypi. If you want to use those beta-function, please replace the code folder (dbcan) with your current package.
+`dev-dbcan` branch is used to test new functions and fix issues. After testing, this branch will be merged into the main branch and update docker/conda/pypi. If you want to use those beta functions, please replace the code folder (dbcan) with your current package.
+
+
 
 3/16/2025:
 1. Rewrite the structure of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> (suggested by Haidong), using object-oriented programming (OOP) to improve maintainability and readability.
