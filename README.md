@@ -21,7 +21,7 @@
 
 ## Update
 5/12/2025:
-`dev-dbcan` branch is used to test new function and fix issues. After testing, this branch will be merged into main branch and update docker/conda/pypi. If you want to use those beta-function, please replace the code folder (dbcan) with your current package.
+`dev-dbcan` branch is used to test new functions and fix issues. After testing, this branch will be merged into the main branch and update docker/conda/pypi. If you want to use those beta functions, please replace the code folder (dbcan) with your current package.
 
 
 
