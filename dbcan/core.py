@@ -75,6 +75,18 @@ def run_dbCAN_tcdb_diamond(config):
     processor.run()
     processor.format_results()
 
+def run_dbCAN_sulfatlas_diamond(config):
+    from dbcan.annotation.diamond import SulfatlasDiamondProcessor
+    processor = SulfatlasDiamondProcessor(config)
+    processor.run()
+    processor.format_results()
+
+def run_dbCAN_peptidase_diamond(config):
+    from dbcan.annotation.diamond import PeptidaseDiamondProcessor
+    processor = PeptidaseDiamondProcessor(config)
+    processor.run()
+    processor.format_results()
+
 def run_dbCAN_hmmer_tf(config):
     from dbcan.annotation.pyhmmer_search import PyHMMERTFProcessor
     processor = PyHMMERTFProcessor(config)
@@ -85,12 +97,16 @@ def run_dbCAN_hmmer_stp(config):
     processor = PyHMMERSTPProcessor(config)
     processor.run()
 
-def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfconfig, stpconfig, cgcgffconfig):
+def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfconfig, stpconfig, sulfatlasconfig,peptidaseconfig,cgcgffconfig):
     run_dbCAN_tcdb_diamond(tcdbconfig)
     run_dbCAN_hmmer_tf(tfconfig)
     run_dbCAN_hmmer_stp(stpconfig)
+    run_dbCAN_sulfatlas_diamond(sulfatlasconfig)
+    run_dbCAN_peptidase_diamond(peptidaseconfig)
+
+
     from dbcan.process.process_utils import process_cgc_sig_results
-    process_cgc_sig_results(tcdbconfig, tfconfig, stpconfig)
+    process_cgc_sig_results(tcdbconfig, tfconfig, stpconfig, sulfatlasconfig, peptidaseconfig)
     from dbcan.IO.gff import get_gff_processor
     processor = get_gff_processor(cgcgffconfig)
     processor.process_gff()

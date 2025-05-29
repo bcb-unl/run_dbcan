@@ -125,7 +125,7 @@ class GFFProcessor:
             logging.info(f"Loading CGC signature data from {self.cgc_sig_file}")
             try:
                 cgc_sig_df = pd.read_csv(self.cgc_sig_file, sep='\t', usecols=GFF_CGC_SIG_COLUMNS, header=None,
-                                      names=[GFF_FUNCTION_ANNOTATION_COL, GFF_PROTEIN_ID_COL, GFF_TYPE_COL])
+                                    names=[GFF_FUNCTION_ANNOTATION_COL, GFF_PROTEIN_ID_COL, GFF_TYPE_COL])
                 cgc_sig_df[GFF_CGC_ANNOTATION_COL] = cgc_sig_df[GFF_TYPE_COL] + '|' + cgc_sig_df[GFF_FUNCTION_ANNOTATION_COL]
             except Exception as e:
                 logging.error(f"Error reading CGC signature file: {str(e)}")
@@ -136,7 +136,17 @@ class GFFProcessor:
             logging.info("Combining CAZyme and CGC signature data")
             combined_df = pd.concat([overview_df[['protein_id', 'CGC_annotation']],
                                     cgc_sig_df[['protein_id', 'CGC_annotation']]], ignore_index=True)
-            combined_df = combined_df.groupby('protein_id')['CGC_annotation'].apply(lambda x: '+'.join(set(x))).reset_index()
+
+            # define a priority for annotations
+            PRIORITY = {'CAZyme': 0, 'TC': 1, 'TF': 2, 'STP': 3}
+            def annotation_priority(annotation):
+                prefix = annotation.split('|')[0]
+                return PRIORITY.get(prefix, 99)
+
+            # sort and combine annotations by protein ID
+            combined_df = combined_df.groupby('protein_id')['CGC_annotation'].apply(
+                lambda x: '+'.join(sorted(set(x), key=annotation_priority))
+            ).reset_index()
             return combined_df.set_index('protein_id').to_dict('index')
         except Exception as e:
             logging.error(f"Error loading CGC data: {str(e)}")

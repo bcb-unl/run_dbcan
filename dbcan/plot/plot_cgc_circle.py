@@ -19,7 +19,8 @@ from dbcan.constants import (CGC_GFF_FILE, CGC_RESULT_FILE, CGC_CIRCOS_DIR,
                            CGC_LEGEND_POSITION, CGC_LEGEND_FONT_SIZE, CGC_TITLE_FONT_SIZE,
                            CGC_FEATURE_COLORS, CGC_MIN_FIGURE_SIZE, CGC_MAX_FIGURE_SIZE,
                            CGC_FIGURE_SIZE_SCALING_FACTOR, CGC_PLOT_TITLE,
-                           CGC_CONTIG_TITLE_TEMPLATE, CGC_LEGEND_TITLE)
+                           CGC_CONTIG_TITLE_TEMPLATE, CGC_LEGEND_TITLE,
+                           DEG_LOG2FC_RANGE, DEG_TRACK_RANGE,CGC_FEATURE_LEGEND,DEG_FILE)
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -31,6 +32,7 @@ class CGCCircosPlot:
         self.gff_file = os.path.join(self.input_dir, CGC_GFF_FILE)
         self.tsv_file = os.path.join(self.input_dir, CGC_RESULT_FILE)
         self.output_dir = os.path.join(self.input_dir, CGC_CIRCOS_DIR)
+        self.deg_tsv_file = os.path.join(self.input_dir, DEG_FILE)  # Adjust as needed
 
         # Validate file existence
         if not os.path.exists(self.gff_file):
@@ -43,7 +45,10 @@ class CGCCircosPlot:
         # Load GFF data
         self.gff = Gff(self.gff_file)
         self.seqid2size = self.gff.get_seqid2size()
-        self.space = 0 if len(self.seqid2size) == 1 else 2
+        contig_count = len(self.seqid2size)
+        # Set space based on contig count
+        max_space = max(0, int(360 // contig_count) - 1)
+        self.space = 0 if contig_count == 1 else min(2, max_space)
         self.circos = Circos(sectors=self.seqid2size, space=self.space)
         self.feature_type = CGC_FEATURE_TYPE
         self.seqid2features = self.gff.get_seqid2features(feature_type=self.feature_type)
@@ -54,13 +59,20 @@ class CGCCircosPlot:
             self.tsv_data = pd.read_csv(self.tsv_file, sep='\t')
             # Validate required columns
             required_columns = [CGC_ID_COLUMN, CONTIG_ID_COLUMN, CGC_PROTEIN_ID_FIELD,
-                               GENE_START_COLUMN, GENE_STOP_COLUMN]
+                            GENE_START_COLUMN, GENE_STOP_COLUMN]
             missing_cols = [col for col in required_columns if col not in self.tsv_data.columns]
             if missing_cols:
                 logging.warning(f"Missing required columns in TSV file: {missing_cols}")
         except Exception as e:
             logging.error(f"Error reading TSV file: {str(e)}")
             self.tsv_data = pd.DataFrame()  # Create empty DataFrame
+
+        # Load DEG data
+        deg_df = pd.read_csv(self.deg_tsv_file, sep="\t", header=None, names=["protein_id", "log2FC"])
+        self.deg_data = deg_df[deg_df["log2FC"].notnull()]
+        self.deg_data["log2FC"] = pd.to_numeric(self.deg_data["log2FC"], errors='coerce')
+
+
 
     def plot_feature_outer(self, circos=None):
         """Plot outer track with position markers"""
@@ -173,6 +185,73 @@ class CGCCircosPlot:
                         except Exception as e:
                             logging.warning(f"Error plotting CGC {cgc_id} on {sector.name}: {str(e)}")
 
+    def plot_log2fc_line(self, circos=None, sector_name=None):
+        """add log2FC line for DEGs"""
+        if circos is None:
+            circos = self.circos
+        if self.deg_data is None:
+            logging.warning("No DEG data available for plotting")
+            return
+
+        for sector in circos.sectors:
+            if sector_name and sector.name != sector_name:
+                continue
+
+            line_track = sector.add_track(DEG_LOG2FC_RANGE, r_pad_ratio=CGC_TRACK_PADDING)
+            line_track.axis()
+            line_track.grid(2, color=CGC_GRID_COLOR)
+
+            features = self.seqid2features[sector.name]
+            x = []
+            y = []
+            for feature in features:
+                if feature.type == self.feature_type:
+                    protein_id = feature.qualifiers.get(PROTEIN_ID_ATTR, [""])[0]
+                    pos = int((feature.location.start + feature.location.end) / 2)
+                    if protein_id in self.deg_data['protein_id'].values:
+                        log2fc = self.deg_data.loc[self.deg_data['protein_id'] == protein_id, 'log2FC'].iloc[0]
+                        y_val = log2fc + 20
+                    else:
+                        y_val = 20
+                    x.append(pos)
+                    y.append(y_val)
+
+            if len(x) > 1:
+                x, y = zip(*sorted(zip(x, y)))
+                vmin = min(y) - 1
+                vmax = max(y) + 1
+                # basic line
+                line_track.line([min(x), max(x)], [20, 20], lw=1.5, ls="dotted", color="gray", vmin=vmin, vmax=vmax)
+                # log2fc line
+                line_track.line(x, y, color="pink", lw=1.5, vmin=vmin, vmax=vmax)
+
+    def plot_deg_marker_circle(self, circos=None, sector_name=None):
+        "add DEGs marker circle"
+        if circos is None:
+            circos = self.circos
+        if self.deg_data is None:
+            logging.warning("No DEG data available for plotting")
+            return
+
+
+
+        for sector in circos.sectors:
+            if sector_name and sector.name != sector_name:
+                continue
+
+            deg_track = sector.add_track(DEG_TRACK_RANGE, r_pad_ratio=CGC_TRACK_PADDING)
+            deg_track.axis(fc=CGC_TRACK_BG_COLOR, ec="none")
+            deg_track.grid(2, color=CGC_GRID_COLOR)
+            features = self.seqid2features[sector.name]
+
+            for feature in features:
+                if feature.type == self.feature_type:
+                    protein_id = feature.qualifiers.get(PROTEIN_ID_ATTR, [""])[0]
+                    if protein_id in self.deg_data['protein_id'].values:
+                        log2fc = self.deg_data.loc[self.deg_data['protein_id'] == protein_id, 'log2FC'].iloc[0]
+                        color = "#FF0000" if log2fc > 0 else "#4169E1"  # red for up, blue for down
+                        deg_track.genomic_features(feature, fc=color, ec="black", lw=0.2)
+
     def get_feature_color(self, cgc_type):
         """Get color for different feature types"""
         return CGC_FEATURE_COLORS.get(cgc_type, "gray")
@@ -182,11 +261,13 @@ class CGCCircosPlot:
         if circos is None:
             circos = self.circos
 
-        legend_labels = ["CAZyme", "TC", "TF", "STP"]
-        legend_colors = [self.get_feature_color(label) for label in legend_labels]
+        legend_colors = [self.get_feature_color(label) for label in CGC_FEATURE_LEGEND]
         rect_handles = []
         for idx, color in enumerate(legend_colors):
-            rect_handles.append(Patch(color=color, label=legend_labels[idx]))
+            rect_handles.append(Patch(color=color, label=CGC_FEATURE_LEGEND[idx]))
+        # add DEG legend
+        rect_handles.append(Patch(color="#FF0000", label="DEG up regulated"))
+        rect_handles.append(Patch(color="#4169E1", label="DEG down regulated"))
         _ = circos.ax.legend(
             handles=rect_handles,
             bbox_to_anchor=CGC_LEGEND_POSITION,
@@ -210,6 +291,8 @@ class CGCCircosPlot:
             self.plot_features_cazyme(contig_circos, contig_name)
             self.plot_features_cgc(contig_circos, contig_name)
             self.plot_cgc_range(contig_circos, contig_name)
+            self.plot_log2fc_line(contig_circos, contig_name)
+            self.plot_deg_marker_circle(contig_circos, contig_name)
 
             # Enable annotation adjustment to avoid overlap
             circos_config.ann_adjust.enable = True
@@ -236,6 +319,8 @@ class CGCCircosPlot:
             self.plot_features_cazyme()
             self.plot_features_cgc()
             self.plot_cgc_range()
+            self.plot_log2fc_line()
+            self.plot_deg_marker_circle()
             circos_config.ann_adjust.enable = True  # Avoid annotation overlap
 
             # Adjust figure size based on number of contigs

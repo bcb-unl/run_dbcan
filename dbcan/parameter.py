@@ -41,6 +41,27 @@ class DiamondTCConfig(BaseConfig):
     coverage_threshold_tc: float = 0.35
     verbose_option: bool = False
 
+@dataclass
+class DiamondSulfataseConfig(BaseConfig):
+    db_dir: str
+    threads: int
+    output_dir: str
+
+    e_value_threshold_tc: float = 1e-4
+    coverage_threshold_tc: float = 0.35
+    verbose_option: bool = False
+
+
+@dataclass
+class DiamondPeptidaseConfig(BaseConfig):
+    db_dir: str
+    threads: int
+    output_dir: str
+
+    e_value_threshold_tc: float = 1e-4
+    coverage_threshold_tc: float = 0.35
+    verbose_option: bool = False
+
 
 
 @dataclass
@@ -191,6 +212,11 @@ class SynPlotConfig(BaseConfig):
 class CGCPlotConfig(BaseConfig):
     output_dir: str
 
+
+
+
+
+
 def create_config(config_class, **kwargs):
     return config_class.from_dict(config_class, kwargs)
 
@@ -262,7 +288,7 @@ def cgc_options(func):
     func = click.option('--additional_genes', multiple=True, default=["TC"], help='Specify additional gene types for CGC annotation, including TC, TF, and STP')(func)
     func = click.option('--num_null_gene', type=int, default=2, help='Maximum number of null genes allowed between signature genes.')(func)
     func = click.option('--base_pair_distance', type=int, default=15000, help='Base pair distance of signature genes.')(func)
-    func = click.option('--use_null_genes', is_flag=True, default=True, help='Use null genes in CGC annotation.')(func)
+    func = click.option('--use_null_genes/--no-use_null_genes', is_flag=True, default=True, help='Use null genes in CGC annotation.')(func)
     func = click.option('--use_distance', is_flag=True, default=False, help='Use base pair distance in CGC annotation.')(func)
     func = output_dir_option(func)
     return func
