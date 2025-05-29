@@ -6,7 +6,8 @@ from tqdm import tqdm
 from dbcan.parameter import DBDownloaderConfig
 from dbcan.constants import (CAZY_DB_URL, HMMER_DB_URL, DBCAN_SUB_DB_URL,
                             DBCAN_SUB_MAP_URL, TCDB_DB_URL, TF_DB_URL,
-                            STP_DB_URL, PUL_DB_URL, PUL_MAP_URL, PUL_ALL_URL)
+                            STP_DB_URL, PUL_DB_URL, PUL_MAP_URL, PUL_ALL_URL,
+                            PEPTIDASE_DB_URL, SULFATLAS_DB_URL)
 
 class DBDownloader:
     """Download dbCAN databases"""
@@ -33,7 +34,9 @@ class DBDownloader:
             "STP.hmm": STP_DB_URL,
             "PUL.dmnd": PUL_DB_URL,
             "dbCAN-PUL.xlsx": PUL_MAP_URL,
-            "dbCAN-PUL.tar.gz": PUL_ALL_URL
+            "dbCAN-PUL.tar.gz": PUL_ALL_URL,
+            "peptidase_db.dmnd": PEPTIDASE_DB_URL,
+            "sulfatlas_db.dmnd": SULFATLAS_DB_URL
         }
 
     def download_file(self):
