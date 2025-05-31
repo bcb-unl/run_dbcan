@@ -136,16 +136,9 @@ class GFFProcessor:
             logging.info("Combining CAZyme and CGC signature data")
             combined_df = pd.concat([overview_df[['protein_id', 'CGC_annotation']],
                                     cgc_sig_df[['protein_id', 'CGC_annotation']]], ignore_index=True)
-
-            # define a priority for annotations
-            PRIORITY = {'CAZyme': 0, 'TC': 1, 'TF': 2, 'STP': 3}
-            def annotation_priority(annotation):
-                prefix = annotation.split('|')[0]
-                return PRIORITY.get(prefix, 99)
-
             # sort and combine annotations by protein ID
-            combined_df = combined_df.groupby('protein_id')['CGC_annotation'].apply(
-                lambda x: '+'.join(sorted(set(x), key=annotation_priority))
+            combined_df = combined_df.groupby('protein_id', sort=False)['CGC_annotation'].apply(
+                lambda x: '+'.join(list(x))
             ).reset_index()
             return combined_df.set_index('protein_id').to_dict('index')
         except Exception as e:
