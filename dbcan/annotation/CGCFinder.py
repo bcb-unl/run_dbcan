@@ -139,8 +139,12 @@ class CGCFinder:
             clusters = []
             cgc_id = 1
 
-            logging.info(f"Finding CGC clusters using {self.num_null_gene} max null genes, {self.base_pair_distance} bp distance")
-            logging.info(f"Use null genes: {self.use_null_genes}, Use distance: {self.use_distance}")
+            logging.info(
+                f"Finding CGC clusters using "
+                f"{'distance' if self.use_distance else 'no distance'}, "
+                f"{'null genes' if self.use_null_genes else 'no null genes'}; "
+                f"max null genes: {self.num_null_gene}, bp distance: {self.base_pair_distance if self.use_distance else 'N/A'} "
+            )
 
             for contig, contig_df in self.df.groupby(CONTIG_ID_COLUMN):
                 sig_indices = contig_df[contig_df[IS_SIGNATURE_COLUMN]].index.to_numpy()
@@ -208,11 +212,18 @@ class CGCFinder:
         has_all_additional = set(self.additional_genes).issubset(additional_annotations)
         return (has_core and has_all_additional)
 
+
+    @staticmethod
+    def get_gene_type(annotation_str):
+        PRIORITY = {'CAZyme': 0, 'TC': 1, 'TF': 2, 'STP': 3, 'SULFATLAS':4, 'PEPTIDASE':5}
+        types = [ann.split('|')[0] for ann in annotation_str.split('+')]
+        return sorted(types, key=lambda t: PRIORITY.get(t, 99))[0] if types else NULL_GENE_TYPE
+
     def process_cluster(self, cluster_df, cgc_id):
         """format a cluster for output"""
         return [{
             CGC_ID_FIELD: f'CGC{cgc_id}',
-            GENE_TYPE_FIELD: gene[CGC_ANNOTATION_COLUMN].split('|')[0] if '|' in gene[CGC_ANNOTATION_COLUMN] else NULL_GENE_TYPE,
+            GENE_TYPE_FIELD: self.get_gene_type(gene[CGC_ANNOTATION_COLUMN]),
             CONTIG_ID_COLUMN: gene[CONTIG_ID_COLUMN],
             CGC_PROTEIN_ID_FIELD: gene[PROTEIN_ID_COLUMN],
             GENE_START_FIELD: gene[START_COLUMN],
