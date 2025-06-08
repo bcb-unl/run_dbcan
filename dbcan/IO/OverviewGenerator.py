@@ -136,17 +136,17 @@ class OverviewGenerator:
         for entry in group:
             if "_" in entry[0] and entry[3] == 'hmm':
                 return entry
-        
+
         # Second priority: subfamily (sub) results
         sub_results = [entry for entry in group if entry[3] == 'sub']
         if sub_results:
             return sub_results[0]
-        
+
         # Third priority: remaining HMM results
         hmm_results = [entry for entry in group if entry[3] == 'hmm']
         if hmm_results:
             return hmm_results[0]
-        
+
         # Fallback: first result in group
         return group[0]
 
@@ -186,12 +186,12 @@ class OverviewGenerator:
                     all_results.append((hr[HMM_NAME_FIELD], hr[TARGET_FROM_FIELD], hr[TARGET_TO_FIELD], 'hmm'))
                 for _, sr in sub_results.iterrows():
                     all_results.append((sr[SUBFAMILY_NAME_FIELD], sr[TARGET_FROM_FIELD], sr[TARGET_TO_FIELD], 'sub'))
-                
+
                 overlap_results = self.graph_based_grouping(all_results)
-                
+
                 sorted_results = sorted(overlap_results, key=lambda x: x[1])
                 domain_with_range = [f"{res[0]}({res[1]}-{res[2]})" for res in sorted_results]
-                #domain_with_range = list(dict.fromkeys(domain_with_range))
+                domain_with_range = list(dict.fromkeys(domain_with_range))
                 domain_names = [d.split('(')[0] for d in domain_with_range]
                 #domain_names = domain_with_range
                 results[RECOMMEND_RESULTS_FIELD] = EC_SEPARATOR.join(domain_names)
@@ -208,11 +208,11 @@ class OverviewGenerator:
         """Process annotation results using improved domain-aware grouping algorithm"""
         if not all_results:
             return []
-        
+
         # First separate results by type and sort by position
-        hmm_results = sorted([r for r in all_results if r[3] == 'hmm'], key=lambda x: x[1]) 
+        hmm_results = sorted([r for r in all_results if r[3] == 'hmm'], key=lambda x: x[1])
         sub_results = sorted([r for r in all_results if r[3] == 'sub'], key=lambda x: x[1])
-        
+
         # Check for special case 1: one subfamily spans multiple HMMs
         if len(sub_results) == 1 and len(hmm_results) > 1:
             sub = sub_results[0]
@@ -222,13 +222,13 @@ class OverviewGenerator:
                 if not self.calculate_overlap(sub[1], sub[2], hmm[1], hmm[2]):
                     spans_all = False
                     break
-                    
+
             if spans_all:
                 # If one subfamily spans all HMMs, prioritize it according to rules
                 all_annotations = sub_results + hmm_results
                 best = self.select_best_result(all_annotations)
                 return [best]
-        
+
         # Check for special case 2: one HMM spans multiple subfamilies of same name
         if len(hmm_results) == 1 and len(sub_results) > 1:
             hmm = hmm_results[0]
@@ -242,27 +242,27 @@ class OverviewGenerator:
                         if not self.calculate_overlap(hmm[1], hmm[2], sub[1], sub[2]):
                             spans_all = False
                             break
-                            
+
                     if spans_all:
                         # If one HMM spans all same-name subfamilies, use selection rules
                         all_annotations = [hmm] + sub_results
                         best = self.select_best_result(all_annotations)
                         return [best]
-        
+
         # Create domain groups based on position overlap
         domain_groups = []
         processed_hmms = set()
         processed_subs = set()
-        
+
         # Step 1: Group directly overlapping subfamilies
         sub_groups = []
         for i, sub1 in enumerate(sub_results):
             if i in processed_subs:
                 continue
-                
+
             current_group = [sub1]
             processed_subs.add(i)
-            
+
             # Use more robust algorithm to find all connected subfamilies
             has_new_addition = True
             while has_new_addition:
@@ -270,60 +270,60 @@ class OverviewGenerator:
                 for j, sub2 in enumerate(sub_results):
                     if j in processed_subs:
                         continue
-                    
+
                     # Check if sub2 overlaps with any subfamily in the current group
                     if any(self.calculate_overlap(group_sub[1], group_sub[2], sub2[1], sub2[2]) for group_sub in current_group):
                         current_group.append(sub2)
                         processed_subs.add(j)
                         has_new_addition = True
-            
+
             sub_groups.append(current_group)
-        
+
         # Reset processed_subs for the main processing
         processed_subs = set()
-        
+
         # Step 2: Create comprehensive groups that account for all overlaps
         # First, create initial groups from each annotation
         all_groups = []
-        
+
         # Start with subfamilies
         for sub_group in sub_groups:
             group = sub_group.copy()
-            
+
             # Find all HMMs that overlap with any subfamily in this group
             for i, hmm in enumerate(hmm_results):
                 if any(self.calculate_overlap(sub[1], sub[2], hmm[1], hmm[2]) for sub in sub_group):
                     group.append(hmm)
                     processed_hmms.add(i)
-                        
+
             all_groups.append(group)
-            
+
             # Mark all subfamilies as processed
             for sub in sub_group:
                 for j, sub_j in enumerate(sub_results):
                     if sub == sub_j:
                         processed_subs.add(j)
                         break
-        
+
         # Process any remaining HMMs that don't overlap with any subfamily
         for i, hmm in enumerate(hmm_results):
             if i in processed_hmms:
                 continue
-                
+
             # Check if this HMM overlaps with any other unprocessed HMM
             group = [hmm]
             processed_hmms.add(i)
-            
+
             for j, hmm2 in enumerate(hmm_results):
                 if j in processed_hmms or j == i:
                     continue
-                        
+
                 if self.calculate_overlap(hmm[1], hmm[2], hmm2[1], hmm2[2]):
                     group.append(hmm2)
                     processed_hmms.add(j)
-                        
+
             all_groups.append(group)
-        
+
         # Step 3: Select best result from each group
         final_results = []
         for group in all_groups:

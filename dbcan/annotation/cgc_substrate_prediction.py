@@ -413,7 +413,6 @@ class dbCAN_substrate_prediction:
         os.makedirs(self.tmp_folder, exist_ok=True)
         ###
         SeqIO.write(self.seqs,self.tmp_CAZyme_pep,'fasta')
-
         outfmt = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen"
         self.diamond_command = f"diamond blastp --max-hsps 1 --query {self.tmp_CAZyme_pep} --db {self.PULdb_diamond} --evalue {DIAMOND_PUL_EVALUE} --out {self.tmp_blastp_out} --threads {os.cpu_count()} -f {outfmt} --quiet"
         #self.blastp_command = f"blastp -max_hsps 1 -query {self.tmp_CAZyme_pep} -db {self.PULdb} -outfmt {outfmt} -evalue 0.01 -out {self.tmp_blastp_out} -num_threads 32 "
@@ -424,12 +423,8 @@ class dbCAN_substrate_prediction:
 
         ### checking the blastp out
 
-        if not os.path.exists(self.tmp_blastp_out):
-            status = os.system(self.diamond_command)
+        status = os.system(self.diamond_command)
             #status = os.system(self.blastp_command)
-        else:
-            status = 0
-
         #status = os.system(self.blastp_command) if not os.path.exists(self.tmp_blastp_out) else 0
         if status != 0:
             print(f'comand line: "{self.diamond_command}" runs return error.', file=sys.stderr)
