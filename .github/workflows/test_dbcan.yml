@@ -45,11 +45,16 @@ jobs:
               with:
                 mamba-version: "*"
                 auto-update-conda: true
-                auto-activate: true
                 python-version: ${{ matrix.python }}
                 channels: conda-forge, bioconda, defaults
                 environment-file: envs/test_environment.yml
                 activate-environment: test_dbcan
+
+            - name: Fix .condarc for conda >=24.5
+              run: |
+                    if [ -f ~/.condarc ]; then
+                      sed -i '/auto_activate_base/d' ~/.condarc
+                    fi
 
             - name: Install dependencies
               run: |
