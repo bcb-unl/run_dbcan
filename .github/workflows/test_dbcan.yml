@@ -1,12 +1,10 @@
 name: Run dbcan Tests
-# spell-checker:ignore dbcan
 
 on:
     push:
         branches: [ master ]
     pull_request:
         branches: [ master ]
-
     schedule:
         - cron: '0 5 1,15 * *'
 
@@ -14,15 +12,12 @@ concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
 
-
-
-
 jobs:
     test:
         runs-on: ${{ matrix.os }}
         defaults:
             run:
-                shell: bash -l {0} # -e to fail on error
+                shell: bash -l {0}
 
         strategy:
             fail-fast: false
@@ -30,7 +25,7 @@ jobs:
                 os: [ubuntu-latest, macos-13]
                 python: ["3.10", "3.11", "3.12", "3.13"]
 
-        name: ${{ matrix.name }} Python ${{ matrix.python }}
+        name: ${{ matrix.os }} Python ${{ matrix.python }}
 
         env:
             OS: ${{ matrix.os }}
@@ -38,25 +33,27 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v3
+              uses: actions/checkout@v4
 
-            - name: Set up conda
-              uses: conda-incubator/setup-miniconda@v3.2.0
+            - name: Remove .condarc before conda setup
+              run: |
+                rm -f ~/.condarc
+
+            - name: Set up Miniconda
+              uses: conda-incubator/setup-miniconda@v3
               with:
-                mamba-version: "*"
-                auto-update-conda: true
+                miniforge-variant: Mambaforge
                 python-version: ${{ matrix.python }}
-                channels: conda-forge, bioconda, defaults
+                channels: conda-forge,bioconda,defaults
                 environment-file: envs/test_environment.yml
                 activate-environment: test_dbcan
-                auto-activate-base: false
+                auto-update-conda: true
 
             - name: Install dependencies
               run: |
-                    pip install pytest
-                    pip install -e ".[dev,test]"
-
+                pip install pytest
+                pip install -e ".[dev,test]"
 
             - name: run dbCAN test
               run: |
-                    pytest tests/test_dbcan.py -v
+                pytest tests/test_dbcan.py -v
