@@ -45,7 +45,7 @@ jobs:
               with:
                 mamba-version: "*"
                 auto-update-conda: true
-                auto-activate-base: false
+                auto-activate-base: true
                 python-version: ${{ matrix.python }}
                 channels: conda-forge, bioconda, defaults
                 environment-file: envs/test_environment.yml
