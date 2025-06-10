@@ -34,7 +34,6 @@ jobs:
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
-          miniforge-variant: Mambaforge
           python-version: ${{ matrix.python }}
           channels: conda-forge,bioconda,defaults
           environment-file: envs/test_environment.yml
