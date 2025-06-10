@@ -40,14 +40,12 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v3
 
-            - name: Pre-fix .condarc for conda >=24.5
+            - name: Remove all .condarc before conda setup
               run: |
-                if [ -f ~/.condarc ]; then
-                  sed -i '/auto_activate_base/d' ~/.condarc
-                fi
+                rm -f ~/.condarc
 
             - name: Set up conda
-              uses: conda-incubator/setup-miniconda@v3
+              uses: conda-incubator/setup-miniconda@v3.2.0
               with:
                 mamba-version: "*"
                 auto-update-conda: true
