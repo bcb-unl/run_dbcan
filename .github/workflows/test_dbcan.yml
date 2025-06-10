@@ -40,10 +40,6 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v3
 
-            - name: Remove all .condarc before conda setup
-              run: |
-                rm -f ~/.condarc
-
             - name: Set up conda
               uses: conda-incubator/setup-miniconda@v3.2.0
               with:
@@ -53,6 +49,7 @@ jobs:
                 channels: conda-forge, bioconda, defaults
                 environment-file: envs/test_environment.yml
                 activate-environment: test_dbcan
+                auto-activate-base: false
 
             - name: Install dependencies
               run: |
