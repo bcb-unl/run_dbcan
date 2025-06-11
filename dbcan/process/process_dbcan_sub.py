@@ -157,4 +157,4 @@ class DBCANSUBProcessor:
                 if (key1, '-') in subs_dict:
                     substrates.add(subs_dict[(key1, '-')])
 
-        return ', '.join(substrates) if substrates else '-'
+        return ';'.join(sorted(substrates)) if substrates else '-'

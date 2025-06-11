@@ -73,7 +73,6 @@ class SyntenicPlot:
                 # Skip if no PUL match found
                 if not pul:
                     continue
-                
                 # Skip if CGC or PUL data not found
                 if cgc not in cgcid2gene or pul not in PULid2gene:
                     continue
@@ -102,7 +101,8 @@ class SyntenicPlot:
                     
                     # Extract PUL protein ID
                     split_parts = hit.split(":")
-                    pul_proteinid = split_parts[3] if len(split_parts) > 3 else split_parts[2]
+                    pul_proteinid = split_parts[2] if len(split_parts) > 3 else split_parts[3]
+                    #print(f"Processing {cgc} - {pul}: {cgc_proteinid} - {pul_proteinid}")
                     
                     try:
                         index1 = genes1.index(cgc_proteinid)
@@ -311,31 +311,39 @@ def Get_Position(starts,ends,strands,maxbp,yshift=0,up=1):
     return polygens,blocks,lines,scale_positions,scale_text
 
 
-def plot_Polygon_homologous(polygens1,polygens2,types1,types2,size,ax):
-#    colors_map = {"CAZyme":"#FF0000","null":"#808080","other":"#808080",
-#    "TC":"#9400D3","CDS":"#00FFFF","STP":"#0000FF","TF":"#1E90FF"}
+def plot_Polygon_homologous(polygens1, polygens2, types1, types2, size, ax):
+    # colors for different types
+    colors_map = {
+        "CAZyme": "#E67E22",      # orange
+        "TC": "#2ECC71",          # green
+        "TF": "#9B59B6",          # purple
+        "STP": "#F1C40F",         # golden yellow
+        "PEPTIDASE": "#16A085",   # greenish
+        "SULFATLAS": "#34495E",   # dark blue
+        "Other": "#95A5A6"        # light gray
+    }
+    default_color = "#95A5A6"  # light gray
 
-    colors_map = {"CAZyme":"#FF0000","null":"#808080","Other":"#000000",
-    "TC":"#9400D3","STP":"#0000FF","TF":"#1E90FF"}
-    default_color = "#000000"
     for j in range(len(polygens1)):
         polygen = polygens1[j].split()
         points = []
-        color = colors_map.get(types1[j], default_color)
+        color = colors_map.get(types1[j].upper(), default_color) if types1[j] else default_color
+        color = colors_map.get(types1[j], default_color)  # keep the original color mapping
         for i in range(int(len(polygen)/2)):
-            points.append([float(polygen[2*i]),float(polygen[2*i+1])])
+            points.append([float(polygen[2*i]), float(polygen[2*i+1])])
         ax.add_patch(
-        Polygon(points, color=color, alpha=0.5,lw=0)
+            Polygon(points, color=color, alpha=0.5, lw=0)
         )
 
     for j in range(len(polygens2)):
         polygen = polygens2[j].split()
         points = []
-        color  = colors_map.get(types2[j], default_color)
+        color = colors_map.get(types2[j].upper(), default_color) if types2[j] else default_color
+        color = colors_map.get(types2[j], default_color)
         for i in range(int(len(polygen)/2)):
-            points.append([float(polygen[2*i]),float(polygen[2*i+1])])
+            points.append([float(polygen[2*i]), float(polygen[2*i+1])])
         ax.add_patch(
-        Polygon(points, color=color, alpha=0.5,lw=0)
+            Polygon(points, color=color, alpha=0.5, lw=0)
         )
 
 
@@ -451,14 +459,25 @@ def syntenic_plot(starts, starts1, ends, ends1, strands, strands1, types, types1
     labelcolor = ["red", "blue", "green", "cyan", "gray"]
     labels = ["80-100", "60-80", "40-60", "20-40", "0-20"]
 
-    genecustom_lines = [Patch(color="#FF0000", alpha=0.5),
-                       Patch(color="#808080", alpha=0.5),
-                       Patch(color="#9400D3", alpha=0.5),
-                       Patch(color="#0000FF", alpha=0.5),
-                       Patch(color="#1E90FF", alpha=0.5)]
-
-    genelabelcolor = ["#FF0000", "#808080", "#9400D3", "#0000FF", "#1E90FF", "#000000"]
-    geneslabels = ["CAZyme", "Null", "TC", "STP", "TF", "Other"]
+    genelabelcolor = [
+        "#E67E22",   # CAZyme
+        "#2ECC71",   # TC
+        "#9B59B6",   # TF
+        "#F1C40F",   # STP
+        "#16A085",   # PEPTIDASE
+        "#34495E",   # SULFATLAS
+        "#95A5A6"    # Other
+    ]
+    geneslabels = [
+        "CAZyme",
+        "TC",
+        "TF",
+        "STP",
+        "PEPTIDASE",
+        "SULFATLAS",
+        "Other"
+    ]
+    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
 
     # Set figure dimensions
     px = 1/plt.rcParams['figure.dpi']
@@ -489,7 +508,7 @@ def syntenic_plot(starts, starts1, ends, ends1, strands, strands1, types, types1
     ax.add_artist(legend1)
 
     legend2 = pyplot.legend(genecustom_lines, geneslabels, frameon=False,
-                          labelcolor=genelabelcolor, loc='lower left', title="Gene", title_fontsize="x-large")
+                      labelcolor=genelabelcolor, loc='lower left', title="Gene", title_fontsize="x-large")
     ax.add_artist(legend2)
 
     # Add cluster labels
@@ -532,9 +551,9 @@ def syntenic_plot_allpairs(args):
     
     cgc_proteinid2gene,cgcid2gene,cgcid2geneid = read_UHGG_CGC_stanrdard_out(args.cgc)
     PULid_proteinid2gene,PULid2gene,PULid2geneid = read_PUL_cgcgff(args)
+    
     pdf_directory = os.path.join(args.output_dir, "synteny_pdf")    
     os.makedirs(pdf_directory, exist_ok=True)
-
     for line in open(args.input_sub_out).readlines()[1:]: ### for each pairs
         lines = line.rstrip().split("\t")
         cgc = lines[0]
@@ -550,18 +569,17 @@ def syntenic_plot_allpairs(args):
         starts2,ends2,strands2,types2 = Get_parameters_for_plot(bed_pul)
         genes1 = cgcid2geneid[cgc]
         genes2 = PULid2geneid[pul]
-        #print (cgc,pul)
-        #print (genes1)
-        #print (genes2)
+        # print (cgc,pul)
+        # print (genes1)
+        # print (genes2)
         blocks = []
         for record in cgcpul_blastp[cgcpul]: ### generate block information
             query = record.qseqid
             hit   = record.sseqid
             cgc_proteinid = query.split("|")[2]
-            pul_proteinid = hit.split(":")[3]
-            if not pul_proteinid:
-                pul_proteinid = hit.split(":")[2]
-            #print (cgcpul,query,hit,cgc_proteinid,pul_proteinid,genes1,genes2)
+            pul_proteinid = hit.split(":")[2]
+            # if not pul_proteinid:
+            #     pul_proteinid = hit.split(":")[3]
             try:
                 index1 = genes1.index(cgc_proteinid)
                 index2 = genes2.index(pul_proteinid)
@@ -593,32 +611,39 @@ def trim_proteinid(proteinid):
     return clear_id[0]
     #return ".".join(clear_id[0:-1])
 
-def read_PUL_cgcout(filename="PUL.out"):
-    geneid2gene = {}
-    for line in open(filename):
-        if line.startswith("++++"):
-            continue
-        lines = line.rstrip("\n").split("\t")
-        proteinid = trim_proteinid(lines[8])
-        newline = [lines[4]+lines[0],lines[1],lines[5],proteinid,lines[5],lines[6],lines[9],attribution(lines[-1])]
-        geneid2gene[proteinid] = CGC_stanrdard(newline)
-    return geneid2gene
 
-
-def read_cgcgff(filename,geneid2gene):
+def read_cgcgff(filename, geneid2gene):
     if not os.path.exists(filename):
         return None
     for line in open(filename):
         lines = line.rstrip("\n").split("\t")
-        proteinid = attribution(lines[-1],"ID")
-        proteinid = trim_proteinid(proteinid)
+        #  protein_id
+        desc = lines[-1]
+        protein_id = None
+        feature = "Other"
+        for item in desc.split(";"):
+            if item.startswith("protein_id="):
+                protein_id = item.split("=", 1)[1]
+            elif item.startswith("CGC_annotation="):
+                ann = item.split("=", 1)[1]
+                # set + as delimiter and split by |
+                feature = ann.split("+")[0].split("|")[0] if "|" in ann else ann.split("+")[0]
+        if protein_id is None:
+            continue  # skip if no protein_id found
+        #protein_id = trim_proteinid(protein_id)
         PULid = filename.split('.')[0].split("/")[-1]
-        if lines[2] == "CDS":
-            lines[2] = "other"
-        #if PULid == "PUL0380":
-        #    print (proteinid)
-        newline = [PULid,lines[2],lines[0],proteinid,lines[3],lines[4],lines[6],attribution(lines[-1])]
-        geneid2gene[PULid+":"+proteinid] = CGC_stanrdard(newline)
+        # gene information 
+        newline = [
+            PULid,                # CGCID
+            feature,              # Gene_Type
+            lines[0],             # Contig_ID
+            protein_id,           # Protein_ID
+            lines[3],             # Gene_Start
+            lines[4],             # Gene_END
+            lines[6],             # Strand
+            ann               # Protein_Family
+        ]
+        geneid2gene[PULid + ":" + protein_id] = CGC_stanrdard(newline)
 
 def read_PUL_cgcgff(args):
     PULidgeneid2gene = {} ### "PUL00035:BT_3559"

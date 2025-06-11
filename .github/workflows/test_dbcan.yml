@@ -1,62 +1,60 @@
 name: Run dbcan Tests
-# spell-checker:ignore dbcan
 
 on:
-    push:
-        branches: [ master ]
-    pull_request:
-        branches: [ master ]
-
-    schedule:
-        - cron: '0 5 1,15 * *'
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: '0 5 1,15 * *'
 
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: true
-
-
-
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-    test:
-        runs-on: ${{ matrix.os }}
-        defaults:
-            run:
-                shell: bash -l {0} # -e to fail on error
+  test:
+    name: dbCAN (${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-13]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    timeout-minutes: 60
 
-        strategy:
-            fail-fast: false
-            matrix:
-                os: [ubuntu-latest, macos-13]
-                python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-        name: ${{ matrix.name }} Python ${{ matrix.python }}
+      - name: Remove .condarc before conda setup
+        run: |
+          rm -f ~/.condarc
 
-        env:
-            OS: ${{ matrix.os }}
-            PYTHON: ${{ matrix.python }}
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ matrix.python }}
+          channels: conda-forge,bioconda,defaults
+          environment-file: envs/test_environment.yml
+          activate-environment: test_dbcan
+          auto-update-conda: true
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v3
+      - name: Conda info
+        shell: bash -el {0}
+        run: conda info
 
-            - name: Set up conda
-              uses: conda-incubator/setup-miniconda@v3
-              with:
-                mamba-version: "*"
-                auto-update-conda: true
-                auto-activate-base: false
-                python-version: ${{ matrix.python }}
-                channels: conda-forge, bioconda, defaults
-                environment-file: envs/test_environment.yml
-                activate-environment: test_dbcan
+      - name: Conda list
+        shell: bash -el {0}
+        run: conda list
 
-            - name: Install dependencies
-              run: |
-                    pip install pytest
-                    pip install -e ".[dev,test]"
+      - name: Install dependencies
+        shell: bash -el {0}
+        run: |
+          pip install pytest
+          pip install -e ".[dev,test]"
 
-
-            - name: run dbCAN test
-              run: |
-                    pytest tests/test_dbcan.py -v
+      - name: run dbCAN test
+        shell: bash -el {0}
+        run: |
+          pytest tests/test_dbcan.py -v
