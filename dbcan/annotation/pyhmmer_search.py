@@ -196,7 +196,7 @@ class PyHMMERTFProcessor(PyHMMERProcessor):
 
     def _derive_input_faa(self):
         """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, NON_CAZYME_PROTEIN_FILE)
+        return os.path.join(self.config.output_dir, INPUT_PROTEIN_NAME)
 
     def _derive_output_file(self):
         """Get output file path"""
@@ -229,7 +229,7 @@ class PyHMMERSTPProcessor(PyHMMERProcessor):
 
     def _derive_input_faa(self):
         """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, NON_CAZYME_PROTEIN_FILE)
+        return os.path.join(self.config.output_dir, INPUT_PROTEIN_NAME)
 
     def _derive_output_file(self):
         """Get output file path"""
