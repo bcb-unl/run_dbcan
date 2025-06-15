@@ -90,7 +90,7 @@ class CGCFinder:
                 return False
 
             logging.info(f"Reading GFF file: {self.filename}")
-            self.df = pd.read_csv(self.filename, sep='\t', names=GFF_COLUMNS, comment='#')
+            self.df = pd.read_csv(self.filename, sep='\t', names=GFF_COLUMNS)
 
             # extract relevant columns
             self.df[CGC_ANNOTATION_COLUMN] = self.df[ATTRIBUTES_COLUMN].apply(
