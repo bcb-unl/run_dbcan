@@ -67,10 +67,18 @@ class CGCCircosPlot:
             logging.error(f"Error reading TSV file: {str(e)}")
             self.tsv_data = pd.DataFrame()  # Create empty DataFrame
 
-        # Load DEG data
-        deg_df = pd.read_csv(self.deg_tsv_file, sep="\t", header=None, names=["protein_id", "log2FC"])
-        self.deg_data = deg_df[deg_df["log2FC"].notnull()]
-        self.deg_data["log2FC"] = pd.to_numeric(self.deg_data["log2FC"], errors='coerce')
+        # Load DEG data (allow missing file)
+        if os.path.exists(self.deg_tsv_file):
+            try:
+                deg_df = pd.read_csv(self.deg_tsv_file, sep="\t", header=None, names=["protein_id", "log2FC"])
+                self.deg_data = deg_df[deg_df["log2FC"].notnull()]
+                self.deg_data["log2FC"] = pd.to_numeric(self.deg_data["log2FC"], errors='coerce')
+            except Exception as e:
+                logging.warning(f"Error reading DEG file: {self.deg_tsv_file}, error: {str(e)}")
+                self.deg_data = None
+        else:
+            logging.info(f"DEG file not found: {self.deg_tsv_file}, DEG-related plots will be skipped.")
+            self.deg_data = None
 
 
 
