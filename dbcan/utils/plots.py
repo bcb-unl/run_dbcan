@@ -135,7 +135,7 @@ def Get_Position(starts,ends,strands,labels,yshift=0):
             positions_str = str( starts[i] * pixeachbp) + " " + str(plot_start_y) + " " ## first point x,y
             positions_str += str( ends[i] * pixeachbp - Triangle_length) + " " + str(plot_start_y) + " "## second point
             positions_str += str( ends[i] * pixeachbp) + " " + str(plot_start_y + poly_heigth) + " " ## 3
-            positions_str += str( ends[i] * pixeachbp - Triangle_length) + " " + str( plot_start_y + 2*poly_heigth) + " " ### 4
+            positions_str += str( ends[i] *pixeachbp - Triangle_length) + " " + str( plot_start_y + 2*poly_heigth) + " " ### 4
             positions_str += str( starts[i] * pixeachbp )+ " " + str(plot_start_y + 2*poly_heigth)
         if strands[i] == "-":
             positions_str = str( starts[i] * pixeachbp ) + " " + str(plot_start_y + poly_heigth) + " "
@@ -609,7 +609,6 @@ def heatmap_plot(args):
 def bar_plot(args):
     ### --input CAZyme_abund_output,CAZyme_abund_output
     ### --samples fefifo_8002_1,fefifo_8002_7
-    ### show top10? or most different?
     pds = [filter_out_enzyme_number(pd.read_csv(filename,sep="\t")) for filename in args.input.split(",")]
     samples = args.samples.split(",")
     plt.style.use(args.plot_style)
@@ -618,7 +617,17 @@ def bar_plot(args):
         exit(1)
     for i in range(len(pds)):
         pds[i]["sample"] = samples[i]
-    data,x = combined_datafram_based_on_first_col(pds,samples)
+    result = combined_datafram_based_on_first_col(pds,samples)
+
+    if isinstance(result, tuple):
+        data, x = result
+    else:
+        data = result
+        x = data.columns[0]
+        if len(samples) == 1:
+            old_abund_col = data.columns[1]
+            data = data.rename(columns={old_abund_col: samples[0]})
+
     ### top different abundance --value 'host glycan,starch' --col Substrate
     if not args.col:
         data = data.iloc[0:int(args.top),:]
@@ -638,17 +647,7 @@ def bar_plot(args):
         plt.xlabel("")
         plt.ylabel("Abundance")
 
-    #plt.gca().invert_yaxis()
-    #plt.gca().invert_xaxis()
-    ### switch
-
-    #leg = plt.legend(frameon=False,handletextpad=-2.0, handlelength=0)
-    #for item in leg.legendHandles:
-    #    item.set_visible(False)
-    #axins = inset_axes(ax,  "30%", "30%" ,loc="upper center", borderpad=1)
-
     plt.title(f"The most top{args.top} different families")
-    #plt.show()
 
     if not args.pdf.endswith(".pdf"):
         args.pdf += args.pdf+".pdf"
