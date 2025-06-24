@@ -92,7 +92,7 @@ def CGC_plot(args):
     ## get gene starts
     starts,ends,strands = cgc.get_positions()
     types = cgc.get_cgc_CAZyme()
-    print(f"{args.cgcid.split('|')[0]}:{min(starts)}-{max(ends)}")
+    #print(f"{args.cgcid.split('|')[0]}:{min(starts)}-{max(ends)}")
     cgc_fig_plot(starts,ends,strands,types,genetypes)
 
 def read_location_reads_count(filename):
@@ -115,7 +115,8 @@ def CGC_plot_reads_count(args):
     cgc_fig_plot_abund(starts,ends,strands,types,genetypes,paras)
 
 def Get_Position(starts,ends,strands,labels,yshift=0):
-    Width = 1000 ; Height = 160;
+    Width = 1000
+    Height = 160
     poly_heigth = 10
     Triangle_length = 4
     plot_start_x, plot_start_y = [0,Height/2 - poly_heigth-yshift]
@@ -172,25 +173,46 @@ def Get_Position(starts,ends,strands,labels,yshift=0):
     return polygens,lines,texts,scale_positions,scale_text
 
 def plot_Polygon(polygens1,types1,ax):
-    colors_map = {"CAZyme":"#FF0000","null":"#808080","other":"#808080",
-    "TC":"#9400D3","CDS":"#00FFFF","STP":"#0000FF","TF":"#1E90FF"}
+
+    # colors for different types
+    colors_map = {
+        "CAZyme": "#E67E22",      # orange
+        "TC": "#2ECC71",          # green
+        "TF": "#9B59B6",          # purple
+        "STP": "#F1C40F",         # golden yellow
+        "PEPTIDASE": "#16A085",   # greenish
+        "SULFATLAS": "#34495E",   # dark blue
+        "Other": "#95A5A6"        # light gray
+    }
+    default_color = "#95A5A6"  # light gray
     for j in range(len(polygens1)):
         polygen = polygens1[j].split()
         points = []
-        color  = colors_map[types1[j]]
+        color  = colors_map.get(types1[j], default_color)
         for i in range(int(len(polygen)/2)):
             points.append([float(polygen[2*i]),float(polygen[2*i+1])])
         ax.add_patch(Polygon(points, color=color, alpha=0.5,edgecolor=None,facecolor=None,lw=0))
 
+# def plot_Polygon(polygens1,types1,ax):
+#     colors_map = {"CAZyme":"#FF0000","null":"#808080","other":"#808080",
+#     "TC":"#9400D3","CDS":"#00FFFF","STP":"#0000FF","TF":"#1E90FF"}
+#     for j in range(len(polygens1)):
+#         polygen = polygens1[j].split()
+#         points = []
+#         color  = colors_map[types1[j]]
+#         for i in range(int(len(polygen)/2)):
+#             points.append([float(polygen[2*i]),float(polygen[2*i+1])])
+#         ax.add_patch(Polygon(points, color=color, alpha=0.5,edgecolor=None,facecolor=None,lw=0))
+
 def plot_genome_line(lines,ax):
     for line in lines:
         x1,y1,x2,y2 = points2(line)
-        ax.add_patch(Polygon([(x1,y1),(x2,y2)], color="gray",lw=1,edgecolor=None))
+        ax.add_patch(Polygon([(x1,y1),(x2,y2)], color="gray",lw=2))
 
 def plot_scale_line(lines,label,ax):
     for i,line in enumerate(lines):
         x1,y1,x2,y2 = points2(line)
-        ax.add_patch(Polygon([(x1,y1),(x2,y2)], color="gray",lw=1,edgecolor=None))
+        ax.add_patch(Polygon([(x1,y1),(x2,y2)], color="gray",lw=2))
         if i>=1:
             ax.text(float(x1),float(y1)-20,label[i-1],va='bottom', ha='center')
 
@@ -199,21 +221,37 @@ def points2(coord):
     return x1,y1,x2,y2
 
 def cgc_fig_plot(starts,ends,strands,types,labels):
-    custom_lines = [Line2D([0], [0], color="red", lw=4,alpha=0.5),
+    custom_lines =[
+        Line2D([0], [0], color="red", lw=4,alpha=0.5),
         Line2D([0], [0], color="blue", lw=4,alpha=0.5),
         Line2D([0], [0], color="green", lw=4,alpha=0.5),
         Line2D([0], [0], color="cyan", lw=4,alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4,alpha=0.5)]
+        Line2D([0], [0], color="gray", lw=4,alpha=0.5)
+                  ]
 
     labelcolor=["red","blue","green","cyan","gray"]
+    labels = ["80-100", "60-80", "40-60", "20-40", "0-20"]
 
-    genecustom_lines = [Patch(color="#FF0000",alpha=0.5),
-        Patch(color="#808080", alpha=0.5),
-        Patch(color="#9400D3", alpha=0.5),
-        Patch(color="#0000FF", alpha=0.5),
-        Patch(color="#1E90FF", alpha=0.5)]
-    genelabelcolor=["#FF0000","#808080","#9400D3","#0000FF","#1E90FF"]
-    geneslabels    = ["CAZyme","Other","TC","STP","TF"]
+    genelabelcolor = [
+        "#E67E22",   # CAZyme
+        "#2ECC71",   # TC
+        "#9B59B6",   # TF
+        "#F1C40F",   # STP
+        "#16A085",   # PEPTIDASE
+        "#34495E",   # SULFATLAS
+        "#95A5A6"    # Other
+    ]
+    geneslabels = [
+        "CAZyme",
+        "TC",
+        "TF",
+        "STP",
+        "PEPTIDASE",
+        "SULFATLAS",
+        "Other"
+    ]
+    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
+
     ### for legends
     px = 1/plt.rcParams['figure.dpi'] ## px
     Width = 1400 ; Height = 100
@@ -240,21 +278,37 @@ def cgc_fig_plot(starts,ends,strands,types,labels):
 
 def cgc_fig_plot_abund(starts,ends,strands,types,labels,parameters):
     ori_starts = starts.copy(); ori_ends = ends.copy() #### starts will be shift, kept them
-    custom_lines = [Line2D([0], [0], color="red", lw=4,alpha=0.5),
+
+    custom_lines =[
+        Line2D([0], [0], color="red", lw=4,alpha=0.5),
         Line2D([0], [0], color="blue", lw=4,alpha=0.5),
         Line2D([0], [0], color="green", lw=4,alpha=0.5),
         Line2D([0], [0], color="cyan", lw=4,alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4,alpha=0.5)]
-
+        Line2D([0], [0], color="gray", lw=4,alpha=0.5)
+                  ]
     labelcolor=["red","blue","green","cyan","gray"]
 
-    genecustom_lines = [Patch(color="#FF0000",alpha=0.5,lw=0),
-        Patch(color="#808080", alpha=0.5,lw=0),
-        Patch(color="#9400D3", alpha=0.5,lw=0),
-        Patch(color="#0000FF", alpha=0.5,lw=0),
-        Patch(color="#1E90FF", alpha=0.5,lw=0)]
-    genelabelcolor=["#FF0000","#808080","#9400D3","#0000FF","#1E90FF"]
-    geneslabels    = ["CAZyme","Other","TC","STP","TF"]
+    genelabelcolor = [
+        "#E67E22",   # CAZyme
+        "#2ECC71",   # TC
+        "#9B59B6",   # TF
+        "#F1C40F",   # STP
+        "#16A085",   # PEPTIDASE
+        "#34495E",   # SULFATLAS
+        "#95A5A6"    # Other
+    ]
+    geneslabels = [
+        "CAZyme",
+        "TC",
+        "TF",
+        "STP",
+        "PEPTIDASE",
+        "SULFATLAS",
+        "Other"
+    ]
+    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
+
+
     ### for legends
     px = 1/plt.rcParams['figure.dpi'] ## px
     Width = 1400 ; Height = 100
@@ -356,7 +410,7 @@ def generate_syntenic_block(cgcpul,cgcpul_blastp,genes1,genes2):
         query = record.qseqid
         hit   = record.sseqid
         cgc_proteinid = query.split("|")[2]
-        pul_proteinid = hit.split(":")[3]
+        pul_proteinid = hit.split(":")[2]
         if not pul_proteinid:
             pul_proteinid = hit.split(":")[2]
         try:
@@ -364,10 +418,11 @@ def generate_syntenic_block(cgcpul,cgcpul_blastp,genes1,genes2):
             index2 = genes2.index(pul_proteinid)
             blocks.append(f"{index1}-{index2}-{record.pident}")
         except:
-            print (cgcpul,query,hit,cgc_proteinid,pul_proteinid,genes1,genes2)
+            #print (cgcpul,query,hit,cgc_proteinid,pul_proteinid,genes1,genes2)
             continue
     return blocks
         #print (cgc_proteinid2gene[cgc_proteinid],pul_proteinid2gene[pul_proteinid])
+
 
 def CGC_syntenic_with_PUL(args):
     paras = plot_parameters(args)
@@ -389,7 +444,9 @@ def CGC_syntenic_with_PUL(args):
         #print (genes1)
         #print (genes2)
         blocks = generate_syntenic_block(cgcpul,cgcpul_blastp,genes1,genes2)
-        syntenic_plot(starts1,starts2,ends1,ends2,strands1,strands2,types1,types2,blocks,cgc,pul)
+        config = vars(args).copy()
+        config['output_dir'] = "."
+        syntenic_plot(starts1, starts2, ends1, ends2, strands1, strands2, types1, types2, blocks, cgc, pul, config)
     else:
         print(f"Does not find homolog PUL for CGC: {cgc}!")
         exit(1)
@@ -421,27 +478,51 @@ def CGC_syntenic_with_PUL_abund(args):
 
 def syntenic_plot_with_abund(starts,starts1,ends,ends1,strands,strands1,Types,Types1,blocks,cgcid,pulid,paras):
     ### for legends
-    custom_lines = [Line2D([0], [0], color="red", lw=4,alpha=0.5),
-        Line2D([0], [0], color="blue", lw=4,alpha=0.5),
-        Line2D([0], [0], color="green", lw=4,alpha=0.5),
-        Line2D([0], [0], color="cyan", lw=4,alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4,alpha=0.5)]
-    #print(starts,starts1,ends,ends1,strands,strands1,Types,Types1,blocks,cgcid,pulid)
-    ### syntenic block colors
-    labelcolor=["red","blue","green","cyan"]
-    labels    = ["80-100","60-80","40-60","20-40"]
-    genecustom_lines = [Patch(color="#FF0000",alpha=0.5),
-        Patch(color="#808080", alpha=0.5),
-        Patch(color="#9400D3", alpha=0.5),
-        Patch(color="#0000FF", alpha=0.5),
-        Patch(color="#1E90FF", alpha=0.5)]
-    genelabelcolor=["#FF0000","#808080","#9400D3","#0000FF","#1E90FF"]
-    geneslabels    = ["CAZyme","Other","TC","STP","TF"]
+    custom_lines = [Line2D([0], [0], color="red", lw=4, alpha=0.5),
+                   Line2D([0], [0], color="blue", lw=4, alpha=0.5),
+                   Line2D([0], [0], color="green", lw=4, alpha=0.5),
+                   Line2D([0], [0], color="cyan", lw=4, alpha=0.5),
+                   Line2D([0], [0], color="gray", lw=4, alpha=0.5)]
+
+    labelcolor = ["red", "blue", "green", "cyan", "gray"]
+    labels = ["80-100", "60-80", "40-60", "20-40", "0-20"]
+
+    genelabelcolor = [
+        "#E67E22",   # CAZyme
+        "#2ECC71",   # TC
+        "#9B59B6",   # TF
+        "#F1C40F",   # STP
+        "#16A085",   # PEPTIDASE
+        "#34495E",   # SULFATLAS
+        "#95A5A6"    # Other
+    ]
+    geneslabels = [
+        "CAZyme",
+        "TC",
+        "TF",
+        "STP",
+        "PEPTIDASE",
+        "SULFATLAS",
+        "Other"
+    ]
+    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
+
+    n_genes = max(len(starts), len(starts1))
+    cell_width = 0.7
+    cell_height = 0.5
+    min_width = 12
+    min_height = 5
+    max_width = 30
+    max_height = 16
+    fig_width = min(max(n_genes * cell_width, min_width), max_width)
+    fig_height = min(max(2 * cell_height * n_genes, min_height), max_height)
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    ax = fig.add_subplot(212)
 
     ### for legends
 
     px = 1/plt.rcParams['figure.dpi'] ## px
-    Width = 1600 ; Height = 320*2
+    Width = 1600 ; Height = 620*2
 
     fig = plt.figure(figsize=(Width*px,Height*px*2/2.5))
     ax  = fig.add_subplot(212)
@@ -458,16 +539,17 @@ def syntenic_plot_with_abund(starts,starts1,ends,ends1,strands,strands1,Types,Ty
     ###
     plot_Polygon_homologous(polygens,polygens1,Types,Types1,2,ax)
     ###
-    plot_syntenic_block(blocks,blocks_coor,blocks1_coor,ax)
+    #print(blocks_coor,blocks1_coor,ax)
+    plot_syntenic_block(blocks, blocks_coor, blocks1_coor, ax)
     synplot_genome_line(lines_coor,lines_coor1,ax)
     ### need to add the genome postion scale
     ### legend1
-    legend1 = pyplot.legend(custom_lines,labels,frameon=False,labelcolor=labelcolor,
-        loc='upper right',title="Identity")
+    legend1 = pyplot.legend(custom_lines, labels, frameon=False, labelcolor=labelcolor,
+        loc='lower right', bbox_to_anchor=(1, 0.5), title="Identity")
     ax.add_artist(legend1)
 
-    legend2 = pyplot.legend(genecustom_lines,geneslabels,frameon=False,
-        labelcolor=genelabelcolor,loc='lower right',title="Gene")
+    legend2 = pyplot.legend(genecustom_lines, geneslabels, frameon=False,
+        labelcolor=genelabelcolor, loc='lower right', bbox_to_anchor=(1, 0.1), title="Gene")
     ax.add_artist(legend2)
 
     plt.text(500,10,cgcid,fontsize=10,horizontalalignment='center')
@@ -570,9 +652,17 @@ def heatmap_plot(args):
     data = data[samples]
     sns.set_style("whitegrid")
     sns.set_context("paper")
-    ### user defined color map
 
-    ### default color
+    n_rows, n_cols = data.shape
+    cell_width = 0.7
+    cell_height = 0.5
+    min_width = 6
+    min_height = 4
+    max_width = 30
+    max_height = 30
+    fig_width = min(max(n_cols * cell_width, min_width), max_width)
+    fig_height = min(max(n_rows * cell_height, min_height), max_height)
+
     if args.palette:
         cmap = args.palette
     else:
@@ -581,30 +671,39 @@ def heatmap_plot(args):
         cmap.set_under('white')
 
     if args.cluster_map:
-        sns.clustermap(data, cmap=cmap,cbar=True,vmin=0.1,dendrogram_ratio=0.03,cbar_pos=(0.1, 1, 0.1, 0.1),
-                       col_cluster=False,cbar_kws={"shrink": 0.3},
-                       figsize=(len(data.columns)*1.2,len(data.index)/3))
-        #plt.tight_layout(pad=0.1)
+        g = sns.clustermap(
+            data, cmap=cmap, cbar=True, vmin=0.1,
+            dendrogram_ratio=0.03, cbar_pos=(0.1, 1, 0.1, 0.1),
+            col_cluster=False, cbar_kws={"shrink": 0.3},
+            figsize=(fig_width, fig_height)
+        )
+        plt.setp(g.ax_heatmap.get_xticklabels(), rotation=30, ha='right', fontsize=10)
+        plt.setp(g.ax_heatmap.get_yticklabels(), fontsize=10)
+        #plt.tight_layout(pad=0.5)
         if args.show_fig:
             plt.show()
         else:
-            plt.savefig("heatmap_cluster.pdf")
+            plt.savefig("heatmap_cluster.pdf", bbox_inches='tight')
     else:
-        plt.figure(figsize=(len(data.columns)*1.2,len(data.index)/4))
+        plt.figure(figsize=(fig_width, fig_height))
         if args.show_abund:
-            ax = sns.heatmap(data, cmap=cmap,yticklabels=True,annot=True,fmt=".0f",linewidths=.5,cbar=True,vmin=0.1,
-                         cbar_kws={"shrink": 0.3,"anchor":(0, 0.0)})
+            ax = sns.heatmap(
+                data, cmap=cmap, yticklabels=True, annot=True, fmt=".0f", linewidths=.5,
+                cbar=True, vmin=0.1, cbar_kws={"shrink": 0.3, "anchor": (0, 0.0)}
+            )
         else:
-            ax = sns.heatmap(data, cmap=cmap,yticklabels=True,annot=args.show_abund,fmt=".0f",linewidths=0,cbar=True,vmin=0.1,
-                         cbar_kws={"shrink": 0.3,"anchor":(0, 0.0)})
-        ax.collections[0].colorbar.ax.tick_params(labelsize=6)
-
-        plt.xticks(rotation=30)
-        plt.tight_layout(pad=0.1)
+            ax = sns.heatmap(
+                data, cmap=cmap, yticklabels=True, annot=args.show_abund, fmt=".0f", linewidths=0,
+                cbar=True, vmin=0.1, cbar_kws={"shrink": 0.3, "anchor": (0, 0.0)}
+            )
+        ax.collections[0].colorbar.ax.tick_params(labelsize=8)
+        plt.xticks(rotation=30, ha='right', fontsize=10)
+        plt.yticks(fontsize=10)
+        plt.tight_layout(pad=0.5)
         if args.show_fig:
             plt.show()
         else:
-            plt.savefig("heatmap.pdf")
+            plt.savefig("heatmap.pdf", bbox_inches='tight')
 
 def bar_plot(args):
     ### --input CAZyme_abund_output,CAZyme_abund_output
