@@ -37,7 +37,6 @@ def database_cmd(ctx, **kwargs):
 @cli.command('CAZyme_annotation')
 @general_options
 @database_options
-@output_dir_option
 @methods_option
 @threads_option
 @diamond_options
@@ -81,6 +80,7 @@ def gff_process_cmd(ctx, **kwargs):
 
 
 @cli.command('cgc_finder')
+@output_dir_option
 @cgc_options
 @click.pass_context
 def cgc_finder_cmd(ctx, **kwargs):
@@ -92,7 +92,6 @@ def cgc_finder_cmd(ctx, **kwargs):
 
 
 @cli.command('substrate_prediction')
-@syn_plot_options
 @cgc_substrate_base_options
 @cgc_substrate_homology_params_options
 @cgc_substrate_dbcan_sub_param_options
@@ -117,8 +116,6 @@ def cgc_circle_plot_cmd(ctx, **kwargs):
 
 @cli.command('easy_CGC')
 @general_options
-@database_options
-@output_dir_option
 @methods_option
 @threads_option
 @diamond_options
@@ -170,8 +167,6 @@ def easy_cgc_cmd(ctx, **kwargs):
 
 @cli.command('easy_substrate')
 @general_options
-@database_options
-@output_dir_option
 @methods_option
 @threads_option
 @diamond_options
@@ -182,7 +177,6 @@ def easy_cgc_cmd(ctx, **kwargs):
 @diamond_tc_options
 @cgc_gff_option
 @cgc_options
-@syn_plot_options
 @cgc_substrate_base_options
 @cgc_substrate_homology_params_options
 @cgc_substrate_dbcan_sub_param_options

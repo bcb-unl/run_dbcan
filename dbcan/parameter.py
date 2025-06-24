@@ -245,7 +245,6 @@ def database_options(func):
 def diamond_options(func):
     func = click.option('--e_value_threshold', type=float, help='E-value threshold for diamond', default=1e-102 )(func)
     func = click.option('--verbose_option', is_flag=True, help='Enable verbose option for diamond', default=False)(func)
-    func = output_dir_option(func)
     return func
 
 def diamond_tc_options(func):
@@ -256,32 +255,27 @@ def diamond_tc_options(func):
 def pyhmmer_dbcan_options(func):
     func = click.option('--e_value_threshold_dbcan',  type=float, help='E-value threshold for HMMER',  default=1e-15)(func)
     func = click.option('--coverage_threshold_dbcan',  type=float, help='Coverage threshold for HMMER', default=0.35)(func)
-    func = output_dir_option(func)
     return func
 
 def dbcansub_options(func):
     func = click.option('--e_value_threshold_dbsub',  type=float, help='E-value threshold for dbCAN-sub HMMER', default=1e-15)(func)
     func = click.option('--coverage_threshold_dbsub',  type=float, help='Coverage threshold for dbCAN-sub HMMER', default=0.35)(func)
-    func = output_dir_option(func)
     return func
 
 def pyhmmer_tf(func):
     func = click.option('--e_value_threshold_tf',  type=float, help='E-value threshold for TF HMMER', default=1e-4)(func)
     func = click.option('--coverage_threshold_tf',  type=float, help='Coverage threshold for TF HMMER', default=0.35)(func)
-    func = output_dir_option(func)
     return func
 
 def pyhmmer_stp(func):
     func = click.option('--e_value_threshold_stp',  type=float, help='E-value threshold for STP HMMER',default=1e-4)(func)
     func = click.option('--coverage_threshold_stp',  type=float, help='Coverage threshold for STP HMMER',default=0.35)(func)
-    func = output_dir_option(func)
     return func
 
 
 def cgc_gff_option(func):
     func = click.option('--input_gff', required=True, help='input GFF file')(func)
     func = click.option('--gff_type', required=True, help='GFF file type')(func)
-    func = output_dir_option(func)
     return func
 
 def cgc_options(func):
@@ -290,7 +284,6 @@ def cgc_options(func):
     func = click.option('--base_pair_distance', type=int, default=15000, help='Base pair distance of signature genes.')(func)
     func = click.option('--use_null_genes/--no-use_null_genes', is_flag=True, default=True, help='Use null genes in CGC annotation.')(func)
     func = click.option('--use_distance', is_flag=True, default=False, help='Use base pair distance in CGC annotation.')(func)
-    func = output_dir_option(func)
     return func
 
 def cgc_substrate_base_options(func):
@@ -338,7 +331,6 @@ def cgc_sub_options(func):
 
 def syn_plot_options(func):
     func = click.option('--db_dir', required=True, help='Path to the database directory')(func)
-    func = output_dir_option(func)
     return func
 
 def cgc_circle_plot_options(func):
