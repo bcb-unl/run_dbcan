@@ -189,14 +189,17 @@ DBCAN_HMM_FILE = "dbCAN.hmm"
 DBCAN_SUB_HMM_FILE = "dbCAN-sub.hmm"
 TF_HMM_FILE = "TF.hmm"
 STP_HMM_FILE = "STP.hmm"
+PFAM_HMM_FILE = "Pfam-A.hmm"
 
 # Input/Output files
 INPUT_PROTEIN_FILE = INPUT_PROTEIN_NAME
-NON_CAZYME_PROTEIN_FILE = "non_CAZyme.faa"
+#NON_CAZYME_PROTEIN_FILE = "non_CAZyme.faa"
+NULL_PROTEIN_FILE = "null_proteins.faa"
 DBCAN_HMM_RESULT_FILE = "dbCAN_hmm_results.tsv"
 DBCAN_SUB_HMM_RESULT_FILE = "dbCANsub_hmm_results.tsv"
 TF_HMM_RESULT_FILE = "TF_hmm_results.tsv"
 STP_HMM_RESULT_FILE = "STP_hmm_results.tsv"
+PFAM_HMM_RESULT_FILE = "Pfam_hmm_results.tsv"
 
 # Mapping files
 SUBSTRATE_MAPPING_FILE = "fam-substrate-mapping.tsv"
@@ -259,7 +262,6 @@ GFF_JGI_PROTEIN_ID_ATTR = "proteinId"
 
 # File names
 OVERVIEW_FILE = OVERVIEW_FILE
-NON_CAZYME_FAA_FILE = NON_CAZYME_PROTEIN_FILE
 
 # Result file names
 DIAMOND_RESULT_FILE = CAZY_DIAMOND_OUTPUT
@@ -459,7 +461,7 @@ DBCAN_SUB_MAP_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_tota
 TCDB_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/tcdb.dmnd"
 TF_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/TF.hmm"
 STP_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/STP.hmm"
-
+TF_DIAMOND_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/TF.dmnd"
 PEPTIDASE_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/peptidase_db.dmnd"
 SULFATLAS_DB_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/sulfatlas_db.dmnd"
 
@@ -527,3 +529,29 @@ PEPTIDASE_COLUMN_NAMES = [
 ]
 DIAMOND_PEPTIDASE_EVALUE_DEFAULT = 1e-5
 DIAMOND_PEPTIDASE_COVERAGE_DEFAULT = 0.3
+
+
+#############constants for newly added TF database ##############################
+# TF Constants
+TF = "TF"
+TF_DIAMOND_DB = "TF.dmnd"
+TF_DIAMOND_OUTPUT = "diamond.out.tf"
+TF_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+TF_ID_COLUMN = 'TF ID'
+TF_DATABASE = "prodoric"
+TF_COLUMN_NAMES = [
+    'TF ID',
+    'TF Length',
+    'Target ID',
+    'Target Length',
+    'EVALUE',
+    'TF START',
+    'TF END',
+    'QSTART',
+    'QEND',
+    'COVERAGE'
+]
+DIAMOND_TF_EVALUE_DEFAULT = 1e-5
+DIAMOND_TF_COVERAGE_DEFAULT = 0.3
+
+################################################################################################

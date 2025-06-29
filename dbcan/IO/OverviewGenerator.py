@@ -33,8 +33,8 @@ class OverviewGenerator:
         self.overlap_threshold = OVERVIEW_OVERLAP_THRESHOLD
 
         # For non-CAZyme FAA generation
-        self.cazyme_overview = os.path.join(self.output_dir, OVERVIEW_FILE)
-        self.input_total_faa = self._derive_input_total_faa()
+        #self.cazyme_overview = os.path.join(self.output_dir, OVERVIEW_FILE)
+        #self.input_total_faa = self._derive_input_total_faa()
 
         # Validate required attributes
         self._validate_attributes()
@@ -343,42 +343,42 @@ class OverviewGenerator:
             aggregated_results.append([gene_id] + list(result.values()))
         return pd.DataFrame(aggregated_results, columns=self.overview_columns)
 
-    def generate_non_cazyme_faa(self):
-        """Generate FAA file with non-CAZyme sequences"""
-        try:
-            # Only generate if input and output can be determined
-            if not hasattr(self, 'input_total_faa') or self.input_total_faa is None:
-                logging.error("Cannot generate non-CAZyme FAA: input_total_faa not set")
-                return
+    # def generate_non_cazyme_faa(self):
+    #     """Generate FAA file with non-CAZyme sequences"""
+    #     try:
+    #         # Only generate if input and output can be determined
+    #         if not hasattr(self, 'input_total_faa') or self.input_total_faa is None:
+    #             logging.error("Cannot generate non-CAZyme FAA: input_total_faa not set")
+    #             return
 
-            if not os.path.exists(self.input_total_faa):
-                logging.error(f"Cannot generate non-CAZyme FAA: input file not found: {self.input_total_faa}")
-                return
+    #         if not os.path.exists(self.input_total_faa):
+    #             logging.error(f"Cannot generate non-CAZyme FAA: input file not found: {self.input_total_faa}")
+    #             return
 
-            if not os.path.exists(self.cazyme_overview):
-                logging.error(f"Cannot generate non-CAZyme FAA: overview file not found: {self.cazyme_overview}")
-                return
+    #         if not os.path.exists(self.cazyme_overview):
+    #             logging.error(f"Cannot generate non-CAZyme FAA: overview file not found: {self.cazyme_overview}")
+    #             return
 
-            # Read overview and get CAZyme IDs with >= 2 tools
-            df = pd.read_csv(self.cazyme_overview, sep='\t')
-            filtered_df = df[df[TOOLS_COUNT_FIELD] >= MIN_TOOLS_FOR_RECOMMENDATION]
-            cazyme_ids = set(filtered_df[GENE_ID_FIELD].tolist())
+    #         # Read overview and get CAZyme IDs with >= 2 tools
+    #         df = pd.read_csv(self.cazyme_overview, sep='\t')
+    #         filtered_df = df[df[TOOLS_COUNT_FIELD] >= MIN_TOOLS_FOR_RECOMMENDATION]
+    #         cazyme_ids = set(filtered_df[GENE_ID_FIELD].tolist())
 
-            # Write non-CAZymes to output
-            output_path = os.path.join(self.output_dir, NON_CAZYME_FAA_FILE)
-            count = 0
+    #         # Write non-CAZymes to output
+    #         output_path = os.path.join(self.output_dir, NON_CAZYME_FAA_FILE)
+    #         count = 0
 
-            with open(self.input_total_faa, 'r') as infile, open(output_path, 'w') as outfile:
-                for record in SeqIO.parse(infile, 'fasta'):
-                    header_id = record.id.split()[0]
-                    if header_id not in cazyme_ids:
-                        SeqIO.write(record, outfile, 'fasta')
-                        count += 1
+    #         with open(self.input_total_faa, 'r') as infile, open(output_path, 'w') as outfile:
+    #             for record in SeqIO.parse(infile, 'fasta'):
+    #                 header_id = record.id.split()[0]
+    #                 if header_id not in cazyme_ids:
+    #                     SeqIO.write(record, outfile, 'fasta')
+    #                     count += 1
 
-            logging.info(f"Non-CAZyme FAA file generated with {count} sequences at {output_path}")
+    #         logging.info(f"Non-CAZyme FAA file generated with {count} sequences at {output_path}")
 
-        except Exception as e:
-            logging.error(f"Failed to generate non-CAZyme FAA: {str(e)}")
+        # except Exception as e:
+        #     logging.error(f"Failed to generate non-CAZyme FAA: {str(e)}")
 
     def run(self):
         """Run overview generation"""
@@ -411,7 +411,7 @@ class OverviewGenerator:
             print(f"Aggregated results saved to: {output_path}")
 
             # Generate non-CAZyme FAA file
-            self.generate_non_cazyme_faa()
+            # self.generate_non_cazyme_faa()
 
         except Exception as e:
             logging.error(f"Error generating overview: {str(e)}")

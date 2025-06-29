@@ -11,7 +11,8 @@ from dbcan.constants import ( DBCAN_HMM_FILE, DBCAN_SUB_HMM_FILE,
                              NON_CAZYME_PROTEIN_FILE, DBCAN_HMM_RESULT_FILE,
                              DBCAN_SUB_HMM_RESULT_FILE, TF_HMM_RESULT_FILE,
                              STP_HMM_RESULT_FILE, SUBSTRATE_MAPPING_FILE,
-                             GT2_FAMILY_NAME, GT2_PREFIX)
+                             GT2_FAMILY_NAME, GT2_PREFIX, PFAM_HMM_FILE,
+                             PFAM_HMM_RESULT_FILE, NULL_PROTEIN_FILE)
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -250,4 +251,38 @@ class PyHMMERSTPProcessor(PyHMMERProcessor):
 
     def run(self):
         """Run STP HMM search"""
+        self.hmmsearch()
+
+
+
+class PyHMMERPfamProcessor(PyHMMERProcessor):
+    """Pfam Protein HMM processor"""
+
+    def _derive_hmm_file(self):
+        """Get Pfam HMM file path"""
+        return os.path.join(self.config.db_dir, PFAM_HMM_FILE)
+
+    def _derive_input_faa(self):
+        """Get input protein sequence file path"""
+        return os.path.join(self.config.output_dir, NULL_PROTEIN_FILE)
+
+    def _derive_output_file(self):
+        """Get output file path"""
+        return os.path.join(self.config.output_dir, PFAM_HMM_RESULT_FILE)
+
+    def _derive_e_value_threshold(self):
+        """Get E-value threshold for Pfam searches"""
+        return self.config.e_value_threshold_pfam
+
+    def _derive_coverage_threshold(self):
+        """Get coverage threshold for Pfam searches"""
+        return self.config.coverage_threshold_pfam
+
+    def _derive_threads(self):
+        """Derive number of threads to use"""
+        # Default implementation uses the threads from config
+        return self.config.threads
+
+    def run(self):
+        """Run Pfam HMM search"""
         self.hmmsearch()

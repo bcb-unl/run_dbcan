@@ -22,7 +22,10 @@ from dbcan.constants import (TC,TCDB_ID_COLUMN,SULFATLAS_ID_COLUMN,PEPTIDASE_ID_
                                 DIAMOND_SULFATLAS_EVALUE_DEFAULT, DIAMOND_SULFATLAS_COVERAGE_DEFAULT,
                                 PEPTIDASE, PEPTIDASE_DIAMOND_DB,
                                 PEPTIDASE_DIAMOND_OUTPUT, PEPTIDASE_COLUMN_NAMES,
-                                DIAMOND_PEPTIDASE_EVALUE_DEFAULT, DIAMOND_PEPTIDASE_COVERAGE_DEFAULT)
+                                DIAMOND_PEPTIDASE_EVALUE_DEFAULT, DIAMOND_PEPTIDASE_COVERAGE_DEFAULT,
+                                TF_DIAMOND_DB, TF_DIAMOND_OUTPUT, TF_COLUMN_NAMES,
+                                DIAMOND_TF_EVALUE_DEFAULT, DIAMOND_TF_COVERAGE_DEFAULT, TF_ID_COLUMN, TF_DATABASE
+                             )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -308,3 +311,54 @@ class PeptidaseDiamondProcessor(DiamondProcessor):
 
             df['Database'] = PEPTIDASE
         super().format_results(PEPTIDASE_COLUMN_NAMES, extra_processing)
+
+
+class TFDiamondProcessor(DiamondProcessor):
+    """TF DIAMOND processor"""
+
+    def _derive_diamond_db(self):
+        """Get TF DIAMOND database path"""
+        return os.path.join(self.config.db_dir, TF_DIAMOND_DB)
+
+    def _derive_input_faa(self):
+        """Get input protein sequence file path"""
+        return os.path.join(self.config.output_dir, "uniInput.faa")
+
+    def _derive_output_file(self):
+        """Get output file path"""
+        return os.path.join(self.config.output_dir, TF_DIAMOND_OUTPUT)
+
+    def _derive_e_value_threshold(self):
+        """Get E-value threshold for TF searches"""
+        return getattr(self.config, 'e_value_threshold_tf', DIAMOND_TF_EVALUE_DEFAULT)
+
+    def _derive_coverage_threshold(self):
+        """Get coverage threshold for TF searches"""
+        return getattr(self.config, 'coverage_threshold_tf', DIAMOND_TF_COVERAGE_DEFAULT)
+
+    def run(self):
+        """Run TF DIAMOND search"""
+        # Get coverage threshold
+        coverage_threshold = self._derive_coverage_threshold()
+
+        # Set additional parameters
+        extra_args = [
+            DIAMOND_CMD_OUTFMT, DIAMOND_DEFAULT_OUTFMT, *PEPTIDASE_DIAMOND_OUTFMT_FIELDS,
+            DIAMOND_CMD_QUERY_COVER, str(coverage_threshold)
+        ]
+
+        self.run_diamond(outfmt=DIAMOND_DEFAULT_OUTFMT, extra_args=extra_args)
+
+    def format_results(self):
+        """Format TF DIAMOND results"""
+        def extra_processing(df):
+            """Additional processing for TF results - extract S01.001 format IDs"""
+            import re
+            # Extract S01.001 pattern from string like ">MER0000002|S01.001"
+            if TF_ID_COLUMN in df.columns:
+                df[TF_ID_COLUMN] = df[TF_ID_COLUMN].apply(
+                lambda x: x.split('|')[1] if isinstance(x, str) and "|"  in x else "unknown"
+                )
+
+            df['Database'] = TF_DATABASE
+        super().format_results(TF_COLUMN_NAMES, extra_processing)
