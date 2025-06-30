@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import time
 from subprocess import Popen, call, check_output
 import argparse,os
@@ -635,20 +636,24 @@ def heatmap_plot(args):
     samples = args.samples.split(",")
     plt.style.use(args.plot_style)
     if len(pds) != len(samples):
-        print("The number of samples is not eaqul the abundance!")
+        print("The number of samples is not equal to the abundance!")
         exit(1)
     for i in range(len(pds)):
         pds[i]["sample"] = samples[i]
-    data,x = combined_datafram_based_on_first_col(pds,samples)
+    if len(pds) == 1:
+        data = pds[0]
+        data = data.rename(columns={data.columns[1]: samples[0]})
+    else:
+        data, x = combined_datafram_based_on_first_col(pds, samples)
 
     if not args.col:
-        data = data.iloc[0:int(args.top),:]
+        data = data.iloc[0:int(args.top), :]
     else:
         if args.value:
             data = data.loc[data[args.col].isin(args.value.split(","))]
         else:
-            data = data.iloc[0:int(args.top),:]
-    data = data.set_index(data.iloc[:,0])
+            data = data.iloc[0:int(args.top), :]
+    data = data.set_index(data.iloc[:, 0])
     data = data[samples]
     sns.set_style("whitegrid")
     sns.set_context("paper")
@@ -666,7 +671,7 @@ def heatmap_plot(args):
     if args.palette:
         cmap = args.palette
     else:
-        mycolor=['aliceblue','skyblue','deepskyblue','orange','tomato','red']
+        mycolor = ['aliceblue', 'skyblue', 'deepskyblue', 'orange', 'tomato', 'red']
         cmap = colors.LinearSegmentedColormap.from_list('my_list', mycolor)
         cmap.set_under('white')
 
@@ -679,7 +684,6 @@ def heatmap_plot(args):
         )
         plt.setp(g.ax_heatmap.get_xticklabels(), rotation=30, ha='right', fontsize=10)
         plt.setp(g.ax_heatmap.get_yticklabels(), fontsize=10)
-        #plt.tight_layout(pad=0.5)
         if args.show_fig:
             plt.show()
         else:
