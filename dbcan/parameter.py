@@ -62,7 +62,15 @@ class DiamondPeptidaseConfig(BaseConfig):
     coverage_threshold_tc: float = 0.35
     verbose_option: bool = False
 
+@dataclass
+class DiamondTFConfig(BaseConfig):
+    db_dir: str
+    threads: int
+    output_dir: str
 
+    e_value_threshold_tf: float = 1e-4
+    coverage_threshold_tf: float = 0.35
+    verbose_option: bool = False
 
 @dataclass
 class PyHMMERConfig(BaseConfig):
@@ -79,7 +87,6 @@ class DBCANSUBProcessorConfig(PyHMMERConfig):
     db_dir: str
     e_value_threshold_dbsub: float = 1e-15
     coverage_threshold_dbsub: float = 0.35
-
 
 
 @dataclass
@@ -100,7 +107,12 @@ class PyHMMERSTPConfig(PyHMMERConfig):
     e_value_threshold_stp: float  = 1e-4
     coverage_threshold_stp: float  = 0.35
 
-
+@dataclass
+class PyHMMERPFAMConfig(PyHMMERConfig):
+    output_dir: str
+    db_dir: str
+    e_value_threshold_pfam: float  = 1e-4
+    coverage_threshold_pfam: float  = 0.35
 
 @dataclass
 class GFFConfig(BaseConfig):
@@ -251,6 +263,10 @@ def diamond_tc_options(func):
     func = click.option('--e_value_threshold_tc', type=float, help='E-value threshold for TC' ,default=1e-4)(func)
     func = click.option('--coverage_threshold_tc', type=float, help='Coverage threshold for TC', default=0.35)(func)
     return func
+def diamond_tf_options(func):
+    func = click.option('--e_value_threshold_tf', type=float, help='E-value threshold for TF' ,default=1e-4)(func)
+    func = click.option('--coverage_threshold_tf', type=float, help='Coverage threshold for TF', default=0.35)(func)
+    return func
 
 def pyhmmer_dbcan_options(func):
     func = click.option('--e_value_threshold_dbcan',  type=float, help='E-value threshold for HMMER',  default=1e-15)(func)
@@ -272,6 +288,11 @@ def pyhmmer_stp(func):
     func = click.option('--coverage_threshold_stp',  type=float, help='Coverage threshold for STP HMMER',default=0.35)(func)
     return func
 
+def pyhmmer_pfam(func):
+    func = click.option('--run_pfam', help='Run Pfam HMMER for CGC null gene annotation', is_flag=True, default=False)(func)
+    func = click.option('--e_value_threshold_pfam',  type=float, help='E-value threshold for Pfam HMMER',default=1e-4)(func)
+    func = click.option('--coverage_threshold_pfam',  type=float, help='Coverage threshold for Pfam HMMER',default=0.35)(func)
+    return func
 
 def cgc_gff_option(func):
     func = click.option('--input_gff', required=True, help='input GFF file')(func)
