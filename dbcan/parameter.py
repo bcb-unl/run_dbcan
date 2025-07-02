@@ -71,6 +71,7 @@ class DiamondTFConfig(BaseConfig):
     e_value_threshold_tf: float = 1e-4
     coverage_threshold_tf: float = 0.35
     verbose_option: bool = False
+    prokaryotic: bool = True
 
 @dataclass
 class PyHMMERConfig(BaseConfig):
@@ -99,6 +100,7 @@ class PyHMMERTFConfig(PyHMMERConfig):
     db_dir: str
     e_value_threshold_tf: float  = 1e-4
     coverage_threshold_tf: float = 0.35
+    fungi: bool = False
 
 
 @dataclass
@@ -266,6 +268,7 @@ def diamond_tc_options(func):
 def diamond_tf_options(func):
     func = click.option('--e_value_threshold_tf', type=float, help='E-value threshold for TF' ,default=1e-4)(func)
     func = click.option('--coverage_threshold_tf', type=float, help='Coverage threshold for TF', default=0.35)(func)
+    func = click.option('--prokaryotic/--no-prokaryotic', is_flag=True, help='Enable prokaryotic mode for TF', default=True)(func)
     return func
 
 def pyhmmer_dbcan_options(func):
@@ -281,6 +284,7 @@ def dbcansub_options(func):
 def pyhmmer_tf(func):
     func = click.option('--e_value_threshold_tf',  type=float, help='E-value threshold for TF HMMER', default=1e-4)(func)
     func = click.option('--coverage_threshold_tf',  type=float, help='Coverage threshold for TF HMMER', default=0.35)(func)
+    func = click.option('--fungi/--no-fungi', is_flag=True, help='Enable fungi mode for TF HMMER', default=False)(func)
     return func
 
 def pyhmmer_stp(func):

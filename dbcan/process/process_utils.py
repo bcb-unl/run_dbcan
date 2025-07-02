@@ -63,15 +63,19 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         if not output_dir:
             output_dir = getattr(stp_config, 'output_dir', '.')
 
-        # Define standard file paths based on output_dir
+        # build output file paths
         output_files = {
             'TC': os.path.join(output_dir, 'diamond.out.tc'),
-            'TF': os.path.join(output_dir, 'diamond.out.tf'),
-            'TF': os.path.join(output_dir, 'TF_hmm_results.tsv'),
             'STP': os.path.join(output_dir, 'STP_hmm_results.tsv'),
             'Sulfatase': os.path.join(output_dir, 'diamond.out.sulfatlas'),
             'Peptidase': os.path.join(output_dir, 'diamond.out.peptidase'),
         }
+        # only add prokaryotic TF when prokaryotic is True
+        if tfdiamond_config is not None and getattr(tfdiamond_config, 'prokaryotic', True):
+            output_files['TF_prok'] = os.path.join(output_dir, 'diamond.out.tf')
+        # only add fungi TF when fungi is True
+        if tf_config is not None and getattr(tf_config, 'fungi', False):
+            output_files['TF_fungi'] = os.path.join(output_dir, 'TF_hmm_results.tsv')
 
         # check files exist and are not empty
         dataframes = []

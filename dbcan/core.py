@@ -87,6 +87,12 @@ def run_dbCAN_peptidase_diamond(config):
     processor.run()
     processor.format_results()
 
+def run_dbCAN_diamond_tf(config):
+    from dbcan.annotation.diamond import TFDiamondProcessor
+    processor = TFDiamondProcessor(config)
+    processor.run()
+    processor.format_results()
+
 def run_dbCAN_hmmer_tf(config):
     from dbcan.annotation.pyhmmer_search import PyHMMERTFProcessor
     processor = PyHMMERTFProcessor(config)
@@ -97,16 +103,26 @@ def run_dbCAN_hmmer_stp(config):
     processor = PyHMMERSTPProcessor(config)
     processor.run()
 
-def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfconfig, stpconfig, sulfatlasconfig,peptidaseconfig,cgcgffconfig):
+def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfdiamondconfig, tfconfig, stpconfig, sulfatlasconfig, peptidaseconfig, cgcgffconfig):
     run_dbCAN_tcdb_diamond(tcdbconfig)
-    run_dbCAN_hmmer_tf(tfconfig)
+    if getattr(tfdiamondconfig, 'prokaryotic', True):
+        run_dbCAN_diamond_tf(tfdiamondconfig)
+    if getattr(tfconfig, 'fungi', False):
+        run_dbCAN_hmmer_tf(tfconfig)
     run_dbCAN_hmmer_stp(stpconfig)
     run_dbCAN_sulfatlas_diamond(sulfatlasconfig)
     run_dbCAN_peptidase_diamond(peptidaseconfig)
 
 
     from dbcan.process.process_utils import process_cgc_sig_results
-    process_cgc_sig_results(tcdbconfig, tfconfig, stpconfig, sulfatlasconfig, peptidaseconfig)
+    process_cgc_sig_results(
+        tcdbconfig,
+        tfdiamondconfig if getattr(tfdiamondconfig, 'prokaryotic', True) else None,
+        tfconfig if getattr(tfconfig, 'fungi', False) else None,
+        stpconfig,
+        sulfatlasconfig,
+        peptidaseconfig
+    )
     from dbcan.IO.gff import get_gff_processor
     processor = get_gff_processor(cgcgffconfig)
     processor.process_gff()
@@ -116,7 +132,15 @@ def run_dbCAN_CGCFinder(config):
     cgc_finder = CGCFinder(config)
     cgc_finder.run()
 
+def run_dbCAN_Pfam_null_cgc(config):
+    from dbcan.process.process_utils import process_cgc_null_pfam_annotation,extract_null_fasta_from_cgc,annotate_cgc_null_with_pfam_and_gff
+    from dbcan.annotation.pyhmmer_search import PyHMMERPfamProcessor
 
+    extract_null_fasta_from_cgc(os.path.join(config.output_dir, 'cgc_standard_out.tsv'), os.path.join(config.output_dir, 'uniInput.faa'), os.path.join(config.output_dir, 'null_proteins.faa'))
+    pfam_processor = PyHMMERPfamProcessor(config)
+    pfam_processor.run()
+    process_cgc_null_pfam_annotation(config)
+    annotate_cgc_null_with_pfam_and_gff(config)
 
 def run_dbCAN_CGCFinder_substrate(config):
     from dbcan.annotation.cgc_substrate_prediction import cgc_substrate_prediction

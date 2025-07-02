@@ -1,17 +1,17 @@
 import rich_click as click
 from dbcan.parameter import (
-    create_config, GeneralConfig, DBDownloaderConfig, DiamondConfig, DiamondTCConfig, DiamondPeptidaseConfig, DiamondSulfataseConfig,
+    create_config, GeneralConfig, DBDownloaderConfig, DiamondConfig, DiamondTCConfig, DiamondPeptidaseConfig, DiamondSulfataseConfig,DiamondTFConfig,
     PyHMMERConfig, DBCANSUBProcessorConfig, PyHMMERTFConfig, PyHMMERSTPConfig,OverviewGeneratorConfig, GFFConfig, CGCFinderConfig, CGCSubstrateConfig,
-    SynPlotConfig, CGCPlotConfig,
+    SynPlotConfig, CGCPlotConfig,DiamondTFConfig, PyHMMERPFAMConfig,
 
-    general_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,
+    general_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,diamond_tf_options,
     pyhmmer_dbcan_options, dbcansub_options ,pyhmmer_tf, pyhmmer_stp, cgc_gff_option, cgc_options, cgc_sub_options, syn_plot_options,
-    cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options
+    cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam
 )
 from dbcan.core import (
     run_dbCAN_database, run_dbCAN_input_process, run_dbCAN_CAZyme_annotation,
     run_dbCAN_CGCFinder_preprocess, run_dbCAN_CGCFinder,
-    run_dbCAN_CGCFinder_substrate, run_dbcan_syn_plot, run_dbCAN_cgc_circle
+    run_dbCAN_CGCFinder_substrate, run_dbcan_syn_plot, run_dbCAN_cgc_circle, run_dbCAN_Pfam_null_cgc
 )
 
 @click.group()
@@ -63,19 +63,21 @@ def cazyme_annotation_cmd(ctx, **kwargs):
 @threads_option
 @pyhmmer_stp
 @pyhmmer_tf
+@diamond_tf_options
 @diamond_tc_options
 @cgc_gff_option
 @click.pass_context
 def gff_process_cmd(ctx, **kwargs):
     """generate GFF file for CAZyme Gene Cluster identification."""
     diamond_tc_config = create_config(DiamondTCConfig, **kwargs)
+    diamond_tf_config = create_config(DiamondTFConfig, **kwargs)
     pyhmmer_tf_config = create_config(PyHMMERTFConfig, **kwargs)
     pyhmmer_stp_config = create_config(PyHMMERSTPConfig, **kwargs)
     diamond_sulfatlas_config = create_config(DiamondSulfataseConfig, **kwargs)
     diamond_peptidase_config = create_config(DiamondPeptidaseConfig, **kwargs)
 
     gff_config = create_config(GFFConfig, **kwargs)
-    run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
+    run_dbCAN_CGCFinder_preprocess(diamond_tc_config, diamond_tf_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
 
 
 
@@ -88,7 +90,16 @@ def cgc_finder_cmd(ctx, **kwargs):
     config = create_config(CGCFinderConfig, **kwargs)
     run_dbCAN_CGCFinder(config)
 
-
+@cli.command('Pfam_null_cgc')
+@threads_option
+@database_options
+@output_dir_option
+@pyhmmer_pfam
+@click.pass_context
+def pfam_null_cgc_cmd(ctx, **kwargs):
+    """identify CAZyme Gene Clusters(CGCs)"""
+    config = create_config(PyHMMERPFAMConfig, **kwargs)
+    run_dbCAN_Pfam_null_cgc(config)
 
 
 @cli.command('substrate_prediction')
@@ -116,6 +127,7 @@ def cgc_circle_plot_cmd(ctx, **kwargs):
 
 @cli.command('easy_CGC')
 @general_options
+@database_options
 @methods_option
 @threads_option
 @diamond_options
@@ -123,6 +135,7 @@ def cgc_circle_plot_cmd(ctx, **kwargs):
 @dbcansub_options
 @pyhmmer_stp
 @pyhmmer_tf
+@diamond_tf_options
 @diamond_tc_options
 @cgc_gff_option
 @cgc_options
@@ -144,12 +157,13 @@ def easy_cgc_cmd(ctx, **kwargs):
         # step 2: GFF processing
         click.echo("step 2/3  GFF processing...")
         diamond_tc_config = create_config(DiamondTCConfig, **kwargs)
+        diamond_tf_config = create_config(DiamondTFConfig, **kwargs)
         pyhmmer_tf_config = create_config(PyHMMERTFConfig, **kwargs)
         pyhmmer_stp_config = create_config(PyHMMERSTPConfig, **kwargs)
         diamond_sulfatlas_config = create_config(DiamondSulfataseConfig, **kwargs)
         diamond_peptidase_config = create_config(DiamondPeptidaseConfig, **kwargs)
         gff_config = create_config(GFFConfig, **kwargs)
-        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
+        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, diamond_tf_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
         # step 3: CGC identification
         click.echo("step 3/3  CGC identification...")
         cgc_config = create_config(CGCFinderConfig, **kwargs)
@@ -174,6 +188,7 @@ def easy_cgc_cmd(ctx, **kwargs):
 @dbcansub_options
 @pyhmmer_stp
 @pyhmmer_tf
+@diamond_tf_options
 @diamond_tc_options
 @cgc_gff_option
 @cgc_options
@@ -198,12 +213,13 @@ def easy_substrate_cmd(ctx, **kwargs):
         # step 2: GFF processing
         click.echo("step 2/4  GFF processing...")
         diamond_tc_config = create_config(DiamondTCConfig, **kwargs)
+        diamond_tf_config = create_config(DiamondTFConfig, **kwargs)
         pyhmmer_tf_config = create_config(PyHMMERTFConfig, **kwargs)
         pyhmmer_stp_config = create_config(PyHMMERSTPConfig, **kwargs)
         diamond_sulfatlas_config = create_config(DiamondSulfataseConfig, **kwargs)
         diamond_peptidase_config = create_config(DiamondPeptidaseConfig, **kwargs)
         gff_config = create_config(GFFConfig, **kwargs)
-        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
+        run_dbCAN_CGCFinder_preprocess(diamond_tc_config, diamond_tf_config, pyhmmer_tf_config, pyhmmer_stp_config, diamond_sulfatlas_config, diamond_peptidase_config, gff_config)
 
         # step 3: CGC identification
         click.echo("step 3/4  CGC identification...")

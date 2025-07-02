@@ -357,7 +357,7 @@ class TFDiamondProcessor(DiamondProcessor):
             # Extract S01.001 pattern from string like ">MER0000002|S01.001"
             if TF_ID_COLUMN in df.columns:
                 df[TF_ID_COLUMN] = df[TF_ID_COLUMN].apply(
-                lambda x: x.split('|')[1] if isinstance(x, str) and "|"  in x else "unknown"
+                lambda x: x.split('|')[2] if isinstance(x, str) and "|"  in x else "unknown"
                 )
 
             df['Database'] = TF_DATABASE
