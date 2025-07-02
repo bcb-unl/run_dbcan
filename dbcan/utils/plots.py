@@ -24,6 +24,7 @@ import matplotlib as mpl
 mpl.rcParams['pdf.fonttype'] = 42
 mpl.rcParams['ps.fonttype'] = 42
 import matplotlib.colors as colors
+import sys
 
 class CGC_Standard_Out(object):
     def __init__(self,filename):
@@ -758,6 +759,18 @@ def bar_plot(args):
     plt.savefig(f"{args.pdf}")
     print(f"Saving plot to file: {args.pdf}")
 
+def check_input_files_min_lines(input_files, min_lines=2):
+    for f in input_files.split(","):
+        try:
+            with open(f) as fh:
+                lines = sum(1 for _ in fh)
+            if lines < min_lines:
+                print(f"Input file {f} has less than {min_lines} lines, skip plotting.")
+                sys.exit(0)
+        except Exception as e:
+            print(f"Error reading file {f}: {e}")
+            sys.exit(0)
+
 def parse_argv():
     usage = '''
     %(prog)s [positional arguments] [options]
@@ -806,6 +819,8 @@ def parse_argv():
 
 def main():
     args = parse_argv()
+    if args.function == "bar_plot" or args.function == "heatmap_plot":
+        check_input_files_min_lines(args.input, min_lines=2)
     if args.function == "CGC_plot":
         ### dbcan_plot CGC_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1'
         CGC_plot(args)
