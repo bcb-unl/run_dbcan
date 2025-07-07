@@ -31,7 +31,6 @@ def run_dbCAN_CAZyme_overview(config):
     from dbcan.IO.OverviewGenerator import OverviewGenerator
     generator = OverviewGenerator(config)
     generator.run()
-    generator.generate_non_cazyme_faa()
 
 
 def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, overviewconfig, methods):
@@ -140,7 +139,13 @@ def run_dbCAN_Pfam_null_cgc(config):
     pfam_processor = PyHMMERPfamProcessor(config)
     pfam_processor.run()
     process_cgc_null_pfam_annotation(config)
-    annotate_cgc_null_with_pfam_and_gff(config)
+    annotate_cgc_null_with_pfam_and_gff(
+        os.path.join(config.output_dir, 'cgc_standard_out.tsv'),
+        os.path.join(config.output_dir, 'Pfam_hmm_results.tsv'),
+        os.path.join(config.output_dir, 'cgc.gff'),
+        os.path.join(config.output_dir, 'cgc_standard_out.pfam_annotated.tsv'),
+        os.path.join(config.output_dir, 'cgc.pfam_annotated.gff')
+    )
 
 def run_dbCAN_CGCFinder_substrate(config):
     from dbcan.annotation.cgc_substrate_prediction import cgc_substrate_prediction

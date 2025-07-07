@@ -124,7 +124,7 @@ def process_cgc_null_pfam_annotation(Pfam_config):
     """process CGC null pfam annotation results"""
     try:
         output_dir = getattr(Pfam_config, 'output_dir', '.')
-        pfam_hmm_output = os.path.join(output_dir, 'pfam_hmm_results.tsv')
+        pfam_hmm_output = os.path.join(output_dir, 'Pfam_hmm_results.tsv')
 
         if not os.path.exists(pfam_hmm_output) or os.path.getsize(pfam_hmm_output) == 0:
             logging.warning(f"PFAM HMM output file not found or empty: {pfam_hmm_output}")
@@ -175,7 +175,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
     pfam_df = pd.read_csv(pfam_hmm_result_file, sep='\t', header=0)
     for _, row in pfam_df.iterrows():
         protein_id = str(row['Target Name'])
-        annotation = str(row['Annotate Name'])
+        annotation = str(row['HMM Name'])
         pfam_map[protein_id] = annotation
 
     # 2. parse cgc_standard_out.tsv

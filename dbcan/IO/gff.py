@@ -1,10 +1,14 @@
 import pandas as pd
 import os
 import logging
+import sys
+import multiprocessing
 from Bio import SeqIO
 from BCBio import GFF
 from dbcan.parameter import GFFConfig
 from dataclasses import fields
+import psutil
+from tqdm import tqdm
 from dbcan.constants import (GFF_INPUT_PROTEIN_FILE, GFF_CAZYME_OVERVIEW_FILE,
                              GFF_CGC_SIG_FILE, GFF_OUTPUT_FILE, GFF_TEMP_SUFFIX,
                              GFF_PROTEIN_ID_COL, GFF_CAZYME_COL, GFF_GENE_ID_COL,
@@ -20,6 +24,15 @@ from dbcan.constants import (GFF_INPUT_PROTEIN_FILE, GFF_CAZYME_OVERVIEW_FILE,
                              GFF_ID_ATTR, GFF_JGI_PROTEIN_ID_ATTR)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# define a worker function to sort features in a GFF record
+# this function will be called by each worker process in the pool
+def _sort_record_features(record):
+    """Worker function to sort features within a single GFF record."""
+    # sort features by start and end location
+    sorted_features = sorted(record.features, key=lambda f: (f.location.start, f.location.end))
+    record.features = sorted_features
+    return record
 
 class GFFProcessor:
     """Base GFF processor class using template method pattern"""
@@ -124,9 +137,29 @@ class GFFProcessor:
             # Process CGC signature data
             logging.info(f"Loading CGC signature data from {self.cgc_sig_file}")
             try:
-                cgc_sig_df = pd.read_csv(self.cgc_sig_file, sep='\t', usecols=GFF_CGC_SIG_COLUMNS, header=None,
-                                    names=[GFF_FUNCTION_ANNOTATION_COL, GFF_PROTEIN_ID_COL, GFF_TYPE_COL])
-                cgc_sig_df[GFF_CGC_ANNOTATION_COL] = cgc_sig_df[GFF_TYPE_COL] + '|' + cgc_sig_df[GFF_FUNCTION_ANNOTATION_COL]
+                # use chunks to handle large files efficiently
+                #             # Estimate chunk size based on available memory
+                available_mem = psutil.virtual_memory().available
+                # Use 1/10 of available memory, but not less than 100MB
+
+                target_mem = max(available_mem // 10, 100 * 1024 * 1024)  # at least 100MB
+                rows_per_chunk = max(int(target_mem // 1024), 10000)
+                chunk_size = rows_per_chunk
+
+                cgc_sig_chunks = pd.read_csv(self.cgc_sig_file, sep='\t', usecols=GFF_CGC_SIG_COLUMNS, header=None,
+                                             names=[GFF_FUNCTION_ANNOTATION_COL, GFF_PROTEIN_ID_COL, GFF_TYPE_COL],
+                                             chunksize=chunk_size)
+
+                cgc_sig_df_list = []
+                for chunk in cgc_sig_chunks:
+                    chunk[GFF_CGC_ANNOTATION_COL] = chunk[GFF_TYPE_COL] + '|' + chunk[GFF_FUNCTION_ANNOTATION_COL]
+                    cgc_sig_df_list.append(chunk)
+
+                if not cgc_sig_df_list:
+                     cgc_sig_df = pd.DataFrame(columns=[GFF_FUNCTION_ANNOTATION_COL, GFF_PROTEIN_ID_COL, GFF_TYPE_COL, GFF_CGC_ANNOTATION_COL])
+                else:
+                     cgc_sig_df = pd.concat(cgc_sig_df_list, ignore_index=True)
+
             except Exception as e:
                 logging.error(f"Error reading CGC signature file: {str(e)}")
                 # Try to continue with just the CAZyme data
@@ -211,24 +244,33 @@ class GFFProcessor:
             # Continue processing other features
 
     def sort_gff(self, input_gff, output_gff):
-        """Sort GFF features by start position"""
+        """Sort GFF features by start position using multiprocessing for speed."""
         try:
             if not os.path.exists(input_gff):
                 raise FileNotFoundError(f"Input GFF file not found: {input_gff}")
 
-            with open(input_gff) as input_file:
-                records = list(GFF.parse(input_file))
+            # Determine the number of CPU cores to use
+            # Use all available cores minus 2 to avoid overloading the system
+            num_cores = max(1, multiprocessing.cpu_count() - 2)
+            logging.info(f"Using {num_cores} cores for GFF sorting.")
 
-            sorted_records = []
-            for record in records:
-                sorted_features = sorted(record.features, key=lambda f: (f.location.start, f.location.end))
-                record.features = sorted_features
-                sorted_records.append(record)
+            with open(input_gff) as input_file, open(output_gff, 'w') as output_file, \
+                 multiprocessing.Pool(processes=num_cores) as pool:
 
-            with open(output_gff, 'w') as output_file:
-                GFF.write(sorted_records, output_file)
+                # GFF.parse returns an iterator, which is well-suited for use with imap to keep memory usage low
+                # pool.imap lazily distributes tasks to worker processes and returns results in order
+                gff_iterator = GFF.parse(input_file)
+
+                # Wrap the imap results with tqdm to show processing progress
+                # The results of imap are also an iterator, so tqdm works well
+                sorted_records_iterator = pool.imap(_sort_record_features, gff_iterator, chunksize=10)
+
+                # Write each processed and sorted record to the output file
+                for sorted_record in tqdm(sorted_records_iterator, desc="Sorting GFF records (parallel)", file=sys.stdout):
+                    GFF.write([sorted_record], output_file)
+
         except Exception as e:
-            logging.error(f"Error sorting GFF file: {str(e)}")
+            logging.error(f"Error sorting GFF file with multiprocessing: {str(e)}")
             raise
 
 
@@ -239,7 +281,7 @@ class NCBIEukProcessor(GFFProcessor):
         """Process NCBI Eukaryotic GFF format"""
         try:
             with open(input_file) as in_file, open(output_file, 'w') as out_file:
-                for record in GFF.parse(in_file):
+                for record in tqdm(GFF.parse(in_file), desc="Generating NCBI Euk GFF"):
                     for feature in record.features:
                         if feature.type == GFF_GENE_FEATURE:
                             protein_id = GFF_UNKNOWN_ANNOTATION
@@ -281,7 +323,7 @@ class NCBIProkProcessor(GFFProcessor):
         """Process NCBI Prokaryotic GFF format"""
         try:
             with open(input_file) as in_file, open(output_file, 'w') as out_file:
-                for record in GFF.parse(in_file):
+                for record in tqdm(GFF.parse(in_file), desc="Generating NCBI Prok GFF"):
                     for feature in record.features:
                         if feature.type == 'gene':
                             protein_id = 'unknown'
@@ -335,7 +377,7 @@ class JGIProcessor(GFFProcessor):
                 logging.error(f"Input protein sequences file not found: {self.input_total_faa}")
 
             with open(input_file) as in_file, open(output_file, 'w') as out_file:
-                for record in GFF.parse(in_file):
+                for record in tqdm(GFF.parse(in_file), desc="Generating JGI GFF"):
                     for feature in record.features:
                         if feature.type == 'gene':
                             protein_id = feature.qualifiers.get("proteinId", ["unknown"])[0]
@@ -355,7 +397,7 @@ class ProdigalProcessor(GFFProcessor):
         """Process Prodigal GFF format"""
         try:
             with open(input_file) as in_file, open(output_file, 'w') as out_file:
-                for record in GFF.parse(in_file):
+                for record in tqdm(GFF.parse(in_file), desc="Generating Prodigal GFF"):
                     for feature in record.features:
                         protein_id = feature.qualifiers.get("ID", ["unknown"])[0]
                         cgc_annotation = cgc_data.get(protein_id, {}).get('CGC_annotation', 'null')
