@@ -72,10 +72,8 @@ STP="STP"
 PUL="PUL"
 NULL="null"
 
-CGC_RESULT_FILE = CGC_RESULT_FILE
 DBCAN_SUB_OUT_FILE = "dbCANsub_hmm_results.tsv"
 OVERVIEW_FILE = "overview.tsv"
-INPUT_PROTEIN_NAME = INPUT_PROTEIN_NAME
 
 CGC_SUB_PREDICTION_FILE= "substrate_prediction.tsv"
 PUL_DIAMOND_FILE = "PUL_blast.out"
@@ -192,7 +190,6 @@ STP_HMM_FILE = "STP.hmm"
 PFAM_HMM_FILE = "Pfam-A.hmm"
 
 # Input/Output files
-INPUT_PROTEIN_FILE = INPUT_PROTEIN_NAME
 #NON_CAZYME_PROTEIN_FILE = "non_CAZyme.faa"
 NULL_PROTEIN_FILE = "null_proteins.faa"
 DBCAN_HMM_RESULT_FILE = "dbCAN_hmm_results.tsv"
@@ -259,9 +256,6 @@ GFF_JGI_PROTEIN_ID_ATTR = "proteinId"
 ################################################################################################
 
 ####################################### Constants for OverviewGenerator.py ##############################
-
-# File names
-OVERVIEW_FILE = OVERVIEW_FILE
 
 # Result file names
 DIAMOND_RESULT_FILE = CAZY_DIAMOND_OUTPUT

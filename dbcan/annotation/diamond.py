@@ -5,6 +5,7 @@ import pandas as pd
 
 from dbcan.parameter import DiamondConfig, DiamondTCConfig, DiamondSulfataseConfig, DiamondPeptidaseConfig
 from dbcan.constants import (TC,TCDB_ID_COLUMN,SULFATLAS_ID_COLUMN,PEPTIDASE_ID_COLUMN,
+                             INPUT_PROTEIN_NAME,
 
     CAZY_COLUMN_NAMES, TCDB_COLUMN_NAMES, SULFATLAS_COLUMN_NAMES, PEPTIDASE_COLUMN_NAMES,
                              CAZY_DIAMOND_DB, TCDB_DIAMOND_DB,
@@ -144,7 +145,7 @@ class CAZyDiamondProcessor(DiamondProcessor):
 
     def _derive_input_faa(self):
         """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, "uniInput.faa")
+        return os.path.join(self.config.output_dir, INPUT_PROTEIN_NAME)
 
     def _derive_output_file(self):
         """Get output file path"""

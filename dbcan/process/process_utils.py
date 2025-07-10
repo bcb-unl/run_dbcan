@@ -192,7 +192,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
                 protein_id = fields[3]
                 if protein_id in pfam_map:
                     fields[1] = "Pfam"
-                    fields[7] = pfam_map[protein_id]  # Gene Annotation列
+                    fields[7] = pfam_map[protein_id]  # Gene Annotation
                 fout.write('\t'.join(fields) + '\n')
                 continue
             fields = line.rstrip('\n').split('\t')
@@ -201,7 +201,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
                 protein_id = fields[3]
                 if protein_id in pfam_map:
                     fields[1] = "Pfam"
-                    fields[7] = pfam_map[protein_id]  # Gene Annotation列
+                    fields[7] = pfam_map[protein_id]  # Gene Annotation
             fout.write('\t'.join(fields) + '\n')
 
     # 3. process cgc.gff

@@ -5,6 +5,7 @@ from subprocess import Popen, call, check_output
 import argparse,os
 import numpy as np
 from tqdm import tqdm
+import sys
 '''
 design some functions and classes for dbCAN tutorial
 
@@ -49,28 +50,28 @@ class abund_parameters():
             print("You are estimating the abundance of CAZyme!")
             self.output = "fam_abund.out"
             if not os.path.exists(self.CAZyme_annotation):
-                print(f"CAZyme annotation file {self.CAZyme_annotation} dose not exit, please check run_dbcan finish status!")
-                exit(1)
+                print(f"CAZyme annotation file {self.CAZyme_annotation} does not exit, please check run_dbcan finish status!")
+                sys.exit
         if self.function == "fam_substrate_abund":
             self.output = "fam_substrate_abund.out"
             print("You are estimating the abundance of Substrate according to dbCAN-sub!")
             if not os.path.exists(self.dbCANsub_substrate_annotation):
-                print(f"CAZyme annotation file {self.dbCANsub_substrate_annotation} dose not exit, please check run_dbcan finish status!")
-                exit(1)
+                print(f"CAZyme annotation file {self.dbCANsub_substrate_annotation} does not exit, please check run_dbcan finish status!")
+                sys.exit
         if self.function == "CGC_abund":
             self.output = "CGC_abund.out"
             print("You are estimating the abundance of CGC!")
             if not os.path.exists(self.PUL_annotation):
-                print(f"PUL annotation file {self.PUL_annotation} dose not exit, please check run_dbcan finish status!")
-                exit(1)
+                print(f"PUL annotation file {self.PUL_annotation} does not exit, please check run_dbcan finish status!")
+                sys.exit
         if self.function == "CGC_substrate_abund":
             print("You are estimating the abundance of CGC substrate!")
             if not os.path.exists(self.PUL_substrate_annotation):
-                print(f"CGC substrate prediction file {self.PUL_substrate_annotation} dose not exit, please check run_dbcan finish status!")
-                exit(1)
+                print(f"CGC substrate prediction file {self.PUL_substrate_annotation} does not exit, please check run_dbcan finish status!")
+                sys.exit
             if not os.path.exists(self.PUL_annotation):
-                print(f"CGC annotation file {self.PUL_annotation} dose not exit, please check run_dbcan finish status!")
-                exit(1)
+                print(f"CGC annotation file {self.PUL_annotation} does not exit, please check run_dbcan finish status!")
+                sys.exit
         #if self.R2:
         #    self.ngs_pe = True
         #    print("Reads are pair end!")
@@ -78,8 +79,8 @@ class abund_parameters():
         #    self.ngs_pe = False
         #    print("Reads are single end!")
         if not os.path.exists(self.bedtools):
-            print(f"Reads count file {self.bedtools} dose not exit!")
-            exit(1)
+            print(f"Reads count file {self.bedtools} does not exit!")
+            sys.exit
 
 class bedtools_read_count():
     def __init__(self,lines):
@@ -229,7 +230,7 @@ def get_length_readcount(seqid2dbcan_annotation,seqid2readcount):
         read_count = seqid2readcount.get(seqid,"")
         if not read_count:
             print(f"Can not find read count information for CAZyme: {seqid}")
-            exit(1)
+            sys.exit
         seqid_annotation = seqid2dbcan_annotation[seqid]
         seqid_annotation.length = read_count.length
         seqid_annotation.read_count = read_count.read_count
@@ -384,7 +385,7 @@ class CAZyme_Abundance_estimate():
             cgcids.append(self.cgcsubstrate2cgcid_homo[cgc_substrate])
             cgcids_abund.append(self.cgcsubstrate2abunds_homo[cgc_substrate])
         abund_sortidx = np.argsort(abunds)[::-1]
-        print(f"Writring abundance of substrate predicted on dbCAN-PUL to file CGC_substrate_PUL_homology.out!")
+        print(f"Writing abundance of substrate predicted on dbCAN-PUL to file CGC_substrate_PUL_homology.out!")
         with open("CGC_substrate_PUL_homology.out",'w') as f:
             f.write("Substrate\tAbundance(sum of CGC)\tcgcs\tcgcs_abunds\n")
             for idx in abund_sortidx:
@@ -402,7 +403,7 @@ class CAZyme_Abundance_estimate():
             cgcids.append(self.cgcsubstrate2cgcid_major_votting[cgc_substrate])
             cgcids_abund.append(self.cgcsubstrate2abunds_major_votting[cgc_substrate])
         abund_sortidx = np.argsort(abunds)[::-1]
-        print(f"Writring abundance of substrate predicted by major votting to file CGC_substrate_majority_voting.out!")
+        print(f"Writing abundance of substrate predicted by major votting to file CGC_substrate_majority_voting.out!")
         with open("CGC_substrate_majority_voting.out",'w') as f:
             f.write("Substrate\tAbundance(sum of CGC)\tcgcs\tcgcs_abunds\n")
             for idx in abund_sortidx:
@@ -419,9 +420,9 @@ class CAZyme_Abundance_estimate():
             abunds.append(self.family2abund[familyid])
             seqs.append(self.family2seqid[familyid])
         abund_sortidx = np.argsort(abunds)[::-1]
-        print(f"Writring family abundance to file fam_abund.out!")
-        print(f"Writring subfamily(dbsub) abundance to file subfam_abund.out!")
-        print(f"Writring EC abundance to file EC_abund.out!")
+        print(f"Writing family abundance to file fam_abund.out!")
+        print(f"Writing subfamily(dbsub) abundance to file subfam_abund.out!")
+        print(f"Writing EC abundance to file EC_abund.out!")
         fam_file = open(self.pars.output,'w')
         subfam_file = open("subfam_abund.out",'w')
         EC_file = open("EC_abund.out",'w')
@@ -446,7 +447,7 @@ class CAZyme_Abundance_estimate():
             abunds.append(self.substrate2abund[sub])
             genes.append(self.substrate2seqid[sub])
         abund_sortidx = np.argsort(abunds)[::-1]
-        print(f"Writring substrate abundance to file {self.pars.output}!")
+        print(f"Writing substrate abundance to file {self.pars.output}!")
         with open(self.pars.output,'w') as f:
             f.write("Substrate\tAbundance\tGeneID\n")
             for idx in abund_sortidx:
@@ -464,7 +465,7 @@ class CAZyme_Abundance_estimate():
             cgc_standard_records.append(self.cgcid2cgc_standard[cgcid])
 
         abund_sortidx = np.argsort(abunds)[::-1]
-        print(f"Writring CGC abundance to file {self.pars.output}!")
+        print(f"Writing CGC abundance to file {self.pars.output}!")
         with open(self.pars.output,'w') as f:
             f.write("#CGCID\tAbundance(mean)\tSeqid\tSeq_abund\tFams\n")
             for idx in abund_sortidx:
