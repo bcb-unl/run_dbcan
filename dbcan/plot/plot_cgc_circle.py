@@ -4,6 +4,7 @@ import pandas as pd
 import os
 from matplotlib.patches import Patch
 import matplotlib.pyplot as plt
+import csv
 
 from dbcan.parameter import CGCPlotConfig
 from dbcan.constants import (CGC_GFF_FILE, CGC_RESULT_FILE, CGC_CIRCOS_DIR,
@@ -80,7 +81,42 @@ class CGCCircosPlot:
             logging.info(f"DEG file not found: {self.deg_tsv_file}, DEG-related plots will be skipped.")
             self.deg_data = None
 
+        self.load_substrate_labels()
 
+
+    def load_substrate_labels(self):
+        """Robustly load substrate labels from substrate_prediction.tsv by column index."""
+        substrate_file = os.path.join(self.input_dir, "substrate_prediction.tsv")
+        self.cgcid2substrate = {}
+        if not os.path.exists(substrate_file):
+            logging.warning(f"Substrate prediction file not found: {substrate_file}")
+            return
+        try:
+            with open(substrate_file, encoding="utf-8") as f:
+                reader = csv.reader(f, delimiter="\t")
+                header = next(reader)
+                for row in reader:
+                    if not row or row[0].startswith("#"):
+                        continue
+                    # 0: cgcid, 2: dbCAN-PUL substrate, 5: dbCAN-sub substrate
+                    cgcid = row[0].strip() if len(row) > 0 else ""
+                    pul_sub = row[2].strip() if len(row) > 2 else ""
+                    dbsub_sub = row[5].strip() if len(row) > 5 else ""
+                    labels = []
+                    if pul_sub:
+                        for sub in pul_sub.split(";"):
+                            sub = sub.strip()
+                            if sub:
+                                labels.append(f"{sub}")
+                    if dbsub_sub:
+                        for sub in dbsub_sub.split(";"):
+                            sub = sub.strip()
+                            if sub:
+                                labels.append(f"{sub}")
+                    if cgcid and labels:
+                        self.cgcid2substrate[cgcid] = "\n".join(labels)
+        except Exception as e:
+            logging.warning(f"Error reading substrate prediction file: {e}")
 
     def plot_feature_outer(self, circos=None):
         """Plot outer track with position markers"""
@@ -142,7 +178,7 @@ class CGCCircosPlot:
                             cds_track.genomic_features(feature, fc=color)
 
     def plot_cgc_range(self, circos=None, sector_name=None):
-        """Plot CGC range as rectangles"""
+        """Plot CGC range as rectangles, with substrate label(s) and up/down regulation if available"""
         if circos is None:
             circos = self.circos
 
@@ -154,17 +190,13 @@ class CGCCircosPlot:
             cgc_track.axis(fc=CGC_TRACK_BG_COLOR, ec="none")
             cgc_track.grid(2, color=CGC_GRID_COLOR)
 
-            # Get sector size for validation
             sector_size = self.seqid2size[sector.name]
 
-            # Filter data for current sector
             if self.tsv_data.empty or CONTIG_ID_COLUMN not in self.tsv_data.columns:
                 continue
 
-            # use sector name as string for comparison
             sector_data = self.tsv_data[self.tsv_data[CONTIG_ID_COLUMN].astype(str) == sector.name]
 
-            # Process CGC ranges
             if CGC_ID_COLUMN in sector_data.columns:
                 for cgc_id in sector_data[CGC_ID_COLUMN].unique():
                     cgc_rows = sector_data[sector_data[CGC_ID_COLUMN] == cgc_id]
@@ -173,7 +205,6 @@ class CGCCircosPlot:
                             start = cgc_rows[GENE_START_COLUMN].min()
                             end = cgc_rows[GENE_STOP_COLUMN].max()
 
-                            # verify coordinates are within sector size
                             if start >= sector_size or end > sector_size:
                                 logging.warning(
                                     f"Skipping CGC {cgc_id} with coordinates ({start}-{end}) "
@@ -181,15 +212,20 @@ class CGCCircosPlot:
                                 )
                                 continue
 
-                            # make sure start < end
                             start = max(0, min(start, sector_size-1))
                             end = max(1, min(end, sector_size))
 
                             cgc_track.rect(start, end, fc=CGC_RANGE_COLOR, ec=CGC_RANGE_BORDER_COLOR)
 
-                            # if end - start > sector_size * 0.01:
-                            cgc_track.annotate((start + end) / 2, cgc_id, label_size=CGC_LABEL_SIZE)
-
+                            substrate_key = f"{sector.name}|{cgc_id}".strip()
+                            substrate_label = self.cgcid2substrate.get(substrate_key, None)
+                            reg_label = self.get_cgc_regulation_label(cgc_rows)
+                            label = f"{cgc_id}"
+                            if substrate_label:
+                                label += f"\n{substrate_label}"
+                            if reg_label:
+                                label += f"\n{reg_label}"
+                            cgc_track.annotate((start + end) / 2, label, label_size=CGC_LABEL_SIZE, text_kws={"color": "red"} if substrate_label else {}, line_kws={"color": "red"} if reg_label == "up" else {"color": "blue"} if reg_label == "down" else {} )
                         except Exception as e:
                             logging.warning(f"Error plotting CGC {cgc_id} on {sector.name}: {str(e)}")
 
@@ -263,6 +299,26 @@ class CGCCircosPlot:
     def get_feature_color(self, cgc_type):
         """Get color for different feature types"""
         return CGC_FEATURE_COLORS.get(cgc_type, "gray")
+
+    def get_cgc_regulation_label(self, cgc_rows):
+        """Determine if a CGC is up/down regulated based on DEG data"""
+        if self.deg_data is None or cgc_rows.empty:
+            return ""
+        gene_ids = cgc_rows[CGC_PROTEIN_ID_FIELD].astype(str).tolist()
+        deg_sub = self.deg_data[self.deg_data['protein_id'].astype(str).isin(gene_ids)]
+        if deg_sub.empty:
+            return ""
+        up_count = (deg_sub['log2FC'] > 0).sum()
+        down_count = (deg_sub['log2FC'] < 0).sum()
+        total = len(gene_ids)
+        if total == 0:
+            return ""
+        if up_count / total >= 0.5:
+            return "up"
+        elif down_count / total >= 0.5:
+            return "down"
+        else:
+            return ""
 
     def add_legend(self, circos=None):
         """Add legend to the plot"""

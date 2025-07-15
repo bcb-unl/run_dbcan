@@ -24,4 +24,4 @@ dependencies:
   - megahit
   - kraken2
   - krakentools
-  - dbcan==5.0.0
+  - dbcan
