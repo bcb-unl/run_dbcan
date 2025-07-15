@@ -1,0 +1,22 @@
+name: CAZyme_annotation_main
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+  - agbiome
+dependencies:
+  - python=3.10
+  - diamond
+  - biopython=1.84
+  - pysam
+  - samtools
+  - bwa
+  - mmseqs2
+  - trim-galore
+  - megahit
+  - kraken2
+  - krakentools
+  - dbcan
+  - flye
+  - minimap2
+  - bbtools
