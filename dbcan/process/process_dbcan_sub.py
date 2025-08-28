@@ -65,7 +65,7 @@ class DBCANSUBProcessor:
             df = pd.read_csv(self.mapping_file, sep='\t', header=None, skiprows=1, usecols=[2, 4, 0])
             df[4] = df[4].str.strip().fillna('-')
             df['key'] = df.apply(lambda x: (x[2], x[4]), axis=1)
-            return pd.Series(df[0].values, index=pd.MultiIndex.from_tuples(df['key'])).to_dict()
+            return df.drop_duplicates().groupby('key')[0].agg(lambda x: ';'.join(sorted(set(x)))).to_dict()
         except FileNotFoundError:
             logging.error(f"Can't find substrate mapping file: {self.mapping_file}")
             return {}
@@ -143,18 +143,18 @@ class DBCANSUBProcessor:
         if key1.startswith('CBM'):
             key2 = '-'
             if (key1, key2) in subs_dict:
-                substrates.add(subs_dict[(key1, key2)])
+                substrates.update(subs_dict[(key1, key2)].split(';'))
         else:
             # Process non-CBM families
             for p in parts:
                 if ':' in p and '.' in p.split(':')[0] and len(p.split(':')[0].split('.')) == 4:
                     key2 = p.split(':')[0]
                     if (key1, key2) in subs_dict:
-                        substrates.add(subs_dict[(key1, key2)])
+                        substrates.update(subs_dict[(key1, key2)].split(';'))
 
             # If no substrates found, try with default EC
             if not substrates and not key1.startswith('CBM'):
                 if (key1, '-') in subs_dict:
-                    substrates.add(subs_dict[(key1, '-')])
+                    substrates.update(subs_dict[(key1, '-')].split(';'))
 
         return ';'.join(sorted(substrates)) if substrates else '-'
