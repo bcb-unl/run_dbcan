@@ -1,0 +1,6 @@
+import dbcan.constants.base_constants as base_constants
+
+CGC_RESULT_FILE = base_constants.CGC_RESULT_FILE
+CGC_SUB_PREDICTION_FILE= base_constants.CGC_SUB_PREDICTION_FILE
+DBCAN_SUB_RESULT_FILE = base_constants.DBCAN_SUB_HMM_RESULT_FILE
+OVERVIEW_FILE = base_constants.OVERVIEW_FILE

@@ -1,0 +1,23 @@
+import dbcan.constants.base_constants as base_constants
+
+
+CGC_RESULT_FILE = base_constants.CGC_RESULT_FILE
+CGC_SUB_PREDICTION_FILE = base_constants.CGC_SUB_PREDICTION_FILE
+
+
+CGC_FEATURE_LEGEND = base_constants.CGC_FEATURE_LEGEND
+CGC_FEATURE_COLORS = base_constants.CGC_FEATURE_COLORS
+
+GENE_LABEL_COLOR=base_constants.GENE_LABEL_COLOR
+GENE_LABELS=base_constants.GENE_LABELS
+CGC_SUB_PREDICTION_FILE = base_constants.CGC_SUB_PREDICTION_FILE
+PUL_DIAMOND_FILE = base_constants.PUL_DIAMOND_FILE
+CGC_RESULT_FILE = base_constants.CGC_RESULT_FILE
+
+
+
+GFF_PROTEIN_ID_COL = base_constants.GFF_PROTEIN_ID_COL
+GFF_CGC_ANNOTATION_COL = base_constants.GFF_CGC_ANNOTATION_COL
+
+
+CGC_ID_FIELD= base_constants.CGC_ID_FIELD

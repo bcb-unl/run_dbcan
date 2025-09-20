@@ -1,32 +1,63 @@
 import rich_click as click
-from dataclasses import fields
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field, fields
+from typing import Optional, List
+
 import psutil
 
 
+@dataclass
+class BaseConfig:
+    @staticmethod
+    def from_dict(config_class, config_dict):
+        field_names = {f.name for f in fields(config_class)}
+        filtered_dict = {k: v for k, v in config_dict.items() if k in field_names}
+        return config_class(**filtered_dict)
 
-# Utility to create config dataclass from kwargs with optional namespacing
-def create_config(config_class, namespace: Optional[str] = None, **kwargs):
-    """
-    Create a configuration object from a dataclass, using kwargs with optional namespacing.
-    If namespace is provided, parameters with the namespace suffix are used preferentially.
-    For example, for namespace="tc", "e_value_threshold_tc" in kwargs will override "e_value_threshold".
-    1. namespaced parameter (e.g., e_value_threshold_tc) if exists
-    2. general parameter (e.g., e_value_threshold)
-    3. default value in dataclass
-    """
-    field_names = {f.name for f in fields(config_class)}
-    resolved: Dict[str, Any] = {}
-    for fname in field_names:
-        ns_key = f"{fname}_{namespace}" if namespace else None
-        if ns_key and ns_key in kwargs:
-            resolved[fname] = kwargs[ns_key]
-        elif fname in kwargs:
-            resolved[fname] = kwargs[fname]
-    return config_class.from_dict(config_class, resolved)
+
+@dataclass
+class GeneralConfig(BaseConfig):
+    input_raw_data: str = None
+    output_dir: str = None
+    mode: str = None
+    db_dir: str = None
+    
+    #thread
 
 
 
+@dataclass
+class OverviewGeneratorConfig(BaseConfig):
+    output_dir: str
+
+
+@dataclass
+class GFFConfig(BaseConfig):
+    output_dir: str
+    input_gff: str
+    gff_type: str
+
+
+
+
+@dataclass
+class CGCPlotConfig(BaseConfig):
+    output_dir: str
+
+
+@dataclass
+class SyntenicPlotConfig:
+    output_dir: str
+    db_dir: str
+    input_sub_out: Optional[str] = None
+    blastp: Optional[str] = None
+    cgc: Optional[str] = None
+
+
+def create_config(config_class, **kwargs):
+    return config_class.from_dict(config_class, kwargs)
+
+
+# Define shared options
 output_dir_option = click.option('--output_dir', required=True, help='Directory for the output files')
 threads_option = click.option('--threads',  type=int, help='Number of threads', default=psutil.cpu_count())
 
@@ -46,7 +77,6 @@ def general_options(func):
 
 def database_options(func):
     func = click.option('--db_dir', required=True, help='Directory for the database')(func)
-    func = click.option('--cgc/--no-cgc', is_flag=True, default=True, help='Enable CGC-related databases')(func)
     return func
 
 def diamond_options(func):
@@ -56,7 +86,7 @@ def diamond_options(func):
 
 def diamond_tc_options(func):
     func = click.option('--e_value_threshold_tc', type=float, help='E-value threshold for TC' ,default=1e-4)(func)
-    func = click.option('--coverage_threshold_tc', type=float, help='Coverage threshold for TC', default=35)(func)
+    func = click.option('--coverage_threshold_tc', type=float, help='Coverage threshold for TC', default=0.35)(func)
     return func
 def diamond_tf_options(func):
     func = click.option('--e_value_threshold_tf', type=float, help='E-value threshold for TF' ,default=1e-4)(func)
@@ -85,37 +115,17 @@ def pyhmmer_stp(func):
     func = click.option('--coverage_threshold_stp',  type=float, help='Coverage threshold for STP HMMER',default=0.35)(func)
     return func
 
-def diamond_sulfatase_options(func):
-    func = click.option('--e_value_threshold_sulfatase', type=float, help='E-value threshold for Sulfatase', default=1e-4)(func)
-    func = click.option('--coverage_threshold_sulfatase', type=float, help='Coverage threshold for Sulfatase', default=0.35)(func)
-    return func
-
-def diamond_peptidase_options(func):
-    func = click.option('--e_value_threshold_peptidase', type=float, help='E-value threshold for Peptidase', default=1e-4)(func)
-    func = click.option('--coverage_threshold_peptidase', type=float, help='Coverage threshold for Peptidase', default=0.35)(func)
-    return func
-
 def pyhmmer_pfam(func):
     func = click.option('--run_pfam', help='Run Pfam HMMER for CGC null gene annotation', is_flag=True, default=False)(func)
     func = click.option('--e_value_threshold_pfam',  type=float, help='E-value threshold for Pfam HMMER',default=1e-4)(func)
     func = click.option('--coverage_threshold_pfam',  type=float, help='Coverage threshold for Pfam HMMER',default=0.35)(func)
     func = click.option('--null_from_gff', is_flag=True, default=False,
-                        help='Extract null genes from cgc.gff instead of cgc_standard_out.tsv')(func)
+                        help='Extract null genes from cgc.gff instead of cgc_standard_out.tsv')(func)  # 新增
     return func
 
 def cgc_gff_option(func):
-    func = click.option(
-        '--input_gff',
-        required=False,
-        default=None,
-        help='Input GFF file. When --mode != protein this is auto-set to <output_dir>/uniInput.gff'
-    )(func)
-    func = click.option(
-        '--gff_type',
-        required=False,
-        default=None,
-        help='GFF file type. Auto-set to prodigal when --mode != protein'
-    )(func)
+    func = click.option('--input_gff', required=True, help='input GFF file')(func)
+    func = click.option('--gff_type', required=True, help='GFF file type')(func)
     return func
 
 def cgc_options(func):
@@ -132,7 +142,7 @@ def cgc_options(func):
     func = click.option('--use_null_genes/--no-use_null_genes', is_flag=True, default=True, help='Use null genes in CGC annotation.')(func)
     func = click.option('--use_distance', is_flag=True, default=False, help='Use base pair distance in CGC annotation.')(func)
 
-    # extended options
+    # 扩展参数
     func = click.option('--extend_mode',
                         type=click.Choice(['none', 'bp', 'gene']),
                         default='none',
@@ -146,7 +156,7 @@ def cgc_options(func):
                         default=0,
                         help='When --extend_mode=gene, extend this many genes on each side.')(func)
 
-    # newly added parameters
+    # 新增阈值与 GFF 过滤
     func = click.option('--min_core_cazyme',
                         type=int, default=1,
                         help='Minimum number of core CAZymes required per CGC.')(func)
@@ -213,6 +223,9 @@ def topology_annotation_options(func):
     func = click.option('--run_signalp/--no-run_signalp',
                         default=False,
                         help='Run SignalP6.0 (biolib) to predict signal peptides for all proteins in overview')(func)
+    func = click.option('--run_deeptmhmm/--no-run_deeptmhmm',
+                        default=False,
+                        help='Run DeepTMHMM (biolib) to predict transmembrane helices for all proteins in overview')(func)
     func = click.option('--signalp_org',
                         default='other',
                         type=click.Choice(['other', 'euk']),
@@ -220,7 +233,7 @@ def topology_annotation_options(func):
                         help='Organism type passed to SignalP6')(func)
     func = click.option('--force_topology/--no-force_topology',
                         default=False,
-                        help='Overwrite existing SignalP columns instead of only filling empty cells')(func)
+                        help='Overwrite existing SignalP / DeepTMHMM columns instead of only filling empty cells')(func)
     return func
 
 

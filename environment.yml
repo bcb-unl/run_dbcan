@@ -6,5 +6,5 @@ channels:
 dependencies:
   - python>=3.10
   - diamond
-  - dbcan==5.0.0
+  - dbcan
 

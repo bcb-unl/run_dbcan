@@ -1,288 +1,175 @@
-import pyhmmer
+from __future__ import annotations
+
 import logging
+from pathlib import Path
+from abc import ABC
 import psutil
-import pandas as pd
-import os
-from dbcan.parameter import PyHMMERConfig, DBCANSUBProcessorConfig, PyHMMERSTPConfig, PyHMMERTFConfig
+import pyhmmer
+
+from dbcan.configs.pyhmmer_config import (
+    PyHMMERConfig,
+    PyHMMERDBCANConfig,
+    DBCANSUBConfig,
+    PyHMMERSTPConfig,
+    PyHMMERTFConfig,
+    PyHMMERPfamConfig
+)
 from dbcan.process.process_utils import process_results
 from dbcan.process.process_dbcan_sub import DBCANSUBProcessor
-from dbcan.constants import ( DBCAN_HMM_FILE, DBCAN_SUB_HMM_FILE,
-                             TF_HMM_FILE, STP_HMM_FILE, INPUT_PROTEIN_NAME,
-                             NON_CAZYME_PROTEIN_FILE, DBCAN_HMM_RESULT_FILE,
-                             DBCAN_SUB_HMM_RESULT_FILE, TF_HMM_RESULT_FILE,
-                             STP_HMM_RESULT_FILE, SUBSTRATE_MAPPING_FILE,
-                             GT2_FAMILY_NAME, GT2_PREFIX, PFAM_HMM_FILE,
-                             PFAM_HMM_RESULT_FILE, NULL_PROTEIN_FILE)
+import dbcan.constants.pyhmmer_search_constants as P
+
+logger = logging.getLogger(__name__)
 
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+class PyHMMERProcessor(ABC):
+    """Base PyHMMER processor: config is the single source of truth."""
 
-class PyHMMERProcessor:
-    """Base PyHMMER processor class using template method pattern"""
+    # Subclasses must set these class attributes
+    # HMM_FILE: str = ""
+    # OUTPUT_FILE: str = ""
+    # EVALUE_ATTR: str = ""          # name of e-value attribute in config
+    # COVERAGE_ATTR: str = ""        # name of coverage attribute in config
+    # USE_NULL_INPUT: bool = False   # for Pfam (optional alternate input)
 
-    def __init__(self, config):
-        """Initialize with configuration and set up processor attributes"""
+    def __init__(self, config: PyHMMERConfig):
         self.config = config
+        self._validate_basic()
 
-        # Use template method pattern to set up all required attributes
-        self._setup_processor()
+    # -------- Properties --------
+    @property
+    def hmm_file(self) -> Path:
+        return Path(self.config.db_dir) / self.config.hmm_file
 
-    def _setup_processor(self):
-        """Set up processor attributes - template method"""
-        self.hmm_file = self._derive_hmm_file()
-        self.input_faa = self._derive_input_faa()
-        self.output_file = self._derive_output_file()
-        self.e_value_threshold = self._derive_e_value_threshold()
-        self.coverage_threshold = self._derive_coverage_threshold()
-        self.hmmer_cpu = self._derive_threads()
+    @property
+    def input_faa(self) -> Path:
+        return Path(self.config.output_dir) / self.config.input_faa
 
-        # Validate required attributes
-        self._validate_attributes()
+    @property
+    def output_file(self) -> Path:
+        return Path(self.config.output_dir) / self.config.output_file
 
-    def _validate_attributes(self):
-        """Validate that all required attributes are properly set"""
-        required_attrs = ['hmm_file', 'input_faa', 'output_file',
-                        'e_value_threshold', 'coverage_threshold', 'hmmer_cpu']
+    @property
+    def e_value_threshold(self) -> float:
+        return float(self.config.evalue_threshold)
 
-        for attr in required_attrs:
-            if getattr(self, attr, None) is None:
-                raise ValueError(f"Required attribute '{attr}' was not properly set")
+    @property
+    def coverage_threshold(self) -> float:
+        return float(self.config.coverage_threshold)
 
-    def _derive_hmm_file(self):
-        """Derive HMM file path - to be implemented by subclasses"""
-        # Abstract method - force subclasses to implement
-        raise NotImplementedError("Subclasses must implement _derive_hmm_file()")
+    @property
+    def hmmer_cpu(self) -> int:
+        return int(self.config.threads)
 
-    def _derive_input_faa(self):
-        """Derive input protein sequence file path - to be implemented by subclasses"""
-        # Abstract method - force subclasses to implement
-        raise NotImplementedError("Subclasses must implement _derive_input_faa()")
+    # -------- Validation --------
+    def _validate_basic(self):
+        self.output_file.parent.mkdir(parents=True, exist_ok=True)
+        # Existence checks deferred to run() for flexibility
 
-    def _derive_output_file(self):
-        """Derive output file path - to be implemented by subclasses"""
-        # Abstract method - force subclasses to implement
-        raise NotImplementedError("Subclasses must implement _derive_output_file()")
-
-    def _derive_e_value_threshold(self):
-        """Derive E-value threshold - to be implemented by subclasses"""
-        # Abstract method - force subclasses to implement
-        raise NotImplementedError("Subclasses must implement _derive_e_value_threshold()")
-
-    def _derive_coverage_threshold(self):
-        """Derive coverage threshold - to be implemented by subclasses"""
-        # Abstract method - force subclasses to implement
-        raise NotImplementedError("Subclasses must implement _derive_coverage_threshold()")
-
-    def _derive_threads(self):
-        """Derive number of threads to use"""
-        # Default implementation uses the threads from config
-        return self.config.threads
-
+    # -------- Core search --------
     def hmmsearch(self):
-        """Execute HMMER search"""
+        # Validate files before search
+        if not self.hmm_file.exists():
+            raise FileNotFoundError(f"HMM file not found: {self.hmm_file}")
+        if not self.input_faa.exists():
+            raise FileNotFoundError(f"Input protein file not found: {self.input_faa}")
+
         available_memory = psutil.virtual_memory().available
-        target_size = os.stat(self.input_faa).st_size
-        hmm_files = pyhmmer.plan7.HMMFile(self.hmm_file)
+        target_size = self.input_faa.stat().st_size
         results = []
+        cpus = max(1, min(self.hmmer_cpu, psutil.cpu_count() or 1))
 
-        with pyhmmer.easel.SequenceFile(self.input_faa, digital=True) as seqs:
-            targets = seqs.read_block() if target_size < available_memory * 0.1 else seqs
-            for hits in pyhmmer.hmmsearch(hmm_files, targets, cpus=self.hmmer_cpu, domE=self.e_value_threshold):
-                for hit in hits:
-                    for domain in hit.domains.included:
-                        coverage = (domain.alignment.hmm_to - domain.alignment.hmm_from + 1) / domain.alignment.hmm_length
-                        hmm_name = domain.alignment.hmm_name.decode('utf-8')
-                        if GT2_PREFIX in hmm_name:
-                            hmm_name = GT2_FAMILY_NAME
-                        hmm_length = domain.alignment.hmm_length
-                        target_name = domain.alignment.target_name.decode('utf-8')
-                        target_length = domain.alignment.target_length
-                        i_evalue = domain.i_evalue
-                        hmm_from = domain.alignment.hmm_from
-                        hmm_to = domain.alignment.hmm_to
-                        target_from = domain.alignment.target_from
-                        target_to = domain.alignment.target_to
-                        hmm_file_name = hmm_files.name.split("/")[-1].split(".")[0]
-                        if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
-                            results.append([hmm_name, hmm_length, target_name, target_length, i_evalue, hmm_from, hmm_to, target_from, target_to, coverage, hmm_file_name])
+        logger.info(
+            f"Running HMM search: hmm={self.hmm_file.name} input={self.input_faa.name} "
+            f"out={self.output_file.name} evalue={self.e_value_threshold} "
+            f"cov={self.coverage_threshold} cpus={cpus}"
+        )
 
-        logging.info(f"{self.hmm_file} PyHMMER search completed. Found {len(results)} hits.")
-        process_results(results, self.output_file)
+        try:
+            with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
+                with pyhmmer.easel.SequenceFile(str(self.input_faa), digital=True) as seqs:
+                    targets = seqs.read_block() if target_size < available_memory * 0.1 else seqs
+                    for hits in pyhmmer.hmmsearch(
+                        hmm_file_handle,
+                        targets,
+                        cpus=cpus,
+                        domE=self.e_value_threshold
+                    ):
+                        for hit in hits:
+                            for domain in hit.domains.included:
+                                aln = domain.alignment
+                                coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
+                                hmm_name = aln.hmm_name.decode('utf-8')
+                                if P.GT2_PREFIX in hmm_name:
+                                    hmm_name = P.GT2_FAMILY_NAME
+                                i_evalue = domain.i_evalue
+                                if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
+                                    results.append([
+                                        hmm_name,
+                                        aln.hmm_length,
+                                        aln.target_name.decode('utf-8'),
+                                        aln.target_length,
+                                        i_evalue,
+                                        aln.hmm_from,
+                                        aln.hmm_to,
+                                        aln.target_from,
+                                        aln.target_to,
+                                        coverage,
+                                        self.hmm_file.stem
+                                    ])
+        except Exception as e:
+            logger.error(f"HMM search failed for {self.hmm_file}: {e}")
+            raise
+
+        logger.info(f"{self.hmm_file.name} search completed. Hits: {len(results)}")
+        process_results(results, str(self.output_file))
+
+    # -------- Orchestration --------
+    def run(self):
+        self.hmmsearch()
 
 
 class PyHMMERDBCANProcessor(PyHMMERProcessor):
-    """dbCAN HMM processor"""
 
-    def _derive_hmm_file(self):
-        """Get dbCAN HMM file path"""
-        return os.path.join(self.config.db_dir, DBCAN_HMM_FILE)
-
-    def _derive_input_faa(self):
-        """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, INPUT_PROTEIN_NAME)
-
-    def _derive_output_file(self):
-        """Get output file path"""
-        return os.path.join(self.config.output_dir, DBCAN_HMM_RESULT_FILE)
-
-    def _derive_e_value_threshold(self):
-        """Get E-value threshold for dbCAN searches"""
-        return self.config.e_value_threshold_dbcan
-
-    def _derive_coverage_threshold(self):
-        """Get coverage threshold for dbCAN searches"""
-        return self.config.coverage_threshold_dbcan
-
-    def _derive_threads(self):
-        """Derive number of threads to use"""
-        # Default implementation uses the threads from config
-        return self.config.threads
-
-    def run(self):
-        """Run dbCAN HMM search"""
-        self.hmmsearch()
+    def __init__(self, config: PyHMMERDBCANConfig):
+        super().__init__(config)
 
 
 class PyHMMERDBCANSUBProcessor(PyHMMERProcessor):
-    """dbCAN-sub HMM processor"""
-
-    def __init__(self, config):
-        """Initialize with configuration"""
+    def __init__(self, config: DBCANSUBConfig):
         super().__init__(config)
-        # Set additional attributes specific to dbCAN-sub
-        self.mapping_file = self._derive_mapping_file()
 
-    def _derive_hmm_file(self):
-        """Get dbCAN-sub HMM file path"""
-        return os.path.join(self.config.db_dir, DBCAN_SUB_HMM_FILE)
-
-    def _derive_input_faa(self):
-        """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, INPUT_PROTEIN_NAME)
-
-    def _derive_output_file(self):
-        """Get output file path"""
-        return os.path.join(self.config.output_dir, DBCAN_SUB_HMM_RESULT_FILE)
-
-    def _derive_e_value_threshold(self):
-        """Get E-value threshold for dbCAN-sub searches"""
-        return self.config.e_value_threshold_dbsub
-
-    def _derive_coverage_threshold(self):
-        """Get coverage threshold for dbCAN-sub searches"""
-        return self.config.coverage_threshold_dbsub
-
-    def _derive_mapping_file(self):
-        """Get substrate mapping file path"""
-        return os.path.join(self.config.db_dir, SUBSTRATE_MAPPING_FILE)
-
-    def _derive_threads(self):
-        """Derive number of threads to use"""
-        # Default implementation uses the threads from config
-        return self.config.threads
+    @property
+    def mapping_file(self) -> Path:
+        return Path(self.config.db_dir) / P.SUBSTRATE_MAPPING_FILE
 
     def run(self):
-        """Run dbCAN-sub HMM search and process results"""
-        self.hmmsearch()
-        dbcansub_processor = DBCANSUBProcessor(self.config)
-        dbcansub_processor.process_dbcan_sub()
+        super().run()
+        # Post-processing specific to dbCAN-sub
+        sub_proc = DBCANSUBProcessor(self.config)
+        sub_proc.process_dbcan_sub()
 
 
 class PyHMMERTFProcessor(PyHMMERProcessor):
-    """Transcription Factor HMM processor"""
-
-    def _derive_hmm_file(self):
-        """Get TF HMM file path"""
-        return os.path.join(self.config.db_dir, TF_HMM_FILE)
-
-    def _derive_input_faa(self):
-        """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, INPUT_PROTEIN_NAME)
-
-    def _derive_output_file(self):
-        """Get output file path"""
-        return os.path.join(self.config.output_dir, TF_HMM_RESULT_FILE)
-
-    def _derive_e_value_threshold(self):
-        """Get E-value threshold for TF searches"""
-        return self.config.e_value_threshold_tf
-
-    def _derive_coverage_threshold(self):
-        """Get coverage threshold for TF searches"""
-        return self.config.coverage_threshold_tf
-
-    def _derive_threads(self):
-        """Derive number of threads to use"""
-        # Default implementation uses the threads from config
-        return self.config.threads
+    def __init__(self, config: PyHMMERTFConfig):
+        super().__init__(config)
 
     def run(self):
-        """Run TF HMM search"""
-        self.hmmsearch()
-
+        if self.config.fungi:
+            super().run()
+        else:
+            logger.info("TFProcessor: fungi=False, skipping TF HMM run.")
 
 class PyHMMERSTPProcessor(PyHMMERProcessor):
-    """Signal Transduction Protein HMM processor"""
-
-    def _derive_hmm_file(self):
-        """Get STP HMM file path"""
-        return os.path.join(self.config.db_dir, STP_HMM_FILE)
-
-    def _derive_input_faa(self):
-        """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, INPUT_PROTEIN_NAME)
-
-    def _derive_output_file(self):
-        """Get output file path"""
-        return os.path.join(self.config.output_dir, STP_HMM_RESULT_FILE)
-
-    def _derive_e_value_threshold(self):
-        """Get E-value threshold for STP searches"""
-        return self.config.e_value_threshold_stp
-
-    def _derive_coverage_threshold(self):
-        """Get coverage threshold for STP searches"""
-        return self.config.coverage_threshold_stp
-
-    def _derive_threads(self):
-        """Derive number of threads to use"""
-        # Default implementation uses the threads from config
-        return self.config.threads
-
-    def run(self):
-        """Run STP HMM search"""
-        self.hmmsearch()
-
-
+    def __init__(self, config: PyHMMERSTPConfig):
+        super().__init__(config)
 
 class PyHMMERPfamProcessor(PyHMMERProcessor):
-    """Pfam Protein HMM processor"""
+    def __init__(self, config: PyHMMERPfamConfig):
+        super().__init__(config)
 
-    def _derive_hmm_file(self):
-        """Get Pfam HMM file path"""
-        return os.path.join(self.config.db_dir, PFAM_HMM_FILE)
+    @property
+    def input_faa(self) -> Path:
+        fname = P.NULL_PROTEIN_FILE if self.config.null_from_gff else P.INPUT_PROTEIN_FILE
+        return Path(self.config.output_dir) / fname
 
-    def _derive_input_faa(self):
-        """Get input protein sequence file path"""
-        return os.path.join(self.config.output_dir, NULL_PROTEIN_FILE)
 
-    def _derive_output_file(self):
-        """Get output file path"""
-        return os.path.join(self.config.output_dir, PFAM_HMM_RESULT_FILE)
-
-    def _derive_e_value_threshold(self):
-        """Get E-value threshold for Pfam searches"""
-        return self.config.e_value_threshold_pfam
-
-    def _derive_coverage_threshold(self):
-        """Get coverage threshold for Pfam searches"""
-        return self.config.coverage_threshold_pfam
-
-    def _derive_threads(self):
-        """Derive number of threads to use"""
-        # Default implementation uses the threads from config
-        return self.config.threads
-
-    def run(self):
-        """Run Pfam HMM search"""
-        self.hmmsearch()

@@ -11,10 +11,10 @@ def run_dbCAN_input_process(config):
     processor.process_input()
 
 def run_dbCAN_cazy_diamond(config):
-    from dbcan.annotation.diamond import CAZyDiamondProcessor
-    processor = CAZyDiamondProcessor(config)
+    from dbcan.annotation.diamond import CAZYDiamondProcessor
+    processor = CAZYDiamondProcessor(config)
     processor.run()
-    processor.format_results()
+    #processor.format_results()
 
 def run_dbCAN_hmmer(config):
     from dbcan.annotation.pyhmmer_search import PyHMMERDBCANProcessor
@@ -72,25 +72,25 @@ def run_dbCAN_tcdb_diamond(config):
     from dbcan.annotation.diamond import TCDBDiamondProcessor
     processor = TCDBDiamondProcessor(config)
     processor.run()
-    processor.format_results()
+    #processor.format_results()
 
 def run_dbCAN_sulfatlas_diamond(config):
     from dbcan.annotation.diamond import SulfatlasDiamondProcessor
     processor = SulfatlasDiamondProcessor(config)
     processor.run()
-    processor.format_results()
+    #processor.format_results()
 
 def run_dbCAN_peptidase_diamond(config):
     from dbcan.annotation.diamond import PeptidaseDiamondProcessor
     processor = PeptidaseDiamondProcessor(config)
     processor.run()
-    processor.format_results()
+    #processor.format_results()
 
 def run_dbCAN_diamond_tf(config):
     from dbcan.annotation.diamond import TFDiamondProcessor
     processor = TFDiamondProcessor(config)
     processor.run()
-    processor.format_results()
+    #processor.format_results()
 
 def run_dbCAN_hmmer_tf(config):
     from dbcan.annotation.pyhmmer_search import PyHMMERTFProcessor
@@ -132,10 +132,28 @@ def run_dbCAN_CGCFinder(config):
     cgc_finder.run()
 
 def run_dbCAN_Pfam_null_cgc(config):
-    from dbcan.process.process_utils import process_cgc_null_pfam_annotation,extract_null_fasta_from_cgc,annotate_cgc_null_with_pfam_and_gff
+    from dbcan.process.process_utils import (
+        process_cgc_null_pfam_annotation,
+        extract_null_fasta_from_cgc,
+        annotate_cgc_null_with_pfam_and_gff,
+        extract_null_fasta_from_gff
+    )
     from dbcan.annotation.pyhmmer_search import PyHMMERPfamProcessor
 
-    extract_null_fasta_from_cgc(os.path.join(config.output_dir, 'cgc_standard_out.tsv'), os.path.join(config.output_dir, 'uniInput.faa'), os.path.join(config.output_dir, 'null_proteins.faa'))
+    # choose the source of null genes
+    if getattr(config, 'null_from_gff', False):
+        extract_null_fasta_from_gff(
+            os.path.join(config.output_dir, 'cgc.gff'),
+            os.path.join(config.output_dir, 'uniInput.faa'),
+            os.path.join(config.output_dir, 'null_proteins.faa')
+        )
+    else:
+        extract_null_fasta_from_cgc(
+            os.path.join(config.output_dir, 'cgc_standard_out.tsv'),
+            os.path.join(config.output_dir, 'uniInput.faa'),
+            os.path.join(config.output_dir, 'null_proteins.faa')
+        )
+
     pfam_processor = PyHMMERPfamProcessor(config)
     pfam_processor.run()
     process_cgc_null_pfam_annotation(config)
@@ -157,11 +175,35 @@ def run_dbcan_syn_plot(config):
     from dbcan.plot.syntenic_plot import SyntenicPlot
     syntenic_plot = SyntenicPlot(config)
 
-    syntenic_plot.syntenic_plot_allpairs(config)
+    syntenic_plot.syntenic_plot_allpairs()
 
 def run_dbCAN_cgc_circle(config):
     from dbcan.plot.plot_cgc_circle import CGCCircosPlot
     cgc_plot = CGCCircosPlot(config)
     cgc_plot.plot()
+
+def run_dbCAN_topology_annotation(config):
+    """
+    Run SignalP6 to annotate proteins in overview.tsv with signal peptide information.
+    DeepTMHMM has been removed due to licensing issues.
+    """
+    import logging
+    if not config.run_signalp:
+        logging.info("No SignalP requested; skipping.")
+        return
+    try:
+        from dbcan.annotation.signalp_tmhmm import SignalPTMHMMProcessor
+        processor = SignalPTMHMMProcessor(config)
+        results = processor.run()
+        if results and 'signalp_out' in results:
+            logging.info(f"SignalP results: {results['signalp_out']}")
+        else:
+            logging.warning("SignalP produced no results")
+    except ImportError as e:
+        logging.error(f"SignalP module import failed: {e}")
+    except Exception as e:
+        logging.error(f"SignalP annotation failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 
