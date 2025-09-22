@@ -114,7 +114,7 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         if tfdiamond_config is not None and getattr(tfdiamond_config, 'prokaryotic', True):
             output_files['TF_prok'] = out_dir_path / B.TF_DIAMOND_OUTPUT
         if tf_config is not None and getattr(tf_config, 'fungi', False):
-            output_files['TF_fungi'] = out_dir_path / B.TF_HMM_RESULTS
+            output_files['TF_fungi'] = out_dir_path / B.TF_HMM_RESULT_FILE
 
         frames = []
         for name, fpath in output_files.items():
