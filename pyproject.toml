@@ -76,9 +76,9 @@ Home-page = "https://bcb.unl.edu/dbCAN2/"
 
 [project.scripts]
 run_dbcan="dbcan.main:cli"
-dbcan_plot="dbcan.utils.plots:main"
-dbcan_utils="dbcan.utils.utils:main"
-dbcan_asmfree="dbcan.utils.diamond_unassembly:main"
+dbcan_plot="dbcan.utils.plots:cli"
+dbcan_utils="dbcan.utils.utils:cli"
+dbcan_asmfree="dbcan.utils.diamond_unassembly:cli"
 
 
 

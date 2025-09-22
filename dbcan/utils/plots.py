@@ -1,31 +1,48 @@
-import time
-from subprocess import Popen, call, check_output
-import argparse,os
+#!/usr/bin/env python3
+import os
+import sys
+import logging
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
+import matplotlib as mpl
+import matplotlib.colors as colors
 import matplotlib.pyplot as plt
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch
-import matplotlib.patches as patches
-from matplotlib.patches import FancyArrowPatch
-from matplotlib.patches import Polygon
-from matplotlib.lines import Line2D
 import seaborn as sns
+import rich_click as click
+
 from matplotlib import pyplot
-from matplotlib.patches import Patch
-#plt.style.use('seaborn')
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch, Polygon
+
 from dbcan.utils.utils import cgc_standard_line
-from dbcan.plot.syntenic_plot import syntenic_plot,read_blast_result_cgc,read_UHGG_CGC_stanrdard_out,read_PUL_cgcgff
-from dbcan.plot.syntenic_plot import Get_parameters_for_plot,plot_Polygon_homologous,plot_syntenic_block
+from dbcan.plot.syntenic_plot import (
+    syntenic_plot,
+    read_blast_result_cgc,
+    read_UHGG_CGC_stanrdard_out,
+    read_cgcgff,
+    Get_parameters_for_plot,
+    plot_Polygon_homologous,
+    plot_syntenic_block,
+)
 from dbcan.plot.syntenic_plot import Get_Position as synGet_Position
 from dbcan.plot.syntenic_plot import plot_genome_line as synplot_genome_line
-import matplotlib as mpl
-mpl.rcParams['pdf.fonttype'] = 42
-mpl.rcParams['ps.fonttype'] = 42
-import matplotlib.colors as colors
+from dbcan.constants.plots_constants import (
+    CGC_RESULT_FILE,
+    CGC_SUB_PREDICTION_FILE,
+)
+
+from dbcan.configs.plots_config import PlotsConfig
+
+mpl.rcParams["pdf.fonttype"] = 42
+mpl.rcParams["ps.fonttype"] = 42
+
+logger = logging.getLogger(__name__)
+
 
 class CGC_Standard_Out(object):
-    def __init__(self,filename):
+    def __init__(self, filename):
         hits = open(filename).readlines()[1:]
         self.genes = []
         for line in hits:
@@ -33,694 +50,885 @@ class CGC_Standard_Out(object):
                 continue
             lines = line.split()
             self.genes.append(cgc_standard_line(lines))
+
     def __iter__(self):
         return iter(self.genes)
 
     def CGCID2genes(self):
         cgcdict = {}
         for gene in self:
-            cgcdict.setdefault(gene.cgcid,[]).append(gene)
+            cgcdict.setdefault(gene.cgcid, []).append(gene)
         return cgcdict
 
+
 class CGC(object):
-    def __init__(self,genes):
+    def __init__(self, genes):
         self.genes = genes
-        self.ID = genes[0].cgcid ### get cgc id
+        self.ID = genes[0].cgcid
         self.start = min([gene.gene_start for gene in genes])
         self.end = max([gene.gene_end for gene in genes])
         self.gene_num = len(genes)
 
     def __iter__(self):
         return iter(self.genes)
+
     def __repr__(self):
-        return "\t".join([self.ID,str(self.start),str(self.end),str(self.gene_num)])
+        return "\t".join([self.ID, str(self.start), str(self.end), str(self.gene_num)])
+
     def __len__(self):
         return len(self.genes)
 
     def get_positions(self):
-        starts = [] ; ends = [] ; strands = []
+        starts = []
+        ends = []
+        strands = []
         for gene in self:
             starts.append(gene.gene_start)
             ends.append(gene.gene_end)
             strands.append(gene.strand)
-        return starts,ends,strands
+        return starts, ends, strands
 
     def get_proteinID(self):
         return [gene.seqid for gene in self]
+
     def get_cgc_CAZyme(self):
         return [gene.gene_type for gene in self]
 
+
 class CGC_standard_out_2CGC(object):
-    def __init__(self,dbcan):
+    def __init__(self, dbcan):
         self.CGCs = []
         cgcdict = dbcan.CGCID2genes()
         for cgc in cgcdict:
             self.CGCs.append(CGC(cgcdict[cgc]))
+
     def __iter__(self):
         return iter(self.CGCs)
 
     def cgcid2CGC(self):
-        return {cgc.ID:cgc for cgc in self}
+        return {cgc.ID: cgc for cgc in self}
 
-def CGC_plot(args):
-    paras = plot_parameters(args)
-    dbCAN_standard_out  = CGC_Standard_Out(paras.PUL_annotation)
+
+def derive_paths(cfg: PlotsConfig):
+    return {
+        "pul_annotation": os.path.join(cfg.input_dir, CGC_RESULT_FILE),
+        "pul_substrate": os.path.join(cfg.input_dir, CGC_SUB_PREDICTION_FILE),
+        "blastp": os.path.join(cfg.input_dir, "PUL_blast.out"),
+    }
+
+
+def CGC_plot(cfg: PlotsConfig):
+    paths = derive_paths(cfg)
+    pul_ann = paths["pul_annotation"]
+    if not os.path.exists(pul_ann):
+        logger.error(f"CGC annotation file not found: {pul_ann}")
+        return
+    if not cfg.cgcid:
+        logger.error("CGC id is required for CGC_plot (--cgcid).")
+        return
+
+    dbCAN_standard_out = CGC_Standard_Out(pul_ann)
     cgcs = CGC_standard_out_2CGC(dbCAN_standard_out)
     cgcid2cgc = cgcs.cgcid2CGC()
-    cgc = cgcid2cgc[args.cgcid]
-    genetypes = cgc.get_proteinID()
-    ## get gene starts
-    starts,ends,strands = cgc.get_positions()
+    if cfg.cgcid not in cgcid2cgc:
+        logger.error(f"CGC id not found in annotation: {cfg.cgcid}")
+        return
+    cgc = cgcid2cgc[cfg.cgcid]
+    starts, ends, strands = cgc.get_positions()
     types = cgc.get_cgc_CAZyme()
-    print(f"{args.cgcid.split('|')[0]}:{min(starts)}-{max(ends)}")
-    cgc_fig_plot(starts,ends,strands,types,genetypes)
+    labels = cgc.get_proteinID()
+
+    out_pdf = f"{cfg.cgcid.replace('|', '_')}.cgc.pdf"
+    cgc_fig_plot(starts, ends, strands, types, labels, out_pdf)
+
 
 def read_location_reads_count(filename):
     xs2ys = {}
-    for line in open(filename):
-        lines = line.split()
-        xs2ys[int(lines[1])] = int(lines[2])
+    with open(filename) as fh:
+        for line in fh:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            try:
+                xs2ys[int(parts[1])] = int(parts[2])
+            except Exception:
+                continue
     return xs2ys
 
-def CGC_plot_reads_count(args):
-    paras = plot_parameters(args)
-    dbCAN_standard_out  = CGC_Standard_Out(paras.PUL_annotation)
+
+def CGC_plot_reads_count(cfg: PlotsConfig):
+    paths = derive_paths(cfg)
+    pul_ann = paths["pul_annotation"]
+    if not os.path.exists(pul_ann):
+        logger.error(f"CGC annotation file not found: {pul_ann}")
+        return
+    if not cfg.cgcid:
+        logger.error("CGC id is required for CGC_coverage_plot (--cgcid).")
+        return
+    if not cfg.reads_count or not os.path.exists(cfg.reads_count):
+        logger.error("Reads count file is required (--reads-count) and must exist.")
+        return
+
+    dbCAN_standard_out = CGC_Standard_Out(pul_ann)
     cgcs = CGC_standard_out_2CGC(dbCAN_standard_out)
     cgcid2cgc = cgcs.cgcid2CGC()
-    cgc = cgcid2cgc[args.cgcid]
-    genetypes = cgc.get_proteinID()
-    ## get gene starts
-    starts,ends,strands = cgc.get_positions()
+    if cfg.cgcid not in cgcid2cgc:
+        logger.error(f"CGC id not found in annotation: {cfg.cgcid}")
+        return
+    cgc = cgcid2cgc[cfg.cgcid]
+    starts, ends, strands = cgc.get_positions()
     types = cgc.get_cgc_CAZyme()
-    cgc_fig_plot_abund(starts,ends,strands,types,genetypes,paras)
+    labels = cgc.get_proteinID()
 
-def Get_Position(starts,ends,strands,labels,yshift=0):
-    Width = 1000 ; Height = 160;
+    out_pdf = f"{cfg.cgcid.replace('|', '_')}.cgc-coverage.pdf"
+    cgc_fig_plot_abund(starts, ends, strands, types, labels, cfg, out_pdf)
+
+
+def Get_Position(starts, ends, strands, labels, yshift=0):
+    Width = 1000
+    Height = 160
     poly_heigth = 10
     Triangle_length = 4
-    plot_start_x, plot_start_y = [0,Height/2 - poly_heigth-yshift]
-    shfit_pos = starts[0]
-    maxbp = max(ends) - min(starts)
-    pixeachbp =  Width / maxbp
-    for i in range(len(starts)):
-        starts[i] = starts[i] - shfit_pos
-        ends[i]   = ends[i] - shfit_pos
-    #maxbp = max(ends) - min(starts)
-    ###  5     4
-    ###            3
-    ###  1     2
-    lines = [] ;polygens = [];texts = []
-    for i in range(len(starts)):
-        if strands[i] == "+":
-            positions_str = str( starts[i] * pixeachbp) + " " + str(plot_start_y) + " " ## first point x,y
-            positions_str += str( ends[i] * pixeachbp - Triangle_length) + " " + str(plot_start_y) + " "## second point
-            positions_str += str( ends[i] * pixeachbp) + " " + str(plot_start_y + poly_heigth) + " " ## 3
-            positions_str += str( ends[i] * pixeachbp - Triangle_length) + " " + str( plot_start_y + 2*poly_heigth) + " " ### 4
-            positions_str += str( starts[i] * pixeachbp )+ " " + str(plot_start_y + 2*poly_heigth)
-        if strands[i] == "-":
-            positions_str = str( starts[i] * pixeachbp ) + " " + str(plot_start_y + poly_heigth) + " "
-            positions_str += str( starts[i] * pixeachbp + Triangle_length) + " " + str(plot_start_y) + " "
-            positions_str += str(ends[i] * pixeachbp) + " " + str(plot_start_y) + " "
-            positions_str += str( ends[i] *pixeachbp ) + " " + str(plot_start_y + 2* poly_heigth) + " "
-            positions_str += str( starts[i]* pixeachbp +Triangle_length) + " " + str(plot_start_y + 2* poly_heigth)
+    plot_start_y = Height / 2 - poly_heigth - yshift
+
+    # copy, do not mutate caller inputs
+    s = list(starts)
+    e = list(ends)
+    st = list(strands)
+    shift_pos = min(s) if s else 0
+    maxbp = max(e) - min(s) if s and e else 1
+    pixeachbp = Width / maxbp if maxbp > 0 else 1.0
+
+    for i in range(len(s)):
+        s[i] -= shift_pos
+        e[i] -= shift_pos
+
+    lines = []
+    polygens = []
+    texts = []
+    for i in range(len(s)):
+        if st[i] == "+":
+            positions_str = f"{s[i] * pixeachbp} {plot_start_y} "
+            positions_str += f"{e[i] * pixeachbp - Triangle_length} {plot_start_y} "
+            positions_str += f"{e[i] * pixeachbp} {plot_start_y + poly_heigth} "
+            positions_str += f"{e[i] * pixeachbp - Triangle_length} {plot_start_y + 2*poly_heigth} "
+            positions_str += f"{s[i] * pixeachbp} {plot_start_y + 2*poly_heigth}"
+        else:
+            positions_str = f"{s[i] * pixeachbp} {plot_start_y + poly_heigth} "
+            positions_str += f"{s[i] * pixeachbp + Triangle_length} {plot_start_y} "
+            positions_str += f"{e[i] * pixeachbp} {plot_start_y} "
+            positions_str += f"{e[i] * pixeachbp} {plot_start_y + 2* poly_heigth} "
+            positions_str += f"{s[i]* pixeachbp + Triangle_length} {plot_start_y + 2* poly_heigth}"
         polygens.append(positions_str)
-        ### for genome line
-        if i < len(starts) -1:
-            positions_str = str( ends[i] *pixeachbp) + " " + str(plot_start_y + poly_heigth)  + " "
-            positions_str += str( starts[i+1]*pixeachbp) + " " + str(plot_start_y + poly_heigth)
+
+        if i < len(s) - 1:
+            positions_str = f"{e[i] * pixeachbp} {plot_start_y + poly_heigth} "
+            positions_str += f"{s[i+1]*pixeachbp} {plot_start_y + poly_heigth}"
             lines.append(positions_str)
-        texts.append(labels[i].split('.')[0])
+
+        if i < len(labels):
+            texts.append(labels[i].split(".")[0])
+        else:
+            texts.append(str(i + 1))
 
     scale_number = 10
     each_scale_bp = maxbp / scale_number
     each_scale_pix = each_scale_bp * pixeachbp
 
     plot_start_y -= 50
-    scale_positions = []; scale_positions_texts = [] ; scale_text = []
-    scale_positions.append("0 " + str(plot_start_y + 3*poly_heigth) + " " + str(10*each_scale_pix) + " " + str(plot_start_y + 3*poly_heigth))
+    scale_positions = []
+    scale_positions_texts = []
+    scale_text = []
+    scale_positions.append(f"0 {plot_start_y + 3*poly_heigth} {10*each_scale_pix} {plot_start_y + 3*poly_heigth}")
     plot_start_y -= 1
-    for i in range(scale_number+1):
-        positions_str = str(i*each_scale_pix) + " "
-        positions_str += str(plot_start_y + 3* poly_heigth) + " "
-        positions_str += str(i*each_scale_pix) + " "
-        positions_str += str(plot_start_y + 3*poly_heigth + 0.6* poly_heigth)
+    for i in range(scale_number + 1):
+        positions_str = f"{i*each_scale_pix} {plot_start_y + 3* poly_heigth} "
+        positions_str += f"{i*each_scale_pix} {plot_start_y + 3*poly_heigth + 0.6* poly_heigth}"
         scale_positions.append(positions_str)
-        positions_str = str(i*each_scale_pix) + " " + str(plot_start_y + 3*poly_heigth + 0.6* poly_heigth)
+        positions_str = f"{i*each_scale_pix} {plot_start_y + 3*poly_heigth + 0.6* poly_heigth}"
         scale_positions_texts.append(positions_str)
-        scale_text.append(str(int(each_scale_bp*i)+ shfit_pos))
+        scale_text.append(str(int(each_scale_bp * i) + shift_pos))
 
-    return polygens,lines,texts,scale_positions,scale_text
+    return polygens, lines, texts, scale_positions, scale_text
 
-def plot_Polygon(polygens1,types1,ax):
-    colors_map = {"CAZyme":"#FF0000","null":"#808080","other":"#808080",
-    "TC":"#9400D3","CDS":"#00FFFF","STP":"#0000FF","TF":"#1E90FF"}
+
+def plot_Polygon(polygens1, types1, ax):
+    colors_map = {
+        "CAZyme": "#E67E22",
+        "TC": "#2ECC71",
+        "TF": "#9B59B6",
+        "STP": "#F1C40F",
+        "PEPTIDASE": "#16A085",
+        "SULFATLAS": "#34495E",
+        "Other": "#95A5A6",
+    }
+    default_color = "#95A5A6"
     for j in range(len(polygens1)):
         polygen = polygens1[j].split()
         points = []
-        color  = colors_map[types1[j]]
-        for i in range(int(len(polygen)/2)):
-            points.append([float(polygen[2*i]),float(polygen[2*i+1])])
-        ax.add_patch(Polygon(points, color=color, alpha=0.5,edgecolor=None,facecolor=None,lw=0))
+        color = colors_map.get(types1[j], default_color)
+        for i in range(int(len(polygen) / 2)):
+            points.append([float(polygen[2 * i]), float(polygen[2 * i + 1])])
+        ax.add_patch(Polygon(points, facecolor=color, edgecolor="none", alpha=0.5, lw=0))
 
-def plot_genome_line(lines,ax):
+
+def plot_genome_line(lines, ax):
     for line in lines:
-        x1,y1,x2,y2 = points2(line)
-        ax.add_patch(Polygon([(x1,y1),(x2,y2)], color="gray",lw=1,edgecolor=None))
+        x1, y1, x2, y2 = points2(line)
+        ax.add_patch(Polygon([(x1, y1), (x2, y2)], facecolor="gray", edgecolor="none", lw=2))
 
-def plot_scale_line(lines,label,ax):
-    for i,line in enumerate(lines):
-        x1,y1,x2,y2 = points2(line)
-        ax.add_patch(Polygon([(x1,y1),(x2,y2)], color="gray",lw=1,edgecolor=None))
-        if i>=1:
-            ax.text(float(x1),float(y1)-20,label[i-1],va='bottom', ha='center')
+
+def plot_scale_line(lines, label, ax):
+    for i, line in enumerate(lines):
+        x1, y1, x2, y2 = points2(line)
+        ax.add_patch(Polygon([(x1, y1), (x2, y2)], facecolor="gray", edgecolor="none", lw=2))
+        if i >= 1:
+            ax.text(float(x1), float(y1) - 20, label[i - 1], va="bottom", ha="center")
+
 
 def points2(coord):
-    x1,y1,x2,y2 = coord.split()
-    return x1,y1,x2,y2
+    x1, y1, x2, y2 = coord.split()
+    return float(x1), float(y1), float(x2), float(y2)
 
-def cgc_fig_plot(starts,ends,strands,types,labels):
-    custom_lines = [Line2D([0], [0], color="red", lw=4,alpha=0.5),
-        Line2D([0], [0], color="blue", lw=4,alpha=0.5),
-        Line2D([0], [0], color="green", lw=4,alpha=0.5),
-        Line2D([0], [0], color="cyan", lw=4,alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4,alpha=0.5)]
 
-    labelcolor=["red","blue","green","cyan","gray"]
+def cgc_fig_plot(starts, ends, strands, types, gene_labels, out_pdf: str):
+    genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
+    geneslabels = ["CAZyme", "TC", "TF", "STP", "PEPTIDASE", "SULFATLAS", "Other"]
+    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
 
-    genecustom_lines = [Patch(color="#FF0000",alpha=0.5),
-        Patch(color="#808080", alpha=0.5),
-        Patch(color="#9400D3", alpha=0.5),
-        Patch(color="#0000FF", alpha=0.5),
-        Patch(color="#1E90FF", alpha=0.5)]
-    genelabelcolor=["#FF0000","#808080","#9400D3","#0000FF","#1E90FF"]
-    geneslabels    = ["CAZyme","Other","TC","STP","TF"]
-    ### for legends
-    px = 1/plt.rcParams['figure.dpi'] ## px
-    Width = 1400 ; Height = 100
-    fig = plt.figure(figsize=(Width*px*1.2,Height*px*2))
-    ax  = fig.add_subplot(111)
-    maxbp = max(ends) - min(starts)
-    polygens,lines,texts,scale_positions,scale_text = Get_Position(starts,ends,strands,labels)
-    #print (texts,scale_positions,scale_text)
-    plot_Polygon(polygens,types,ax)
-    plot_genome_line(lines,ax)
-    plot_scale_line(scale_positions,scale_text,ax)
+    px = 1 / plt.rcParams["figure.dpi"]
+    Width = 1400
+    Height = 100
+    fig = plt.figure(figsize=(Width * px * 1.2, Height * px * 2))
+    ax = fig.add_subplot(111)
+
+    polygens, lines, texts, scale_positions, scale_text = Get_Position(starts, ends, strands, gene_labels)
+    plot_Polygon(polygens, types, ax)
+    plot_genome_line(lines, ax)
+    plot_scale_line(scale_positions, scale_text, ax)
     ax.plot()
-    legend = pyplot.legend(genecustom_lines,geneslabels,frameon=False,labelcolor=genelabelcolor,loc='best',title_fontsize="x-large")
+    legend = pyplot.legend(genecustom_lines, geneslabels, frameon=False, loc="best", title_fontsize="x-large")
     ax.add_artist(legend)
-    plt.ylim(0,150)
-    plt.xlim(-50,1100)
+    plt.ylim(0, 150)
+    plt.xlim(-50, 1100)
     plt.tight_layout(pad=0.1)
-    plt.axis('off')
-    #plt.show()
-    file_name = "cgc.pdf"
-    print(f"Save figure to file {file_name}!")
-    plt.savefig(f"{file_name}")
+    plt.axis("off")
+    plt.savefig(out_pdf, bbox_inches="tight")
     plt.close()
+    logger.info(f"Saved figure: {out_pdf}")
 
-def cgc_fig_plot_abund(starts,ends,strands,types,labels,parameters):
-    ori_starts = starts.copy(); ori_ends = ends.copy() #### starts will be shift, kept them
-    custom_lines = [Line2D([0], [0], color="red", lw=4,alpha=0.5),
-        Line2D([0], [0], color="blue", lw=4,alpha=0.5),
-        Line2D([0], [0], color="green", lw=4,alpha=0.5),
-        Line2D([0], [0], color="cyan", lw=4,alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4,alpha=0.5)]
 
-    labelcolor=["red","blue","green","cyan","gray"]
+def cgc_fig_plot_abund(starts, ends, strands, types, labels, cfg: PlotsConfig, out_pdf: str):
+    genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
+    geneslabels = ["CAZyme", "TC", "TF", "STP", "PEPTIDASE", "SULFATLAS", "Other"]
+    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
 
-    genecustom_lines = [Patch(color="#FF0000",alpha=0.5,lw=0),
-        Patch(color="#808080", alpha=0.5,lw=0),
-        Patch(color="#9400D3", alpha=0.5,lw=0),
-        Patch(color="#0000FF", alpha=0.5,lw=0),
-        Patch(color="#1E90FF", alpha=0.5,lw=0)]
-    genelabelcolor=["#FF0000","#808080","#9400D3","#0000FF","#1E90FF"]
-    geneslabels    = ["CAZyme","Other","TC","STP","TF"]
-    ### for legends
-    px = 1/plt.rcParams['figure.dpi'] ## px
-    Width = 1400 ; Height = 100
-    fig = plt.figure(figsize=(Width*px*1.2,Height*px*4))
+    px = 1 / plt.rcParams["figure.dpi"]
+    Width = 1400
+    Height = 100
+    fig = plt.figure(figsize=(Width * px * 1.2, Height * px * 4))
+    ax = fig.add_subplot(212)
 
-    #plt.subplots_adjust(bottom=-0.5)
-    ax  = fig.add_subplot(212)
-    maxbp = max(ends) - min(starts)
-    polygens,lines,texts,scale_positions,scale_text = Get_Position(starts,ends,strands,labels)
-    #print (texts,scale_positions,scale_text)
-    plot_Polygon(polygens,types,ax)
-    plot_genome_line(lines,ax)
-    plot_scale_line(scale_positions,scale_text,ax)
+    polygens, lines, texts, scale_positions, scale_text = Get_Position(starts, ends, strands, labels)
+    plot_Polygon(polygens, types, ax)
+    plot_genome_line(lines, ax)
+    plot_scale_line(scale_positions, scale_text, ax)
     ax.plot()
-    legend = pyplot.legend(genecustom_lines,geneslabels,frameon=False,labelcolor=genelabelcolor,loc='best',title_fontsize="x-large")
+    legend = pyplot.legend(genecustom_lines, geneslabels, frameon=False, loc="best", title_fontsize="x-large")
     ax.add_artist(legend)
-    plt.ylim(0,150)
-    xlim_x1,xlim_x2 = (-10,1100)
-    plt.xlim(xlim_x1,xlim_x2)
-    #plt.tight_layout(pad=0.1)
-    plt.axis('off')
+    plt.ylim(0, 150)
+    xlim_x1, xlim_x2 = (-10, 1100)
+    plt.xlim(xlim_x1, xlim_x2)
+    plt.axis("off")
 
-    ### here we need to plot the reads_count of each position
-    ### layout 2
-    xs2ys = read_location_reads_count(parameters.reads_count)
-    max_y = max(xs2ys.values())
-    add_readcount_layout(fig,ori_starts,ori_ends,xs2ys,max_y,-3,max_y+10,xlim_x1,xlim_x2,maxbp)
-    #plt.show()
-    file_name = "cgc-coverage.pdf"
-    print(f"Save figure to file {file_name}!")
-    plt.savefig(f"{file_name}")
-    #plt.close()
+    xs2ys = read_location_reads_count(cfg.reads_count)
+    max_y = max(xs2ys.values()) if xs2ys else 0
+    add_readcount_layout(fig, starts, ends, xs2ys, max_y, -3, max_y + 10, xlim_x1, xlim_x2, max(ends) - min(starts))
 
-def add_readcount_layout(fig,starts,ends,xs2ys,max_y,ylim_y1,ylim_y2,xlim_x1,xlim_x2,syn_maxbp):
-    maxbp = max(ends) -min(starts)
+    plt.savefig(out_pdf, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Saved figure: {out_pdf}")
+
+
+def add_readcount_layout(fig, starts, ends, xs2ys, max_y, ylim_y1, ylim_y2, xlim_x1, xlim_x2, syn_maxbp):
+    maxbp = max(ends) - min(starts)
     Width = 1000
-    pixeachbp =  Width / syn_maxbp ### here the maxbp should from the whole max
-    ax  = fig.add_subplot(211)
-    #ax = plt.axes([0, 0.4, 1, 0.3])
-    plt.ylim(ylim_y1,ylim_y2)
-    plt.xlim(xlim_x1,xlim_x2)
+    pixeachbp = Width / syn_maxbp if syn_maxbp > 0 else 1.0
+    ax = fig.add_subplot(211)
+    plt.ylim(ylim_y1, ylim_y2)
+    plt.xlim(xlim_x1, xlim_x2)
     plt.tight_layout(pad=0.1)
-    plt.plot((0,1000),(0,0),color='gray',lw=1)
-    all_xs = []; all_ys = []
+    plt.plot((0, 1000), (0, 0), color="gray", lw=1)
+    all_xs = []
+    all_ys = []
     start = min(starts)
-    for i in range(1,maxbp+1): ###
-        all_xs.append(pixeachbp*i)
-        if i+start in xs2ys:
-            all_ys.append(xs2ys[i+start])
-        else:
-            all_ys.append(0)
-    #print(starts,all_xs[0],all_xs[-1])
-    plt.plot(all_xs,all_ys,'-',alpha=0.5,color='red',lw=1)
-    #ax.fill_between(all_xs,0*len(all_xs),all_ys,facecolor='red', alpha=0.3,edgecolor="white")
-    ax.fill_between(all_xs,all_ys,0,facecolor='red', alpha=0.3,edgecolor="white")
-    for pos in ['top', 'right', 'bottom']:
+    for i in range(1, maxbp + 1):
+        all_xs.append(pixeachbp * i)
+        all_ys.append(xs2ys.get(i + start, 0))
+    plt.plot(all_xs, all_ys, "-", alpha=0.5, color="red", lw=1)
+    ax.fill_between(all_xs, all_ys, 0, facecolor="red", alpha=0.3, edgecolor="white")
+    for pos in ["top", "right", "bottom"]:
         ax.spines[pos].set_visible(False)
     ax.tick_params(bottom=False, top=False, left=True, right=False)
     ax.set_xticks([])
 
-class plot_parameters():
-    def __init__(self,args):
-        self.input = args.input if args.input.endswith("/") else args.input +"/"
-        #self.R1 = args.R1
-        #self.R2 = args.R2
-        self.bedtools = args.bedtools
-        self.reads_count = args.readscount
-        self.output = args.function + "_" + args.output
-        self.CAZyme_annotation  = self.input + "overview.tsv"
-        self.dbCANsub_substrate_annotation  = self.input + "dbCANsub_hmm_results.tsv"
-        self.PUL_substrate_annotation  = self.input + "substrate_prediction.tsv"
-        self.PUL_annotation  = self.input + "cgc_standard_out.tsv"
-        self.function = args.function
-        self.parameters_check()
 
-    def parameters_check(self):
-        if self.function == "CGC_plot":
-            print("You are plotting the CGC regarding abundance!")
-            if not os.path.exists(self.PUL_annotation):
-                print(f"PUL annotation file {self.PUL_annotation} dose not exit, please check run_dbcan finish status!")
-                exit(1)
-        if self.function == "CGC_coverage_plot":
-            print("You are plotting the CGC with reads count!")
-            if not os.path.exists(self.PUL_annotation):
-                print(f"PUL annotation file {self.PUL_annotation} dose not exit, please check run_dbcan finish status!")
-                exit(1)
-            if not os.path.exists(self.reads_count):
-                print(f"Reads count file {self.reads_count} dose not exit, please run samtools depth first!")
-                exit(1)
-
-        if self.function == "CGC_synteny_plot":
-            self.blastp = self.input + "PUL_blast.out"
-        if self.function == "CGC_synteny_coverage_plot":
-            self.blastp = self.input + "PUL_blast.out"
-
-def generate_syntenic_block(cgcpul,cgcpul_blastp,genes1,genes2):
+def generate_syntenic_block(cgcpul, cgcpul_blastp, genes1, genes2):
     blocks = []
-    for record in cgcpul_blastp[cgcpul]: ### generate block information
+    for record in cgcpul_blastp.get(cgcpul, []):
         query = record.qseqid
-        hit   = record.sseqid
-        cgc_proteinid = query.split("|")[2]
-        pul_proteinid = hit.split(":")[3]
-        if not pul_proteinid:
-            pul_proteinid = hit.split(":")[2]
+        hit = record.sseqid
+        try:
+            cgc_proteinid = query.split("|")[2]
+        except Exception:
+            continue
+        # sseqid shape often contains PUL and protein id separated by ':'
+        parts = hit.split(":")
+        pul_proteinid = parts[2] if len(parts) > 2 else (parts[-1] if parts else "")
         try:
             index1 = genes1.index(cgc_proteinid)
             index2 = genes2.index(pul_proteinid)
             blocks.append(f"{index1}-{index2}-{record.pident}")
-        except:
-            print (cgcpul,query,hit,cgc_proteinid,pul_proteinid,genes1,genes2)
+        except Exception:
             continue
     return blocks
-        #print (cgc_proteinid2gene[cgc_proteinid],pul_proteinid2gene[pul_proteinid])
 
-def CGC_syntenic_with_PUL(args):
-    paras = plot_parameters(args)
-    cgcid2pulid = {line.rstrip().split("\t")[0]:line.rstrip().split("\t")[1] for line in open(paras.PUL_substrate_annotation).readlines()[1:]}
-    cgc = args.cgcid
-    pul = cgcid2pulid.get(cgc,"")
-    if pul:
-        cgcpul_blastp = read_blast_result_cgc(paras.blastp)
-        cgc_proteinid2gene,cgcid2gene,cgcid2geneid = read_UHGG_CGC_stanrdard_out(paras.PUL_annotation)
-        PULid_proteinid2gene,PULid2gene,PULid2geneid = read_PUL_cgcgff(args) ### read db_dir
-        cgcpul = cgc+":"+pul
-        bed_cgc = cgcid2gene[cgc]
-        bed_pul = PULid2gene[pul]
-        starts1,ends1,strands1,types1 = Get_parameters_for_plot(bed_cgc)
-        starts2,ends2,strands2,types2 = Get_parameters_for_plot(bed_pul)
-        genes1 = cgcid2geneid[cgc]
-        genes2 = PULid2geneid[pul]
-        #print (cgc,pul)
-        #print (genes1)
-        #print (genes2)
-        blocks = generate_syntenic_block(cgcpul,cgcpul_blastp,genes1,genes2)
-        syntenic_plot(starts1,starts2,ends1,ends2,strands1,strands2,types1,types2,blocks,cgc,pul)
-    else:
-        print(f"Does not find homolog PUL for CGC: {cgc}!")
-        exit(1)
 
-def CGC_syntenic_with_PUL_abund(args):
-    paras = plot_parameters(args)
-    cgcid2pulid = {line.rstrip().split("\t")[0]:line.rstrip().split("\t")[1] for line in open(paras.PUL_substrate_annotation).readlines()[1:]}
-    cgc = args.cgcid
-    pul = cgcid2pulid.get(cgc,"")
-    if pul:
-        cgcpul_blastp = read_blast_result_cgc(paras.blastp)
-        cgc_proteinid2gene,cgcid2gene,cgcid2geneid = read_UHGG_CGC_stanrdard_out(paras.PUL_annotation)
-        PULid_proteinid2gene,PULid2gene,PULid2geneid = read_PUL_cgcgff(args) ### read db_dir
-        cgcpul = cgc+":"+pul
-        bed_cgc = cgcid2gene[cgc]
-        bed_pul = PULid2gene[pul]
-        starts1,ends1,strands1,types1 = Get_parameters_for_plot(bed_cgc)
-        starts2,ends2,strands2,types2 = Get_parameters_for_plot(bed_pul)
-        genes1 = cgcid2geneid[cgc]
-        genes2 = PULid2geneid[pul]
-        #print (cgc,pul)
-        #print (genes1)
-        #print (genes2)
-        blocks = generate_syntenic_block(cgcpul,cgcpul_blastp,genes1,genes2)
-        syntenic_plot_with_abund(starts1,starts2,ends1,ends2,strands1,strands2,types1,types2,blocks,cgc,pul,paras)
-    else:
-        print(f"Does not find homolog PUL for CGC: {cgc}!")
-        exit(1)
+def add_synteny_scale(ax, starts_cgc, ends_cgc, starts_pul, ends_pul, maxbp,
+                      ticks=10, width=1000, y=4, font_size=7):
+    """
+    Draw a manual horizontal scale (relative length; each track internally shifted).
+    Labels are absolute positions using the minimal start of both tracks as origin.
+    """
+    if maxbp <= 0:
+        return
+    try:
+        min_abs = min(
+            [m for m in (min(starts_cgc, default=0), min(starts_pul, default=0))]
+        )
+    except Exception:
+        min_abs = 0
+    pix_per_bp = width / maxbp
+    # baseline
+    ax.plot([0, width], [y, y], color="gray", lw=1)
+    step_bp = maxbp / ticks
+    for i in range(ticks + 1):
+        x = pix_per_bp * step_bp * i
+        ax.plot([x, x], [y, y + 4], color="gray", lw=1)
+        # avoid overcrowding: only label min, max, and every second tick
+        if i in (0, ticks) or i % 2 == 0:
+            label_val = int(min_abs + step_bp * i)
+            ax.text(x, y - 6, f"{label_val}", ha="center", va="top", fontsize=font_size)
+    ax.text(width, y - 16, "bp", ha="right", va="top", fontsize=font_size)
 
-def syntenic_plot_with_abund(starts,starts1,ends,ends1,strands,strands1,Types,Types1,blocks,cgcid,pulid,paras):
-    ### for legends
-    custom_lines = [Line2D([0], [0], color="red", lw=4,alpha=0.5),
-        Line2D([0], [0], color="blue", lw=4,alpha=0.5),
-        Line2D([0], [0], color="green", lw=4,alpha=0.5),
-        Line2D([0], [0], color="cyan", lw=4,alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4,alpha=0.5)]
-    #print(starts,starts1,ends,ends1,strands,strands1,Types,Types1,blocks,cgcid,pulid)
-    ### syntenic block colors
-    labelcolor=["red","blue","green","cyan"]
-    labels    = ["80-100","60-80","40-60","20-40"]
-    genecustom_lines = [Patch(color="#FF0000",alpha=0.5),
-        Patch(color="#808080", alpha=0.5),
-        Patch(color="#9400D3", alpha=0.5),
-        Patch(color="#0000FF", alpha=0.5),
-        Patch(color="#1E90FF", alpha=0.5)]
-    genelabelcolor=["#FF0000","#808080","#9400D3","#0000FF","#1E90FF"]
-    geneslabels    = ["CAZyme","Other","TC","STP","TF"]
 
-    ### for legends
+def CGC_syntenic_with_PUL(cfg: PlotsConfig):
+    paths = derive_paths(cfg)
+    sub_pred = paths["pul_substrate"]
+    pul_ann = paths["pul_annotation"]
+    if not os.path.exists(sub_pred) or not os.path.exists(pul_ann):
+        logger.error("Required files not found (substrate_prediction or cgc_standard_out).")
+        return
+    if not cfg.cgcid:
+        logger.error("CGC id is required (--cgcid).")
+        return
 
-    px = 1/plt.rcParams['figure.dpi'] ## px
-    Width = 1600 ; Height = 320*2
+    cgcid2pulid = {line.rstrip().split("\t")[0]: line.rstrip().split("\t")[1] for line in open(sub_pred).readlines()[1:]}
+    cgc = cfg.cgcid
+    pul = cgcid2pulid.get(cgc, "")
+    if not pul:
+        logger.error(f"Homolog PUL not found for CGC: {cgc}")
+        return
 
-    fig = plt.figure(figsize=(Width*px,Height*px*2/2.5))
-    ax  = fig.add_subplot(212)
-    ### decide which
-    maxbp = max([max(ends) - min(starts),max(ends1) - min(starts1)])
+    cgcpul_blastp = read_blast_result_cgc(paths["blastp"])
+    cgc_proteinid2gene, cgcid2gene, cgcid2geneid = read_UHGG_CGC_stanrdard_out(pul_ann)
+    ns = SimpleNamespace(db_dir=cfg.db_dir)
+    PULid_proteinid2gene, PULid2gene, PULid2geneid = read_cgcgff(ns)
 
-    ori_starts = starts.copy(); ori_ends = ends.copy() #### starts will be shift, kept them
+    cgcpul = cgc + ":" + pul
+    bed_cgc = cgcid2gene[cgc]
+    bed_pul = PULid2gene[pul]
+    starts1, ends1, strands1, types1 = Get_parameters_for_plot(bed_cgc)
+    starts2, ends2, strands2, types2 = Get_parameters_for_plot(bed_pul)
+    genes1 = cgcid2geneid[cgc]
+    genes2 = PULid2geneid[pul]
+    blocks = generate_syntenic_block(cgcpul, cgcpul_blastp, genes1, genes2)
+    config = {"output_dir": "."}
+    syntenic_plot(starts1, starts2, ends1, ends2, strands1, strands2, types1, types2, blocks, cgc, pul, config)
+    logger.info(f"Saved figure: {cgc.replace('|','_')}_{pul.replace('|','_')}-syntenic.pdf")
 
-    ### get postion for all elements of CGC
-    polygens,blocks_coor,lines_coor,scale_positions,scale_text = synGet_Position(starts,ends,strands,maxbp,yshift=40,up=2) ## CGC
-    plot_scale_line(scale_positions,scale_text,ax)
 
-    polygens1,blocks1_coor,lines_coor1,_,_ = synGet_Position(starts1,ends1,strands1,maxbp,yshift=0,up=1) ### PUL
-    ###
-    plot_Polygon_homologous(polygens,polygens1,Types,Types1,2,ax)
-    ###
-    plot_syntenic_block(blocks,blocks_coor,blocks1_coor,ax)
-    synplot_genome_line(lines_coor,lines_coor1,ax)
-    ### need to add the genome postion scale
-    ### legend1
-    legend1 = pyplot.legend(custom_lines,labels,frameon=False,labelcolor=labelcolor,
-        loc='upper right',title="Identity")
+def CGC_syntenic_with_PUL_abund(cfg: PlotsConfig):
+    paths = derive_paths(cfg)
+    sub_pred = paths["pul_substrate"]
+    pul_ann = paths["pul_annotation"]
+    if not os.path.exists(sub_pred) or not os.path.exists(pul_ann):
+        logger.error("Required files not found (substrate_prediction or cgc_standard_out).")
+        return
+    if not cfg.cgcid:
+        logger.error("CGC id is required (--cgcid).")
+        return
+    if not cfg.reads_count or not os.path.exists(cfg.reads_count):
+        logger.error("Reads count file is required (--reads-count) and must exist.")
+        return
+
+    cgcid2pulid = {line.rstrip().split("\t")[0]: line.rstrip().split("\t")[1] for line in open(sub_pred).readlines()[1:]}
+    cgc = cfg.cgcid
+    pul = cgcid2pulid.get(cgc, "")
+    if not pul:
+        logger.error(f"Homolog PUL not found for CGC: {cgc}")
+        return
+
+    cgcpul_blastp = read_blast_result_cgc(paths["blastp"])
+    cgc_proteinid2gene, cgcid2gene, cgcid2geneid = read_UHGG_CGC_stanrdard_out(pul_ann)
+    # Load PUL GFFs (wrapper around read_cgcgff which expects a file + dict)
+    PULid_proteinid2gene, PULid2gene, PULid2geneid = load_pul_gffs(cfg.db_dir)
+
+    cgcpul = cgc + ":" + pul
+    bed_cgc = cgcid2gene[cgc]
+    bed_pul = PULid2gene[pul]
+    starts1, ends1, strands1, types1 = Get_parameters_for_plot(bed_cgc)
+    starts2, ends2, strands2, types2 = Get_parameters_for_plot(bed_pul)
+    genes1 = cgcid2geneid[cgc]
+    genes2 = PULid2geneid[pul]
+    blocks = generate_syntenic_block(cgcpul, cgcpul_blastp, genes1, genes2)
+
+    # draw synteny and coverage
+    px = 1 / plt.rcParams["figure.dpi"]
+    Width = 1600
+    Height = 620 * 2
+    fig = plt.figure(figsize=(Width * px, Height * px * 2 / 2.5))
+    ax = fig.add_subplot(212)
+
+    maxbp = max([max(ends1) - min(starts1), max(ends2) - min(starts2)])
+    # First (CGC) band – reduce yshift to move upward (more compact)
+    polygens_cgc, blocks_cgc_coor, lines_cgc_coor, _, _ = synGet_Position(
+        starts1, ends1, strands1, maxbp, yshift=30, up=2
+    )
+    # Second (PUL) band
+    polygens_pul, blocks_pul_coor, lines_pul_coor, _, _ = synGet_Position(
+        starts2, ends2, strands2, maxbp, yshift=0, up=1
+    )
+    # draw bands, blocks, lines
+    plot_Polygon_homologous(polygens_cgc, polygens_pul, types1, types2, 2, ax)
+    plot_syntenic_block(blocks, blocks_cgc_coor, blocks_pul_coor, ax)
+    synplot_genome_line(lines_cgc_coor, lines_pul_coor, ax)
+
+    custom_lines = [
+        Line2D([0], [0], color="red", lw=4, alpha=0.5),
+        Line2D([0], [0], color="blue", lw=4, alpha=0.5),
+        Line2D([0], [0], color="green", lw=4, alpha=0.5),
+        Line2D([0], [0], color="cyan", lw=4, alpha=0.5),
+        Line2D([0], [0], color="gray", lw=4, alpha=0.5),
+    ]
+    labels = ["80-100", "60-80", "40-60", "20-40", "0-20"]
+
+    genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
+    geneslabels = ["CAZyme", "TC", "TF", "STP", "PEPTIDASE", "SULFATLAS", "Other"]
+    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
+
+    legend1 = pyplot.legend(custom_lines, labels, frameon=False, loc="lower right", bbox_to_anchor=(1, 0.5), title="Identity")
     ax.add_artist(legend1)
-
-    legend2 = pyplot.legend(genecustom_lines,geneslabels,frameon=False,
-        labelcolor=genelabelcolor,loc='lower right',title="Gene")
+    legend2 = pyplot.legend(genecustom_lines, geneslabels, frameon=False, loc="lower right", bbox_to_anchor=(1, 0.1), title="Gene")
     ax.add_artist(legend2)
 
-    plt.text(500,10,cgcid,fontsize=10,horizontalalignment='center')
-    plt.text(500,90,pulid,fontsize=10,horizontalalignment='center')
-    xlim_x1,xlim_x2 = (-10,1100)
-    ylim_y1,ylim_y2 = (0,100)
-    plt.ylim(ylim_y1,ylim_y2)
-    plt.xlim(xlim_x1,xlim_x2)
-    plt.axis('off')
+    # Move CGC title upward (was y=10). Slightly adjust PUL title for compact layout.
+    plt.text(500, 15, cgc, fontsize=20, horizontalalignment="center")
+    plt.text(500, 88, pul, fontsize=20, horizontalalignment="center")
+    xlim_x1, xlim_x2 = (-10, 1100)
+    ylim_y1, ylim_y2 = (0, 100)
+    plt.ylim(ylim_y1, ylim_y2)
+    plt.xlim(xlim_x1, xlim_x2)
+    # Custom scale (syntenic Get_Position does not provide one)
+    add_synteny_scale(ax, starts1, ends1, starts2, ends2, maxbp)
+    # Hide default axes
+    plt.axis("off")
     ax.plot()
-    #plt.tight_layout(pad=0.1)
-    cgcid = cgcid.replace("|","_") ### need to replace "|" to "_", because | is a special chara for system
-    ### for local
-    xs2ys = read_location_reads_count(paras.reads_count)
-    max_y = max(xs2ys.values())
-    add_readcount_layout(fig,ori_starts,ori_ends,xs2ys,max_y,ylim_y1,max_y,xlim_x1,xlim_x2,maxbp)
-    #plt.show();exit()
-    print(f"Saving figure to file {cgcid}-syntenic-cov.pdf!")
-    plt.savefig(f"{cgcid}-syntenic-cov.pdf")
-    plt.close()
 
-def combined_datafram_based_on_first_col(pd_lists,samples):
+    xs2ys = read_location_reads_count(cfg.reads_count)
+    max_y = max(xs2ys.values()) if xs2ys else 0
+    add_readcount_layout(fig, starts1, ends1, xs2ys, max_y, ylim_y1, max_y, xlim_x1, xlim_x2, maxbp)
+
+    out_pdf = f"{cgc.replace('|','_')}-syntenic-cov.pdf"
+    plt.savefig(out_pdf, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Saved figure: {out_pdf}")
+
+
+def combined_datafram_based_on_first_col(pd_lists, samples):
     if len(pd_lists) <= 1:
         return pd_lists[0]
     else:
         col_name = pd_lists[0].columns
-        on_merge_col = col_name[0] ###
-        merged_table = pd.merge(pd_lists[0],pd_lists[1],on=[on_merge_col],how="outer")
+        on_merge_col = col_name[0]
+        merged_table = pd.merge(pd_lists[0], pd_lists[1], on=[on_merge_col], how="outer")
 
         for i in range(len(pd_lists)):
             ori_names = pd_lists[i].columns
-            mod_names = [ori_names[0]] + [ori_names[j] +"_"+ samples[i] for j in range(1,len(ori_names))]
+            mod_names = [ori_names[0]] + [ori_names[j] + "_" + samples[i] for j in range(1, len(ori_names))]
             pd_lists[i].columns = mod_names
 
-        for i in range(2,len(pd_lists)):
-            merged_table = pd.merge(merged_table,pd_lists[i],on=[on_merge_col],how="outer")
-    #print(merged_table.columns)
-    abundance_col = col_name[1]
-    merged_table.fillna(0,inplace=True)
-    merged_table["diff_abs"] = np.abs(merged_table[abundance_col+"_x"] - merged_table[abundance_col+"_y"])
-    merged_table["diff"] = merged_table[abundance_col+"_x"] - merged_table[abundance_col+"_y"]
+        for i in range(2, len(pd_lists)):
+            merged_table = pd.merge(merged_table, pd_lists[i], on=[on_merge_col], how="outer")
 
-    ### rename columns names
+    abundance_col = col_name[1]
+    merged_table.fillna(0, inplace=True)
+    merged_table["diff_abs"] = np.abs(merged_table[abundance_col + "_x"] - merged_table[abundance_col + "_y"])
+    merged_table["diff"] = merged_table[abundance_col + "_x"] - merged_table[abundance_col + "_y"]
+
     merged_columns = merged_table.columns
     rename_columns = []
     abund_index = 0
     for column in merged_columns:
-        if abundance_col in column:
+        if abundance_col in column and column != on_merge_col:
             rename_columns.append(samples[abund_index])
             abund_index += 1
         else:
             rename_columns.append(column)
-    #merged_table.rename(columns={abundance_col+"_x": samples[0], abundance_col+"_y": samples[1]},inplace=True)
     merged_table.columns = rename_columns
-    merged_table.sort_values("diff_abs",inplace=True,ascending=False)
-    return merged_table,on_merge_col
+    merged_table.sort_values("diff_abs", inplace=True, ascending=False)
+    return merged_table, on_merge_col
+
 
 def filter_out_enzyme_number(table):
     bools = []
-    for i in table.iloc[:,0]: ### first col
-        if i[0].isdigit():
+    for i in table.iloc[:, 0]:
+        if i and i[0].isdigit():
             bools.append(True)
-        elif i in ["PL0","GH0","GT0","CBM0","AA0","CE0"]:
+        elif i in ["PL0", "GH0", "GT0", "CBM0", "AA0", "CE0"]:
             bools.append(False)
         else:
             bools.append(True)
     table = table[bools]
-    #print (table)
     return table
 
-import re
-def add_column_type(table): ### Like
+
+def add_column_type(table):
+    import re
+
     cols = []
     for i in table["CAZy"]:
-        fam = re.sub(r'[0-9]+', '', i)
+        fam = re.sub(r"[0-9]+", "", i)
         cols.append(fam)
-        #print (i,fam)
     table["fam"] = cols
     return table
 
-def heatmap_plot(args):
-    pds = [filter_out_enzyme_number(pd.read_csv(filename,sep="\t")) for filename in args.input.split(",")]
-    samples = args.samples.split(",")
-    plt.style.use(args.plot_style)
-    if len(pds) != len(samples):
-        print("The number of samples is not eaqul the abundance!")
-        exit(1)
-    for i in range(len(pds)):
-        pds[i]["sample"] = samples[i]
-    data,x = combined_datafram_based_on_first_col(pds,samples)
 
-    if not args.col:
-        data = data.iloc[0:int(args.top),:]
+def check_input_files_min_lines(input_files, min_lines=2) -> bool:
+    for f in input_files.split(","):
+        try:
+            with open(f) as fh:
+                lines = sum(1 for _ in fh)
+            if lines < min_lines:
+                logger.warning(f"Input file {f} has less than {min_lines} lines, skip plotting.")
+                return False
+        except Exception as e:
+            logger.warning(f"Error reading file {f}: {e}")
+            return False
+    return True
+
+
+def heatmap_plot(cfg: PlotsConfig, input_files: str, samples: str, show_abund: bool, cluster_map: bool, palette: str, col: str, value: str, plot_style: str, top: int, show_fig: bool):
+    pds = [filter_out_enzyme_number(pd.read_csv(filename, sep="\t")) for filename in input_files.split(",")]
+    samples_list = samples.split(",")
+    plt.style.use(plot_style)
+    if len(pds) != len(samples_list):
+        logger.error("The number of samples is not equal to the number of input files.")
+        return
+    for i in range(len(pds)):
+        pds[i]["sample"] = samples_list[i]
+    if len(pds) == 1:
+        data = pds[0]
+        data = data.rename(columns={data.columns[1]: samples_list[0]})
     else:
-        if args.value:
-            data = data.loc[data[args.col].isin(args.value.split(","))]
+        data, _ = combined_datafram_based_on_first_col(pds, samples_list)
+
+    if not col:
+        data = data.iloc[0 : int(top), :]
+    else:
+        if value:
+            data = data.loc[data[col].isin(value.split(","))]
         else:
-            data = data.iloc[0:int(args.top),:]
-    data = data.set_index(data.iloc[:,0])
-    data = data[samples]
+            data = data.iloc[0 : int(top), :]
+    data = data.set_index(data.iloc[:, 0])
+    data = data[samples_list]
     sns.set_style("whitegrid")
     sns.set_context("paper")
-    ### user defined color map
 
-    ### default color
-    if args.palette:
-        cmap = args.palette
+    n_rows, n_cols = data.shape
+    cell_width = 0.7
+    cell_height = 0.5
+    min_width = 6
+    min_height = 4
+    max_width = 30
+    max_height = 30
+    fig_width = min(max(n_cols * cell_width, min_width), max_width)
+    fig_height = min(max(n_rows * cell_height, min_height), max_height)
+
+    if palette:
+        cmap = palette
     else:
-        mycolor=['aliceblue','skyblue','deepskyblue','orange','tomato','red']
-        cmap = colors.LinearSegmentedColormap.from_list('my_list', mycolor)
-        cmap.set_under('white')
+        mycolor = ["aliceblue", "skyblue", "deepskyblue", "orange", "tomato", "red"]
+        cmap = colors.LinearSegmentedColormap.from_list("my_list", mycolor)
+        cmap.set_under("white")
 
-    if args.cluster_map:
-        sns.clustermap(data, cmap=cmap,cbar=True,vmin=0.1,dendrogram_ratio=0.03,cbar_pos=(0.1, 1, 0.1, 0.1),
-                       col_cluster=False,cbar_kws={"shrink": 0.3},
-                       figsize=(len(data.columns)*1.2,len(data.index)/3))
-        #plt.tight_layout(pad=0.1)
-        if args.show_fig:
+    if cluster_map:
+        g = sns.clustermap(
+            data,
+            cmap=cmap,
+            cbar=True,
+            vmin=0.1,
+            dendrogram_ratio=0.03,
+            cbar_pos=(0.1, 1, 0.1, 0.1),
+            col_cluster=False,
+            cbar_kws={"shrink": 0.3},
+            figsize=(fig_width, fig_height),
+        )
+        plt.setp(g.ax_heatmap.get_xticklabels(), rotation=30, ha="right", fontsize=10)
+        plt.setp(g.ax_heatmap.get_yticklabels(), fontsize=10)
+        if show_fig:
             plt.show()
         else:
-            plt.savefig("heatmap_cluster.pdf")
+            plt.savefig("heatmap_cluster.pdf", bbox_inches="tight")
     else:
-        plt.figure(figsize=(len(data.columns)*1.2,len(data.index)/4))
-        if args.show_abund:
-            ax = sns.heatmap(data, cmap=cmap,yticklabels=True,annot=True,fmt=".0f",linewidths=.5,cbar=True,vmin=0.1,
-                         cbar_kws={"shrink": 0.3,"anchor":(0, 0.0)})
-        else:
-            ax = sns.heatmap(data, cmap=cmap,yticklabels=True,annot=args.show_abund,fmt=".0f",linewidths=0,cbar=True,vmin=0.1,
-                         cbar_kws={"shrink": 0.3,"anchor":(0, 0.0)})
-        ax.collections[0].colorbar.ax.tick_params(labelsize=6)
-
-        plt.xticks(rotation=30)
-        plt.tight_layout(pad=0.1)
-        if args.show_fig:
+        plt.figure(figsize=(fig_width, fig_height))
+        ax = sns.heatmap(
+            data,
+            cmap=cmap,
+            yticklabels=True,
+            annot=show_abund,
+            fmt=".0f",
+            linewidths=0 if not show_abund else 0.5,
+            cbar=True,
+            vmin=0.1,
+            cbar_kws={"shrink": 0.3, "anchor": (0, 0.0)},
+        )
+        ax.collections[0].colorbar.ax.tick_params(labelsize=8)
+        plt.xticks(rotation=30, ha="right", fontsize=10)
+        plt.yticks(fontsize=10)
+        plt.tight_layout(pad=0.5)
+        if show_fig:
             plt.show()
         else:
-            plt.savefig("heatmap.pdf")
+            plt.savefig("heatmap.pdf", bbox_inches="tight")
 
-def bar_plot(args):
-    ### --input CAZyme_abund_output,CAZyme_abund_output
-    ### --samples fefifo_8002_1,fefifo_8002_7
-    ### show top10? or most different?
-    pds = [filter_out_enzyme_number(pd.read_csv(filename,sep="\t")) for filename in args.input.split(",")]
-    samples = args.samples.split(",")
-    plt.style.use(args.plot_style)
-    if len(pds) != len(samples):
-        print("The number of samples is not eaqul the abundance!")
-        exit(1)
+
+def bar_plot(cfg: PlotsConfig, input_files: str, samples: str, plot_style: str, col: str, value: str, top: int, vertical_bar: bool, pdf: str):
+    pds = [filter_out_enzyme_number(pd.read_csv(filename, sep="\t")) for filename in input_files.split(",")]
+    samples_list = samples.split(",")
+    plt.style.use(plot_style)
+    if len(pds) != len(samples_list):
+        logger.error("The number of samples is not equal to the number of input files.")
+        return
     for i in range(len(pds)):
-        pds[i]["sample"] = samples[i]
-    data,x = combined_datafram_based_on_first_col(pds,samples)
-    ### top different abundance --value 'host glycan,starch' --col Substrate
-    if not args.col:
-        data = data.iloc[0:int(args.top),:]
+        pds[i]["sample"] = samples_list[i]
+    result = combined_datafram_based_on_first_col(pds, samples_list)
+    if isinstance(result, tuple):
+        data, x = result
     else:
-        if args.value:
-            data = data.loc[data[args.col].isin(args.value.split(","))]
+        data = result
+        x = data.columns[0]
+        if len(samples_list) == 1:
+            old_abund_col = data.columns[1]
+            data = data.rename(columns={old_abund_col: samples_list[0]})
+
+    if not col:
+        data = data.iloc[0 : int(top), :]
+    else:
+        if value:
+            data = data.loc[data[col].isin(value.split(","))]
         else:
-            data = data.iloc[0:int(args.top),:]
-    ### normal
-    if args.vertical_bar:
-        ax = data.plot.barh(x=x, y=samples)
+            data = data.iloc[0 : int(top), :]
+
+    if vertical_bar:
+        ax = data.plot.barh(x=x, y=samples_list)
         plt.ylabel("")
         plt.xlabel("Abundance")
     else:
-        ax = data.plot(x=x, y=samples, kind="bar")
+        ax = data.plot(x=x, y=samples_list, kind="bar")
         plt.xticks(rotation=90)
         plt.xlabel("")
         plt.ylabel("Abundance")
 
-    #plt.gca().invert_yaxis()
-    #plt.gca().invert_xaxis()
-    ### switch
-
-    #leg = plt.legend(frameon=False,handletextpad=-2.0, handlelength=0)
-    #for item in leg.legendHandles:
-    #    item.set_visible(False)
-    #axins = inset_axes(ax,  "30%", "30%" ,loc="upper center", borderpad=1)
-
-    plt.title(f"The most top{args.top} different families")
-    #plt.show()
-
-    if not args.pdf.endswith(".pdf"):
-        args.pdf += args.pdf+".pdf"
-
-    plt.savefig(f"{args.pdf}")
-    print(f"Saving plot to file: {args.pdf}")
-
-def parse_argv():
-    usage = '''
-    %(prog)s [positional arguments] [options]
-    -----------------------------------------
-    Plot CGC
-    dbcan_plot CGC_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1'
-    -----------------------------------------
-    Plot CGC with abundance
-    dbcan_plot CGC_coverage_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1' --readscount cgc.depth.txt
-    -----------------------------------------
-    Plot syntenic blocks between CGC and dbCAN-PUL
-    dbcan_plot CGC_synteny_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1'
-    -----------------------------------------
-    Plot syntenic blocks between CGC and dbCAN-PUL with abundance
-    dbcan_plot CGC_synteny_coverage_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1' --readscount cgc.depth.txt
-    -----------------------------------------
-    barplot of abundance for CAZyme,substate across samples
-    dbcan_plot bar_plot -i ../fefifo_8002_1.CAZyme_abund,../fefifo_8002_7.CAZyme_abund --samples fefifo_8002_1,fefifo_8002_7 --top 40 --vertical_bar
-    -----------------------------------------
-    Heatmap of abundance for CAZyme,substate across samples
-    dbcan_plot heatmap_plot -i ../fefifo_8002_1.CAZyme_abund,../fefifo_8002_7.CAZyme_abund --samples fefifo_8002_1,fefifo_8002_7 --show_abund
-    -----------------------------------------
-    '''
-    parser = argparse.ArgumentParser(description='dbCAN plot ulities.',usage=usage,prog='dbcan_plot')
-    parser.add_argument('function', help='What function will be used to analyze?')
-    parser.add_argument('-i','--input',help='dbCAN CAZyme annotation oupput folder.',default="output",required=True)
-    parser.add_argument('-bt','--bedtools',help='bedtools gene reads count results.')
-    parser.add_argument('-o','--output',help='output files',default="output")
-    parser.add_argument('--db_dir', default="db", help='Database directory')
-    parser.add_argument('--cgcid', help='CGC id, consists of contig_ID|cgc_order',type=str,default=None)
-    parser.add_argument('--readscount', help='Read counts file generated by samtools depth!')
-    parser.add_argument('--samples', help='Samples seperated by ",".')
-    parser.add_argument('--top', help='Plot top num, the family or substrate was sorted by abs different.',default=20,type=int)
-    parser.add_argument('--plot_style', help='Style for barplot and heatmap.',choices=["ggplot",'seaborn','seaborn-poster'],default="ggplot")
-    parser.add_argument('--vertical_bar', help='Vertical bar',action='store_true')
-    parser.add_argument('--show_fig', help='Show plot figures or not',action='store_true')
-    parser.add_argument('--show_abund', help='Show abundance in heatmap?',action='store_true')
-    parser.add_argument('--palette', help='palettes or colormaps defined in matplotlib',default=None)
-    parser.add_argument('--cluster_map', action='store_true')
-    parser.add_argument('--col',default=None)
-    parser.add_argument('--value',default=None)
-    parser.add_argument('--pdf',default="bar_plot.pdf",help="bar plot output pdf file name")
-    args = parser.parse_args()
-    return args
+    plt.title(f"The most top {top} different families")
+    if not pdf.endswith(".pdf"):
+        pdf = pdf + ".pdf"
+    plt.savefig(pdf, bbox_inches="tight")
+    logger.info(f"Saved plot: {pdf}")
 
 
+click.rich_click.USE_RICH_MARKUP = True
+click.rich_click.USE_MARKDOWN = True
+click.rich_click.SHOW_ARGUMENTS = True
+click.rich_click.GROUP_ARGUMENTS_OPTIONS = True
+click.rich_click.STYLE_ERRORS_SUGGESTION = "magenta italic"
+click.rich_click.SHOW_METAVARS_COLUMN = False
+click.rich_click.APPEND_METAVARS_HELP = True
+click.rich_click.MAX_WIDTH = 100
+click.rich_click.COMMAND_GROUPS = {
+    "dbcan_plot": [
+        {
+            "name": "CGC/PUL Visualization",
+            "commands": ["CGC_plot", "CGC_coverage_plot", "CGC_synteny_plot", "CGC_synteny_coverage_plot"],
+        },
+        {
+            "name": "Abundance Visualization",
+            "commands": ["bar_plot", "heatmap_plot"],
+        },
+    ]
+}
+
+@click.command()
+@click.argument(
+    "function", 
+    type=click.Choice([
+        "CGC_plot", "CGC_coverage_plot", "CGC_synteny_plot", "CGC_synteny_coverage_plot",
+        "bar_plot", "heatmap_plot"
+    ])
+)
+@click.option("-i", "--input", "input_path", required=True, 
+              help="dbCAN CAZyme annotation output folder or input files (bar/heatmap).")
+@click.option("--db-dir", "--db_dir", default="db", show_default=True, 
+              help="Database directory.")
+@click.option("--cgcid", "cgcid", default=None, 
+              help="CGC id (contig_ID|cgc_order).")
+@click.option("--reads-count", "--reads_count", "--readscount", default=None, 
+              help="Read counts file generated by samtools depth.")
+@click.option("--samples", "samples", default=None, 
+              help='Sample names separated by "," (bar/heatmap).')
+@click.option("--top", "top", default=20, show_default=True, type=int, 
+              help="Top N entries to plot.")
+@click.option("--plot-style", "--plot_style", default="ggplot", show_default=True, 
+              type=click.Choice(["ggplot", "seaborn", "seaborn-poster"]), 
+              help="Style for barplot and heatmap.")
+@click.option("--vertical-bar", "--vertical_bar", is_flag=True, 
+              help="Use horizontal bar (True) vs vertical (False).")
+@click.option("--show-fig", "--show_fig", is_flag=True, 
+              help="Show figure interactively.")
+@click.option("--show-abund", "--show_abund", is_flag=True, 
+              help="Show abundance values on heatmap cells.")
+@click.option("--palette", "palette", default=None, 
+              help="Matplotlib colormap/palette name.")
+@click.option("--cluster-map", "--cluster_map", is_flag=True, 
+              help="Clustered heatmap.")
+@click.option("--col", "col", default=None, 
+              help="Filter column name.")
+@click.option("--value", "value", default=None, 
+              help='Filter values separated by ",".')
+@click.option("--pdf", "pdf", default="bar_plot.pdf", show_default=True, 
+              help="Bar plot output pdf file.")
+def cli(function, input_path, db_dir, cgcid, reads_count, samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map, col, value, pdf):
+    """# dbCAN plotting utilities
+    
+    ## CGC/PUL Visualization Commands
+    
+    **CGC_plot**: Generate basic CGC gene visualization
+    ```
+    dbcan_plot CGC_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1'
+    ```
+    
+    **CGC_coverage_plot**: Generate CGC visualization with read coverage
+    ```
+    dbcan_plot CGC_coverage_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1' --reads-count cgc.depth.txt
+    ```
+    
+    **CGC_synteny_plot**: Generate CGC-PUL synteny comparison
+    ```
+    dbcan_plot CGC_synteny_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1'
+    ```
+    
+    **CGC_synteny_coverage_plot**: Generate CGC-PUL comparison with coverage
+    ```
+    dbcan_plot CGC_synteny_coverage_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1' --reads-count cgc.depth.txt
+    ```
+    
+    ## Abundance Visualization Commands
+    
+    **bar_plot**: Create bar plot of CAZyme abundance
+    ```
+    dbcan_plot bar_plot -i a.CAZyme_abund,b.CAZyme_abund --samples A,B --vertical-bar
+    ```
+    
+    **heatmap_plot**: Create heatmap of CAZyme abundance
+    ```
+    dbcan_plot heatmap_plot -i a.CAZyme_abund,b.CAZyme_abund --samples A,B --show-abund
+    ```
+    """
+    # Build config
+    cfg = PlotsConfig(
+        input_dir=input_path if os.path.isdir(input_path) else os.path.dirname(os.path.abspath(input_path)) or ".",
+        db_dir=db_dir,
+        cgcid=cgcid,
+        reads_count=reads_count,
+        samples=(samples.split(",") if samples else None),
+        top=top,
+        plot_style=plot_style,
+        vertical_bar=vertical_bar,
+        show_fig=show_fig,
+        show_abund=show_abund,
+        palette=palette,
+        cluster_map=cluster_map,
+        filter_col=col,
+        filter_value=value,
+        pdf=pdf,
+    )
+
+    # Dispatch
+    if function == "CGC_plot":
+        CGC_plot(cfg)
+    elif function == "CGC_coverage_plot":
+        CGC_plot_reads_count(cfg)
+    elif function == "CGC_synteny_plot":
+        CGC_syntenic_with_PUL(cfg)
+    elif function == "CGC_synteny_coverage_plot":
+        CGC_syntenic_with_PUL_abund(cfg)
+    elif function == "bar_plot":
+        if not check_input_files_min_lines(input_path, min_lines=2):
+            return
+        if not samples:
+            logger.error("--samples is required for bar_plot")
+            return
+        bar_plot(cfg, input_files=input_path, samples=samples, plot_style=plot_style, col=col, value=value, top=top, vertical_bar=vertical_bar, pdf=pdf)
+    elif function == "heatmap_plot":
+        if not check_input_files_min_lines(input_path, min_lines=2):
+            return
+        if not samples:
+            logger.error("--samples is required for heatmap_plot")
+            return
+        heatmap_plot(cfg, input_files=input_path, samples=samples, show_abund=show_abund, cluster_map=cluster_map, palette=palette, col=col, value=value, plot_style=plot_style, top=top, show_fig=show_fig)
+
+
+if __name__ == "__main__":
+    cli()
+
+# Provide a main() entry-point for console_scripts referencing dbcan.utils.plots:main
 def main():
-    args = parse_argv()
-    if args.function == "CGC_plot":
-        ### dbcan_plot CGC_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1'
-        CGC_plot(args)
-    if args.function == "CGC_coverage_plot":
-        ### dbcan_plot CGC_coverage_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1' --readscount cgc.depth.txt
-        CGC_plot_reads_count(args)
-    if args.function == "CGC_synteny_plot":
-        ### dbcan_plot CGC_synteny_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1'
-        CGC_syntenic_with_PUL(args)
-    if args.function == "CGC_synteny_coverage_plot":
-        ### dbcan_plot CGC_synteny_coverage_plot -i ../fefifo_8002_1.dbCAN --cgcid 'k141_145331|CGC1' --readscount cgc.depth.txt
-        CGC_syntenic_with_PUL_abund(args)
-    if args.function == "bar_plot":
-        # dbcan_plot bar_plot -i fefifo_8002_1.CAZymeSub_abund,fefifo_8002_7.CAZymeSub_abund --samples fefifo_8002_1,fefifo_8002_7 --vertical_bar --col Substrate --value 'host glycan,starch,pectin,xylan,glycogen,cellulose,sucrose,mucin,arabinoxylan'
-        bar_plot(args)
-    if args.function == "heatmap_plot":
-        heatmap_plot(args)
-if __name__ =="__main__": ### for test
-    #split_uniInput_dbcansub("uniInput",32,"a","a",10,0.5)
-    main()
+    cli()
+
+# ---- helpers ----
+def load_pul_gffs(db_dir: str):
+    """
+    Collect PUL gene models by scanning db_dir/dbCAN-PUL/*/cgc.gff
+    Returns:
+      proteinid2gene  (key: PULID:protein_id)
+      pulid2genes     (key: PULID -> list[gene])
+      pulid2geneids   (key: PULID -> list[protein_id])
+    """
+    base = os.path.join(db_dir, "dbCAN-PUL")
+    proteinid2gene = {}
+    if not os.path.isdir(base):
+        logger.error(f"PUL directory not found: {base}")
+        return {}, {}, {}
+    from dbcan.plot.syntenic_plot import CGC_stanrdard  # reuse class
+    # replicate logic of syntenic_plot.read_PUL_cgcgff
+    for entry in os.scandir(base):
+        if entry.is_dir() and entry.name.startswith("PUL") and entry.name.endswith(".out"):
+            gff_path = os.path.join(entry.path, "cgc.gff")
+            if os.path.exists(gff_path):
+                read_cgcgff(gff_path, proteinid2gene)
+    pulid2genes = {}
+    pulid2geneids = {}
+    for k, gene in proteinid2gene.items():
+        pulid2genes.setdefault(gene.CGCID, []).append(gene)
+        pulid2geneids.setdefault(gene.CGCID, []).append(gene.Protein_ID)
+    return proteinid2gene, pulid2genes, pulid2geneids
