@@ -273,17 +273,20 @@ def plot_Polygon(polygens1, types1, ax):
 
 
 def plot_genome_line(lines, ax):
+    # draw connectors between adjacent genes as real line segments
     for line in lines:
         x1, y1, x2, y2 = points2(line)
-        ax.add_patch(Polygon([(x1, y1), (x2, y2)], facecolor="gray", edgecolor="none", lw=2))
+        ax.plot([x1, x2], [y1, y2], color="gray", lw=2, solid_capstyle="round", zorder=5)
 
 
 def plot_scale_line(lines, label, ax):
+    # draw the horizontal scale and tick marks as lines (not polygons)
     for i, line in enumerate(lines):
         x1, y1, x2, y2 = points2(line)
-        ax.add_patch(Polygon([(x1, y1), (x2, y2)], facecolor="gray", edgecolor="none", lw=2))
+        ax.plot([x1, x2], [y1, y2], color="gray", lw=2, zorder=5)
         if i >= 1:
-            ax.text(float(x1), float(y1) - 20, label[i - 1], va="bottom", ha="center")
+            # smaller offset so labels stay close to the lines
+            ax.text(float(x1), float(y1) - 6, label[i - 1], va="top", ha="center", fontsize=8)
 
 
 def points2(coord):
