@@ -48,8 +48,12 @@ class CGC_Standard_Out(object):
         for line in hits:
             if line.startswith("CGC#"):
                 continue
-            lines = line.split()
-            self.genes.append(cgc_standard_line(lines))
+            lines = line.rstrip("\n").split()  #
+            gene_obj = cgc_standard_line(lines)
+            # newly added
+            if len(lines) >= 1:
+                setattr(gene_obj, "annotation", lines[-1])
+            self.genes.append(gene_obj)
 
     def __iter__(self):
         return iter(self.genes)
@@ -94,6 +98,16 @@ class CGC(object):
     def get_cgc_CAZyme(self):
         return [gene.gene_type for gene in self]
 
+    def get_annotations(self):
+        annos = []
+        for g in self.genes:
+            ann = getattr(g, "annotation", None)
+            if not ann:
+                # use gene_type as backup
+                ann = getattr(g, "gene_type", "")
+            annos.append(ann)
+        return annos
+
 
 class CGC_standard_out_2CGC(object):
     def __init__(self, dbcan):
@@ -137,9 +151,10 @@ def CGC_plot(cfg: PlotsConfig):
     starts, ends, strands = cgc.get_positions()
     types = cgc.get_cgc_CAZyme()
     labels = cgc.get_proteinID()
+    annotations = cgc.get_annotations() if getattr(cfg, "show_annotation", False) else None  # only when enabled
 
     out_pdf = f"{cfg.cgcid.replace('|', '_')}.cgc.pdf"
-    cgc_fig_plot(starts, ends, strands, types, labels, out_pdf)
+    cgc_fig_plot(starts, ends, strands, types, labels, out_pdf, annotations=annotations)
 
 
 def read_location_reads_count(filename):
@@ -258,8 +273,8 @@ def plot_Polygon(polygens1, types1, ax):
         "TC": "#2ECC71",
         "TF": "#9B59B6",
         "STP": "#F1C40F",
-        "PEPTIDASE": "#16A085",
-        "SULFATLAS": "#34495E",
+        "Peptidase": "#16A085",
+        "Sulfatase": "#34495E",
         "Other": "#95A5A6",
     }
     default_color = "#95A5A6"
@@ -294,9 +309,9 @@ def points2(coord):
     return float(x1), float(y1), float(x2), float(y2)
 
 
-def cgc_fig_plot(starts, ends, strands, types, gene_labels, out_pdf: str):
+def cgc_fig_plot(starts, ends, strands, types, gene_labels, out_pdf: str, annotations=None):
     genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
-    geneslabels = ["CAZyme", "TC", "TF", "STP", "PEPTIDASE", "SULFATLAS", "Other"]
+    geneslabels = ["CAZyme", "TC", "TF", "STP", "Peptidase", "Sulfatase", "Other"]
     genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
 
     px = 1 / plt.rcParams["figure.dpi"]
@@ -309,21 +324,78 @@ def cgc_fig_plot(starts, ends, strands, types, gene_labels, out_pdf: str):
     plot_Polygon(polygens, types, ax)
     plot_genome_line(lines, ax)
     plot_scale_line(scale_positions, scale_text, ax)
+
+    ylim_top = 150
+    if annotations:
+        # rotation 60, larger font; dynamically extend ylim based on returned top y
+        top_y = add_gene_annotations(
+            ax, starts, ends, annotations,
+            font_size=8,
+            rotation=60,
+            y_offset=28
+        )
+        if top_y:
+            ylim_top = max(ylim_top, top_y + 5)
+
     ax.plot()
     legend = pyplot.legend(genecustom_lines, geneslabels, frameon=False, loc="best", title_fontsize="x-large")
     ax.add_artist(legend)
-    plt.ylim(0, 150)
+    plt.ylim(0, ylim_top)
     plt.xlim(-50, 1100)
-    plt.tight_layout(pad=0.1)
+    # Remove tight_layout to avoid shrinking arrows when text grows
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.96, bottom=0.02)
     plt.axis("off")
     plt.savefig(out_pdf, bbox_inches="tight")
     plt.close()
     logger.info(f"Saved figure: {out_pdf}")
 
 
+def add_gene_annotations(ax, starts, ends, annotations, font_size=10, rotation=60, y_offset=25):
+    """
+    Add full annotation text above gene arrows (no truncation).
+    rotation: text rotation angle (default 60).
+    font_size: text size.
+    y_offset: vertical offset above arrow top in data coordinates.
+    Returns the highest y used by text for dynamic ylim adjustment.
+    """
+    if not starts or not ends:
+        return
+    shift_pos = min(starts)
+    maxbp = max(ends) - shift_pos
+    if maxbp <= 0:
+        return
+    Width = 1000  # must match Get_Position
+    pixeachbp = Width / maxbp
+    # Arrow top baseline (from Get_Position geometry):
+    # Height/2 - poly_height = 160/2 - 10 = 70; arrow top ~ 70 + 20 = 90
+    base_polygon_y_top = 70 + 20
+    label_base_y = base_polygon_y_top + y_offset
+    max_top_y = label_base_y
+    # approximate single-line height in data units (rough factor)
+    line_height = font_size * 0.62
+    for s, e, ann in zip(starts, ends, annotations):
+        try:
+            cx = ((s - shift_pos) + (e - shift_pos)) / 2 * pixeachbp
+            txt = ax.text(
+                cx,
+                label_base_y,
+                ann,
+                ha="center",
+                va="bottom",
+                fontsize=font_size,
+                rotation=rotation,
+            )
+            top_est = label_base_y + line_height  # single line
+            if top_est > max_top_y:
+                max_top_y = top_est
+        except Exception:
+            continue
+    return max_top_y
+
+
 def cgc_fig_plot_abund(starts, ends, strands, types, labels, cfg: PlotsConfig, out_pdf: str):
     genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
-    geneslabels = ["CAZyme", "TC", "TF", "STP", "PEPTIDASE", "SULFATLAS", "Other"]
+    geneslabels = ["CAZyme", "TC", "TF", "STP", "Peptidase", "Sulfatase", "Other"]
     genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
 
     px = 1 / plt.rcParams["figure.dpi"]
@@ -527,7 +599,7 @@ def CGC_syntenic_with_PUL_abund(cfg: PlotsConfig):
     labels = ["80-100", "60-80", "40-60", "20-40", "0-20"]
 
     genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
-    geneslabels = ["CAZyme", "TC", "TF", "STP", "PEPTIDASE", "SULFATLAS", "Other"]
+    geneslabels = ["CAZyme", "TC", "TF", "STP", "Peptidase", "Sulfatase", "Other"]
     genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
 
     legend1 = pyplot.legend(custom_lines, labels, frameon=False, loc="lower right", bbox_to_anchor=(1, 0.5), title="Identity")
@@ -820,7 +892,9 @@ click.rich_click.COMMAND_GROUPS = {
               help='Filter values separated by ",".')
 @click.option("--pdf", "pdf", default="bar_plot.pdf", show_default=True, 
               help="Bar plot output pdf file.")
-def cli(function, input_path, db_dir, cgcid, reads_count, samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map, col, value, pdf):
+@click.option("--show-annotation", "--show_annotation", is_flag=True,
+              help="Show gene annotation labels in CGC_plot (default: hidden).")
+def cli(function, input_path, db_dir, cgcid, reads_count, samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map, col, value, pdf, show_annotation):
     """# dbCAN plotting utilities
     
     ## CGC/PUL Visualization Commands
@@ -875,6 +949,8 @@ def cli(function, input_path, db_dir, cgcid, reads_count, samples, top, plot_sty
         filter_value=value,
         pdf=pdf,
     )
+    # attach optional flag even if PlotsConfig does not define it (fallback)
+    setattr(cfg, "show_annotation", show_annotation)
 
     # Dispatch
     if function == "CGC_plot":

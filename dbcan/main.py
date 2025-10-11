@@ -4,6 +4,7 @@ from dbcan.parameter import (
     pyhmmer_dbcan_options, dbcansub_options ,pyhmmer_tf, pyhmmer_stp, cgc_gff_option, cgc_options, cgc_sub_options, syn_plot_options,
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam,
     topology_annotation_options   # <--- added
+    , diamond_sulfatase_options, diamond_peptidase_options
 )
 from pathlib import Path
 import logging
@@ -87,6 +88,8 @@ def cazyme_annotation_cmd(ctx, **kwargs):
 @pyhmmer_tf
 @diamond_tf_options
 @diamond_tc_options
+@diamond_sulfatase_options
+@diamond_peptidase_options
 @cgc_gff_option
 @click.pass_context
 def gff_process_cmd(ctx, **kwargs):

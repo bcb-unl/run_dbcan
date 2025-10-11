@@ -77,6 +77,7 @@ class PyHMMERProcessor(ABC):
         target_size = self.input_faa.stat().st_size
         results = []
         cpus = max(1, min(self.hmmer_cpu, psutil.cpu_count() or 1))
+        alphabet = pyhmmer.easel.Alphabet.amino()
 
         logger.info(
             f"Running HMM search: hmm={self.hmm_file.name} input={self.input_faa.name} "
@@ -86,7 +87,7 @@ class PyHMMERProcessor(ABC):
 
         try:
             with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
-                with pyhmmer.easel.SequenceFile(str(self.input_faa), digital=True) as seqs:
+                with pyhmmer.easel.SequenceFile(str(self.input_faa), digital=True, alphabet=alphabet) as seqs:
                     targets = seqs.read_block() if target_size < available_memory * 0.1 else seqs
                     for hits in pyhmmer.hmmsearch(
                         hmm_file_handle,
