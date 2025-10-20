@@ -80,7 +80,15 @@ class DiamondProcessor(ABC):
     def format_results(self):
         of = Path(self.output_file)
         if not of.exists() or of.stat().st_size == 0:
-            logger.warning(f"No results to format: {self.output_file} is empty or missing")
+            # Create a header-only TSV to avoid downstream warnings
+            cols = list(self.config.column_names) if getattr(self.config, "column_names", None) else []
+            # Keep the 'Database' column convention if label is provided
+            if self.config.label and 'Database' not in cols:
+                cols.append('Database')
+            header_df = pd.DataFrame(columns=cols)
+            of.parent.mkdir(parents=True, exist_ok=True)
+            header_df.to_csv(of, sep='\t', index=False)
+            logger.info(f"No DIAMOND hits. Wrote header-only file: {self.output_file}")
             return
         try:
             df = pd.read_csv(of, sep='\t', header=None, names=self.config.column_names)
