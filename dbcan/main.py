@@ -5,6 +5,7 @@ from dbcan.parameter import (
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam,
     topology_annotation_options   # <--- added
     , diamond_sulfatase_options, diamond_peptidase_options
+    , database_download_options
 )
 from pathlib import Path
 import logging
@@ -34,7 +35,7 @@ def version_cmd(ctx):
     click.echo(f"dbCAN version: {__version__}")
 
 @cli.command('database')
-@database_options
+@database_download_options
 @click.pass_context
 def database_cmd(ctx, **kwargs):
     """download dbCAN databases."""

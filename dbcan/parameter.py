@@ -45,8 +45,14 @@ def general_options(func):
     return func
 
 def database_options(func):
+    """Common database options shared by most commands (no CGC switch)."""
     func = click.option('--db_dir', required=True, help='Directory for the database')(func)
-    func = click.option('--cgc/--no-cgc', is_flag=True, default=True, help='Enable CGC-related databases')(func)
+    return func
+
+def database_download_options(func):
+    """Database downloader-only options (adds CGC switch)."""
+    func = database_options(func)
+    func = click.option('--cgc/--no-cgc', is_flag=True, default=True, help='Enable CGC-related databases (database download only)')(func)
     return func
 
 def diamond_options(func):
@@ -65,8 +71,8 @@ def diamond_tf_options(func):
     return func
 
 def pyhmmer_dbcan_options(func):
-    func = click.option('--e_value_threshold_dbcan',  type=float, help='E-value threshold for HMMER',  default=1e-15)(func)
-    func = click.option('--coverage_threshold_dbcan',  type=float, help='Coverage threshold for HMMER', default=0.35)(func)
+    func = click.option('--e_value_threshold_dbcan',  type=float, help='E-value threshold for dbCAN HMMER',  default=1e-15)(func)
+    func = click.option('--coverage_threshold_dbcan',  type=float, help='Coverage threshold for dbCAN HMMER', default=0.35)(func)
     return func
 
 def dbcansub_options(func):
