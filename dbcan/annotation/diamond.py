@@ -99,7 +99,7 @@ class DiamondProcessor(ABC):
 class CAZYDiamondProcessor(DiamondProcessor):
     def __init__(self, config: DiamondCAZyConfig):
         super().__init__(config)
-        
+
     def _postprocess_ids(self, df: pd.DataFrame, id_col: str):
         df[id_col] = df[id_col].apply(lambda x: x.split(' ')[0].split('|')[-1] if isinstance(x, str) else x)
 
