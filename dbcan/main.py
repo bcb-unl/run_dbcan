@@ -62,11 +62,11 @@ def cazyme_annotation_cmd(ctx, **kwargs):
     from dbcan.configs.base_config import OverviewGeneratorConfig
     from dbcan.configs.base_config import GeneralConfig
     from dbcan.core import run_dbCAN_input_process, run_dbCAN_CAZyme_annotation, run_dbCAN_topology_annotation
-    
+
     # Step 1: Input processing
     config = create_config(GeneralConfig, **kwargs)
     run_dbCAN_input_process(config)
-    
+
     # Step 2: CAZyme annotation
     diamond_config = create_config(DiamondCAZyConfig, **kwargs)
     pyhmmer_config = create_config(PyHMMERDBCANConfig, namespace="dbcan", **kwargs)
@@ -97,7 +97,7 @@ def gff_process_cmd(ctx, **kwargs):
     Generate GFF for CGC identification.
     need --input_gff when --input_raw_data is protein sequence.
     if --input_gff is not provided, will set default <output_dir>/uniInput.gff.
-    
+
     """
     from dbcan.configs.diamond_config import DiamondTFConfig, DiamondTCConfig, DiamondSulfataseConfig, DiamondPeptidaseConfig
     from dbcan.configs.pyhmmer_config import PyHMMERTFConfig, PyHMMERSTPConfig
@@ -121,7 +121,7 @@ def gff_process_cmd(ctx, **kwargs):
         logging.info(f"[gff_process] Defaulting gff_type=prodigal")
 
     diamond_tc_config = create_config(DiamondTCConfig, namespace="tc", **kwargs)
-    diamond_tf_config = create_config(DiamondTFConfig, namespace="tf", **kwargs)
+    diamond_tf_config = create_config(DiamondTFConfig, namespace="tf_diamond", **kwargs)
     pyhmmer_tf_config = create_config(PyHMMERTFConfig, namespace="tf", **kwargs)
     pyhmmer_stp_config = create_config(PyHMMERSTPConfig, namespace="stp", **kwargs)
     diamond_sulfatlas_config = create_config(DiamondSulfataseConfig, namespace="sulfatase", **kwargs)
@@ -249,15 +249,15 @@ def easy_substrate_cmd(ctx, **kwargs):
         # step 1: CAZyme annotation
         click.echo("step 1/4  CAZyme annotation...")
         _invoke_subset(ctx, cazyme_annotation_cmd, kwargs)
- 
+
         # step 2: GFF processing
         click.echo("step 2/4  GFF processing...")
         _invoke_subset(ctx, gff_process_cmd, kwargs)
- 
+
         # step 3: CGC identification
         click.echo("step 3/4  CGC identification...")
         _invoke_subset(ctx, cgc_finder_cmd, kwargs)
- 
+
         # step 4: Substrate prediction
         click.echo("step 4/4  Substrate prediction...")
         _invoke_subset(ctx, substrate_prediction_cmd, kwargs)

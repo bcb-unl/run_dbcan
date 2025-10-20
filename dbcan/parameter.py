@@ -59,8 +59,8 @@ def diamond_tc_options(func):
     func = click.option('--coverage_threshold_tc', type=float, help='Coverage threshold for TC', default=35)(func)
     return func
 def diamond_tf_options(func):
-    func = click.option('--e_value_threshold_tf', type=float, help='E-value threshold for TF' ,default=1e-4)(func)
-    func = click.option('--coverage_threshold_tf', type=float, help='Coverage threshold for TF', default=0.35)(func)
+    func = click.option('--e_value_threshold_tf_diamond', type=float, help='E-value threshold for TF' ,default=1e-4)(func)
+    func = click.option('--coverage_threshold_tf_diamond', type=float, help='Coverage threshold for TF', default=0.35)(func)
     func = click.option('--prokaryotic/--no-prokaryotic', is_flag=True, help='Enable prokaryotic mode for TF', default=True)(func)
     return func
 
