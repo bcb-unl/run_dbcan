@@ -63,7 +63,6 @@ Let's annotate Carbohydrate-Active enZYmes (CAZymes) in our example data.
       --mode protein \
       --output_dir output_EscheriaColiK12MG1655_faa \
       --db_dir db \
-      --input_format NCBI
 
 **Example 3: Eukaryotic Proteome (NCBI)**
 
@@ -148,7 +147,6 @@ Next, let's identify and analyze CAZyme gene clusters (CGCs).
       --mode protein \
       --output_dir output_EscheriaColiK12MG1655_faa_CGC \
       --db_dir db \
-      --input_format NCBI \
       --input_gff EscheriaColiK12MG1655.gff \
       --gff_type NCBI_prok
 
@@ -165,7 +163,6 @@ Next, let's identify and analyze CAZyme gene clusters (CGCs).
       --mode protein \
       --output_dir output_Xylona_heveae_TC161_faa_CGC \
       --db_dir db \
-      --input_format NCBI \
       --input_gff Xylona_heveae_TC161.gff \
       --gff_type NCBI_euk
 
@@ -182,7 +179,6 @@ Next, let's identify and analyze CAZyme gene clusters (CGCs).
       --mode protein \
       --output_dir output_Xylhe1_faa_CGC \
       --db_dir db \
-      --input_format JGI \
       --input_gff Xylhe1_GeneCatalog_proteins_20130827.gff \
       --gff_type JGI
 
@@ -240,7 +236,6 @@ Finally, let's predict substrates for the identified CAZymes and CGCs.
       --mode protein \
       --output_dir output_EscheriaColiK12MG1655_faa_sub \
       --db_dir db \
-      --input_format NCBI \
       --input_gff EscheriaColiK12MG1655.gff \
       --gff_type NCBI_prok
 
@@ -254,7 +249,6 @@ Finally, let's predict substrates for the identified CAZymes and CGCs.
       --mode protein \
       --output_dir output_Xylona_heveae_TC161_faa_sub \
       --db_dir db \
-      --input_format NCBI \
       --input_gff Xylona_heveae_TC161.gff \
       --gff_type NCBI_euk
 
@@ -268,7 +262,6 @@ Finally, let's predict substrates for the identified CAZymes and CGCs.
       --mode protein \
       --output_dir output_Xylhe1_faa_sub \
       --db_dir db \
-      --input_format JGI \
       --input_gff Xylhe1_GeneCatalog_proteins_20130827.gff \
       --gff_type JGI
 

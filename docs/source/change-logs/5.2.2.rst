@@ -1,0 +1,8 @@
+5.2.2
+~~~~~
+
+.. rubric:: Features
+
+#. Fix multiple issues mentioned on github (https://github.com/bcb-unl/run_dbcan/issues/22)
+#. Update the documentation to include more details about new features and usage.
+#. Add signalp6.0 support in the codes (need to install by users following https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md)

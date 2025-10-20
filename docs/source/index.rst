@@ -84,6 +84,7 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
    :caption: Getting start
 
    getting_started/installation
+   getting_started/database_description
    getting_started/quick_start
 
 
