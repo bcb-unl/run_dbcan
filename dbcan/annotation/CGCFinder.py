@@ -355,7 +355,7 @@ class CGCFinder:
 
                 summary_path = output_path.replace(".tsv", "_summary.tsv")
                 pd.DataFrame(columns=["CGC#", "Contig ID", "Cluster Start", "Cluster End", "Genes",
-                                     "CAZymes", "TC", "TF", "STP", "Sulfatase", "Peptidase", 
+                                     "CAZymes", "TC", "TF", "STP", "Sulfatase", "Peptidase",
                                      "Signatures", "Length (bp)"]).to_csv(summary_path, sep='\t', index=False)
                 logger.info(f"Empty CGC output file created at {output_path}")
                 return
@@ -377,14 +377,14 @@ class CGCFinder:
                 end = int(group[C.GENE_STOP_FIELD].max())
                 genes = int(len(group))
                 cazy = int((group[C.GENE_TYPE_FIELD] == "CAZyme").sum())
-                
+
                 # Count specific additional gene types
                 tc = int((group[C.GENE_TYPE_FIELD] == "TC").sum())
                 tf = int((group[C.GENE_TYPE_FIELD] == "TF").sum())
                 stp = int((group[C.GENE_TYPE_FIELD] == "STP").sum())
                 sulfatase = int((group[C.GENE_TYPE_FIELD] == "SULFATLAS").sum())
                 peptidase = int((group[C.GENE_TYPE_FIELD] == "PEPTIDASE").sum())
-                
+
                 sigs = int(cazy + tc + tf + stp + sulfatase + peptidase)
                 span = end - start + 1
                 return pd.Series({
