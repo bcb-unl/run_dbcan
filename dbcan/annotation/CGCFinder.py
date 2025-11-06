@@ -382,8 +382,8 @@ class CGCFinder:
                 tc = int((group[C.GENE_TYPE_FIELD] == "TC").sum())
                 tf = int((group[C.GENE_TYPE_FIELD] == "TF").sum())
                 stp = int((group[C.GENE_TYPE_FIELD] == "STP").sum())
-                sulfatase = int((group[C.GENE_TYPE_FIELD] == "SULFATLAS").sum())
-                peptidase = int((group[C.GENE_TYPE_FIELD] == "PEPTIDASE").sum())
+                sulfatase = int((group[C.GENE_TYPE_FIELD] == "Sulfatase").sum())
+                peptidase = int((group[C.GENE_TYPE_FIELD] == "Peptidase").sum())
                 
                 sigs = int(cazy + tc + tf + stp + sulfatase + peptidase)
                 span = end - start + 1
