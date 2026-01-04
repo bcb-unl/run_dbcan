@@ -269,7 +269,7 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 
 @cli.command('easy_substrate')
 @logging_options
-@general_options
+@cgc_sub_options
 @methods_option
 @threads_option
 @diamond_options
@@ -281,9 +281,6 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 @diamond_tc_options
 @cgc_gff_option
 @cgc_options
-@cgc_substrate_base_options
-@cgc_substrate_homology_params_options
-@cgc_substrate_dbcan_sub_param_options
 @click.pass_context
 def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, CGC identification, and substrate prediction in one step."""

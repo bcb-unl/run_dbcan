@@ -36,6 +36,7 @@ methods_option = click.option('--methods',
     multiple=True)
 
 
+
 # Define group options
 def general_options(func):
     func = click.option('--input_raw_data', required=True, help='Path to the input raw data')(func)
@@ -167,7 +168,7 @@ def cgc_options(func):
 
 def cgc_substrate_base_options(func):
     """base opiton"""
-    func = output_dir_option(func)
+    func = general_options(func)
     func = click.option('--pul', help="dbCAN-PUL PUL.faa")(func)
     func = click.option('-o', '--out', default="substrate.out", help="substrate prediction result")(func)
     func = click.option('-w', '--workdir', default=".", type=str, help="work directory")(func)

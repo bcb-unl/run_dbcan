@@ -20,10 +20,14 @@
 </p>
 
 ## Update
+10/20/2025:
+1. **SignalP6.0 Topology Annotation**: Added support for SignalP6.0 signal peptide prediction. Use `--run_signalp` flag in `CAZyme_annotation` command to enable topology annotation. Results are automatically added to the overview.tsv file.
+2. **Global Logging System**: Implemented comprehensive logging system with `--log-level`, `--log-file`, and `--verbose` options for better debugging and monitoring.
+3. **Database Download Command**: Added new `database` command for easy database downloading. Supports both HTTP and AWS S3 sources (use `--aws_s3` flag for faster downloads). Use `--cgc/--no-cgc` to control CGC-related database downloads.
+4. **Code Structure Improvements**: Continued refactoring with object-oriented programming, improved modularity, and centralized configuration management.
+
 5/12/2025:
 `dev-dbcan` branch is used to test new functions and fix issues. After testing, this branch will be merged into the main branch and update docker/conda/pypi. If you want to use those beta functions, please replace the code folder (dbcan) with your current package.
-
-
 
 3/16/2025:
 1. Rewrite the structure of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> (suggested by Haidong), using object-oriented programming (OOP) to improve maintainability and readability.
@@ -37,7 +41,23 @@
 
 This is the updated version of <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a>. Many changes have been made and described in https://run-dbcan.readthedocs.io/en/latest/. From now on, this repo is the official run_dbcan site, and the site at <a href="https://github.com/linnabrown/run_dbcan">run_dbcan 4.0</a> will be no longer maintained.
 
-**run_dbcan** is the standalone version of the [dbCAN3](http://bcb.unl.edu/dbCAN2/) annotation tool for automated CAZyme annotation. This tool, known as `run_dbcan`, incorporates HMMER, Diamond, and dbCAN_sub for annotating CAZyme families, and integrates Cazyme Gene Clusters (CGCs) and substrate predictions.
+**run_dbcan** is the standalone version of the [dbCAN3](http://bcb.unl.edu/dbCAN2/) annotation tool for automated CAZyme annotation. This tool, known as `run_dbcan`, incorporates pyHMMER (replacing HMMER for better performance), Diamond, and dbCAN_sub for annotating CAZyme families, and integrates CAZyme Gene Clusters (CGCs) and substrate predictions.
+
+## Main Commands
+
+The tool provides the following main commands:
+
+- `database` - Download dbCAN databases (supports HTTP and AWS S3)
+- `CAZyme_annotation` - Annotate CAZymes using Diamond, pyHMMER, and dbCAN-sub
+- `gff_process` - Generate GFF files for CGC identification
+- `cgc_finder` - Identify CAZyme Gene Clusters (CGCs)
+- `substrate_prediction` - Predict substrate specificities of CGCs
+- `cgc_circle_plot` - Generate circular plots for CGCs
+- `easy_CGC` - Complete CGC analysis pipeline (annotation + GFF processing + CGC identification)
+- `easy_substrate` - Complete CGC analysis with substrate prediction
+- `Pfam_null_cgc` - Annotate null genes in CGCs using Pfam
+
+All commands support global logging options: `--log-level`, `--log-file`, and `--verbose`.
 
 For usage discussions, visit our [issue tracker](https://github.com/bcb-unl/run_dbcan/issues). To learn more, read the [dbcan doc]. If you're interested in contributing, whether through issues or pull requests, please review our contribution guide.
 
