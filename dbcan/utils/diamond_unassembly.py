@@ -2,8 +2,11 @@ import os
 import sys
 from pathlib import Path
 import gzip
+import logging
 import rich_click as click
 from rich import print as rprint
+from dbcan.parameter import logging_options
+from dbcan.main import setup_logging
 
 # rich-click styling (can be adjusted)
 click.rich_click.USE_RICH_MARKUP = True
@@ -432,8 +435,14 @@ GROUP_HELP = """
 """
 
 @click.group(help=GROUP_HELP)
-def cli():
-    pass
+@logging_options
+@click.pass_context
+def cli(ctx, log_level, log_file, verbose):
+    setup_logging(log_level, log_file, verbose)
+    ctx.ensure_object(dict)
+    ctx.obj['log_level'] = log_level
+    ctx.obj['log_file'] = log_file
+    ctx.obj['verbose'] = verbose
 
 def common_norm_option(f):
     return click.option(

@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, Set, List
+from typing import Dict, Iterable, Set, List, Optional
 
 import pandas as pd
 from Bio import SeqIO
@@ -17,29 +17,55 @@ def _to_path(p) -> Path:
     return p if isinstance(p, Path) else Path(p)
 
 
-def process_results(results: List[List], output_file) -> None:
-    """Write HMMER hits to disk and filter highly-overlapping domains (per target)."""
+def process_results(results: Optional[Iterable[List]], output_file, temp_hits_file: Optional[Path] = None) -> None:
+    """Write HMMER hits to disk and filter highly-overlapping domains (per target).
+
+    Accepts either an in-memory iterable of hit rows or a temporary hits TSV file.
+    """
     out_path = _to_path(output_file)
+    df = pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES)
+
     try:
-        if results:
-            df = pd.DataFrame(results, columns=PU.HMMER_COLUMN_NAMES)
-            # enforce numeric types
-            for col in [PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN]:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-            if PU.IEVALUE_COLUMN in df.columns:
-                df[PU.IEVALUE_COLUMN] = pd.to_numeric(df[PU.IEVALUE_COLUMN], errors='coerce')
-            # basic cleaning
-            df = df.dropna(subset=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
-            df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN], inplace=True)
-            df_filtered = filter_overlaps(df)
-            df_filtered.to_csv(out_path, index=False, sep='\t')
-        else:
-            pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES).to_csv(out_path, index=False, sep='\t')
+        if temp_hits_file and _is_nonempty_file(temp_hits_file):
+            # Use chunked reading for large files (>100MB)
+            file_size_mb = temp_hits_file.stat().st_size / (1024 * 1024)
+            if file_size_mb > 100:
+                logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading")
+                chunks = []
+                for chunk in pd.read_csv(temp_hits_file, sep='\t', header=None, names=PU.HMMER_COLUMN_NAMES, chunksize=100000):
+                    chunks.append(chunk)
+                df = pd.concat(chunks, ignore_index=True)
+            else:
+                df = pd.read_csv(temp_hits_file, sep='\t', header=None, names=PU.HMMER_COLUMN_NAMES)
+        elif results:
+            df = pd.DataFrame(list(results), columns=PU.HMMER_COLUMN_NAMES)
+
+        if df.empty:
+            df.to_csv(out_path, index=False, sep='\t')
+            return
+
+        # enforce numeric types
+        for col in [PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        if PU.IEVALUE_COLUMN in df.columns:
+            df[PU.IEVALUE_COLUMN] = pd.to_numeric(df[PU.IEVALUE_COLUMN], errors='coerce')
+
+        # basic cleaning
+        df = df.dropna(subset=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
+        df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN], inplace=True)
+        df_filtered = filter_overlaps(df)
+        df_filtered.to_csv(out_path, index=False, sep='\t')
     except Exception as e:
         logger.error(f"Error in process_results: {e}", exc_info=True)
         # write empty as fallback
         pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES).to_csv(out_path, index=False, sep='\t')
+    finally:
+        if temp_hits_file:
+            try:
+                temp_hits_file.unlink(missing_ok=True)
+            except Exception:
+                logger.debug("Failed to remove temp hits file: %s", temp_hits_file)
 
 
 def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLAP_RATIO_THRESHOLD) -> pd.DataFrame:
@@ -122,7 +148,17 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 logger.warning(f"{name} output file not found or empty: {fpath}")
                 continue
             try:
-                df = pd.read_csv(fpath, sep='\t', header=0)
+                # Use chunked reading for large files (>100MB)
+                file_size_mb = fpath.stat().st_size / (1024 * 1024)
+                if file_size_mb > 100:
+                    logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {name}")
+                    chunks = []
+                    for chunk in pd.read_csv(fpath, sep='\t', header=0, chunksize=100000):
+                        chunks.append(chunk)
+                    df = pd.concat(chunks, ignore_index=True)
+                else:
+                    df = pd.read_csv(fpath, sep='\t', header=0)
+                
                 # align columns
                 missing = [c for c in columns if c not in df.columns]
                 if missing:
@@ -138,7 +174,7 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 for col in [PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN, PU.ANNOTATE_FROM_COLUMN, PU.ANNOTATE_TO_COLUMN, PU.COVERAGE_COLUMN]:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce')
-                        
+
                 if PU.IEVALUE_COLUMN in df.columns:
                     df[PU.IEVALUE_COLUMN] = pd.to_numeric(df[PU.IEVALUE_COLUMN], errors='coerce')
                 df = df.dropna(subset=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
@@ -156,7 +192,21 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
             pd.DataFrame(columns=columns + ['Type']).to_csv(out_file, index=False, sep='\t')
             return
 
-        total_df = pd.concat(frames, ignore_index=True)
+        # Optimize DataFrame concatenation for large datasets
+        # Concatenate in chunks if total size is large
+        total_rows = sum(len(f) for f in frames)
+        if total_rows > 1000000:  # 1M rows threshold
+            logger.info(f"Large dataset detected ({total_rows} rows), concatenating in chunks")
+            # Concatenate in smaller groups to reduce memory peak
+            chunk_size = 3  # Concatenate 3 dataframes at a time
+            result_frames = []
+            for i in range(0, len(frames), chunk_size):
+                chunk = frames[i:i+chunk_size]
+                result_frames.append(pd.concat(chunk, ignore_index=True))
+            total_df = pd.concat(result_frames, ignore_index=True)
+        else:
+            total_df = pd.concat(frames, ignore_index=True)
+        
         filtered_df = filter_overlaps(total_df)
         filtered_df.to_csv(out_file, index=False, sep='\t')
         logger.info(f"Saved {len(filtered_df)} CGC annotations to {out_file}")
@@ -175,7 +225,17 @@ def process_cgc_null_pfam_annotation(Pfam_config) -> None:
         return
 
     try:
-        df = pd.read_csv(pfam_hmm_output, sep='\t', header=0)
+        # Use chunked reading for large files (>100MB)
+        file_size_mb = pfam_hmm_output.stat().st_size / (1024 * 1024)
+        if file_size_mb > 100:
+            logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading")
+            chunks = []
+            for chunk in pd.read_csv(pfam_hmm_output, sep='\t', header=0, chunksize=100000):
+                chunks.append(chunk)
+            df = pd.concat(chunks, ignore_index=True)
+        else:
+            df = pd.read_csv(pfam_hmm_output, sep='\t', header=0)
+        
         # align to HMMER_COLUMN_NAMES
         missing = [c for c in PU.HMMER_COLUMN_NAMES if c not in df.columns]
         if missing:
@@ -266,14 +326,27 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
 
     # build mapping: protein_id -> pfam annotation
     pfam_map: Dict[str, str] = {}
-    df = pd.read_csv(pfam_path, sep='\t', header=0)
-    if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(df.columns):
-        logger.warning(f"PFAM result missing required columns in {pfam_path}")
-        return
-    for _, row in df.iterrows():
-        protein_id = str(row[PU.TARGET_NAME_COLUMN])
-        annot = str(row[PU.HMM_NAME_COLUMN])
-        pfam_map[protein_id] = annot
+    # Use chunked reading for large files (>100MB)
+    file_size_mb = pfam_path.stat().st_size / (1024 * 1024)
+    if file_size_mb > 100:
+        logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for mapping")
+        for chunk in pd.read_csv(pfam_path, sep='\t', header=0, chunksize=100000):
+            if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(chunk.columns):
+                logger.warning(f"PFAM result missing required columns in {pfam_path}")
+                return
+            for _, row in chunk.iterrows():
+                protein_id = str(row[PU.TARGET_NAME_COLUMN])
+                annot = str(row[PU.HMM_NAME_COLUMN])
+                pfam_map[protein_id] = annot
+    else:
+        df = pd.read_csv(pfam_path, sep='\t', header=0)
+        if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(df.columns):
+            logger.warning(f"PFAM result missing required columns in {pfam_path}")
+            return
+        for _, row in df.iterrows():
+            protein_id = str(row[PU.TARGET_NAME_COLUMN])
+            annot = str(row[PU.HMM_NAME_COLUMN])
+            pfam_map[protein_id] = annot
 
     # update cgc_standard_out.tsv
     with cgc_path.open() as fin, out_cgc_path.open('w') as fout:

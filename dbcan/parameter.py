@@ -53,6 +53,7 @@ def database_download_options(func):
     """Database downloader-only options (adds CGC switch)."""
     func = database_options(func)
     func = click.option('--cgc/--no-cgc', is_flag=True, default=True, help='Enable CGC-related databases (database download only)')(func)
+    func = click.option('--aws_s3', is_flag=True, default=False, help='Download databases from AWS S3')(func)
     return func
 
 def diamond_options(func):
@@ -227,6 +228,25 @@ def topology_annotation_options(func):
     func = click.option('--force_topology/--no-force_topology',
                         default=False,
                         help='Overwrite existing SignalP columns instead of only filling empty cells')(func)
+    return func
+
+def logging_options(func):
+    """Global logging options for all commands"""
+    func = click.option('--log-level',
+                        type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
+                        default='WARNING',
+                        help='Set logging level (default: WARNING, only shows warnings and errors)'
+                        )(func)
+    func = click.option('--log-file',
+                        type=click.Path(),
+                        default=None,
+                        help='Write logs to file in addition to console'
+                        )(func)
+    func = click.option('--verbose', '-v',
+                        is_flag=True,
+                        default=False,
+                        help='Enable verbose logging (equivalent to --log-level DEBUG)'
+                        )(func)
     return func
 
 

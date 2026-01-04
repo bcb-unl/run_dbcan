@@ -7,13 +7,13 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from tqdm import tqdm
 from dbcan.configs.database_config import DBDownloaderConfig
-from dbcan.constants.databases_constants import (DATABASES_CAZYME, DATABASES_CGC, COMPRESSED_DBCAN_PUL)
+from dbcan.constants.databases_constants import (DATABASES_CAZYME, DATABASES_CGC, COMPRESSED_DBCAN_PUL, DATABASES_CAZYME_S3, DATABASES_CGC_S3)
 
 
 logger = logging.getLogger(__name__)
 
 class DBDownloader:
-    """Download dbCAN databases"""
+    """Download dbCAN databases from HTTP or AWS S3"""
 
     def __init__(self, config: DBDownloaderConfig):
         """Initialize the database downloader
@@ -31,14 +31,24 @@ class DBDownloader:
 
     @property
     def databases(self) -> Dict[str, str]:
-        if self.config.cgc:
-            logger.debug("Including CGC-related databases in download list.")
-            return {**DATABASES_CAZYME, **DATABASES_CGC}
-        logger.debug("CGC-related databases are disabled (cgc=False).")
-        return dict(DATABASES_CAZYME)
+        """Get database URLs based on source (HTTP or S3)"""
+        if self.config.aws_s3:
+            logger.debug("Using AWS S3 as download source")
+            if self.config.cgc:
+                logger.debug("Including CGC-related databases in download list.")
+                return {**DATABASES_CAZYME_S3, **DATABASES_CGC_S3}
+            logger.debug("CGC-related databases are disabled (cgc=False).")
+            return dict(DATABASES_CAZYME_S3)
+        else:
+            logger.debug("Using HTTP as download source")
+            if self.config.cgc:
+                logger.debug("Including CGC-related databases in download list.")
+                return {**DATABASES_CAZYME, **DATABASES_CGC}
+            logger.debug("CGC-related databases are disabled (cgc=False).")
+            return dict(DATABASES_CAZYME)
 
     def download_file(self):
-        """Download all databases"""
+        """Download all databases from HTTP or AWS S3"""
         session = self._prepare_session()
         try:
             for filename, url in self.databases.items():
@@ -57,7 +67,7 @@ class DBDownloader:
                         logger.info(f"File {filename} already complete (size match), skipping.")
                         continue
 
-                logger.info(f"Downloading {filename} from {url}")
+                logger.info(f"Downloading {filename} from {'S3' if self.config.aws_s3 else 'HTTP'}: {url}")
                 try:
                     self._download_single_file(session, url, output_path)
                     logger.info(f"{filename} successfully downloaded")
@@ -99,10 +109,11 @@ class DBDownloader:
             return None
 
     def _download_single_file(self, session: requests.Session, url: str, output_path: Path):
-        """Download a single file with progress bar
+        """Download a single file with progress bar (HTTP or S3)
 
         Args:
-            url: The URL to download from
+            session: requests Session object
+            url: The URL to download from (HTTP or S3 URL)
             output_path: The path to save the file to
         """
         tmp_path = Path(str(output_path) + ".part")

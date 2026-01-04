@@ -34,6 +34,8 @@ from dbcan.constants.plots_constants import (
 )
 
 from dbcan.configs.plots_config import PlotsConfig
+from dbcan.parameter import logging_options
+from dbcan.main import setup_logging
 
 mpl.rcParams["pdf.fonttype"] = 42
 mpl.rcParams["ps.fonttype"] = 42
@@ -854,6 +856,7 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 @click.command()
+@logging_options
 @click.argument(
     "function", 
     type=click.Choice([
@@ -894,7 +897,7 @@ click.rich_click.COMMAND_GROUPS = {
               help="Bar plot output pdf file.")
 @click.option("--show-annotation", "--show_annotation", is_flag=True,
               help="Show gene annotation labels in CGC_plot (default: hidden).")
-def cli(function, input_path, db_dir, cgcid, reads_count, samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map, col, value, pdf, show_annotation):
+def cli(function, log_level, log_file, verbose, input_path, db_dir, cgcid, reads_count, samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map, col, value, pdf, show_annotation):
     """# dbCAN plotting utilities
     
     ## CGC/PUL Visualization Commands
@@ -931,6 +934,7 @@ def cli(function, input_path, db_dir, cgcid, reads_count, samples, top, plot_sty
     dbcan_plot heatmap_plot -i a.CAZyme_abund,b.CAZyme_abund --samples A,B --show-abund
     ```
     """
+    setup_logging(log_level, log_file, verbose)
     # Build config
     cfg = PlotsConfig(
         input_dir=input_path if os.path.isdir(input_path) else os.path.dirname(os.path.abspath(input_path)) or ".",

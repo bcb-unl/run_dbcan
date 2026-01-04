@@ -3,6 +3,7 @@ import subprocess
 import logging
 import pandas as pd
 from abc import ABC
+import time
 
 from dbcan.configs.diamond_config import (
     DiamondConfig, DiamondCAZyConfig,DiamondTCConfig, DiamondSulfataseConfig, DiamondPeptidaseConfig, DiamondTFConfig
@@ -68,13 +69,21 @@ class DiamondProcessor(ABC):
         if self.config.coverage_threshold is not None:
             cmd.extend([D.DIAMOND_CMD_QUERY_COVER, str(self.config.coverage_threshold)])
 
-        logger.info(f"Running DIAMOND BLASTp: db={Path(self.diamond_db).name} out={Path(self.output_file).name}")
+        logger.info("Running DIAMOND BLASTp: %s", " ".join(cmd))
+        start = time.time()
         try:
-            subprocess.run(cmd, check=True)
-            logger.info("DIAMOND BLASTp completed")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            elapsed = time.time() - start
+            if result.returncode != 0:
+                logger.error("DIAMOND BLASTp failed (exit %s)", result.returncode)
+                if result.stderr:
+                    logger.error("DIAMOND stderr: %s", result.stderr.strip())
+                raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout, stderr=result.stderr)
+
+            logger.info("DIAMOND BLASTp completed in %.2fs", elapsed)
             self.format_results()
         except subprocess.CalledProcessError as e:
-            logger.error(f"DIAMOND BLASTp failed: {e}")
+            logger.error("DIAMOND BLASTp failed: %s", e)
             raise
 
     def format_results(self):

@@ -120,59 +120,108 @@ class ProkProcessor(BaseProcessor):
         try:
             gene_finder = pyrodigal.GeneFinder(meta=is_meta)
 
-            logger.info(f"Reading sequences from {self.input_raw_data_path}")
-            sequence_data = []
-            for rec_id, seq, _ in self.parse(self.input_raw_data_path):
-                sequence_data.append((rec_id, seq.encode('utf-8')))
-
-            if not sequence_data:
-                logger.error(f"No valid sequences found in {self.input_raw_data_path}")
-                return None, None
-
-            logger.info(f"Found {len(sequence_data)} sequences")
-
+            # For non-meta mode, we need to collect sequences for training
+            # For meta mode, we can process streamingly
             if not is_meta:
+                # First pass: collect sequences for training
+                logger.info(f"Reading sequences for training from {self.input_raw_data_path}")
+                training_sequences = []
+                sequence_count = 0
+                for rec_id, seq, _ in self.parse(self.input_raw_data_path):
+                    training_sequences.append(seq.encode('utf-8'))
+                    sequence_count += 1
+                
+                if not training_sequences:
+                    logger.error(f"No valid sequences found in {self.input_raw_data_path}")
+                    return None, None
+                
+                logger.info(f"Found {sequence_count} sequences for training")
                 logger.info("Training Pyrodigal on input sequences")
-                gene_finder.train(*(seq_bytes for _, seq_bytes in sequence_data))
+                gene_finder.train(*training_sequences)
+                # Release training data from memory
+                del training_sequences
 
             logger.info(f"Finding genes using {self.threads} threads")
-            seq_bytes_list = [seq_bytes for _, seq_bytes in sequence_data]
-            if self.threads == 1:
-                results = [gene_finder.find_genes(seq_bytes) for seq_bytes in seq_bytes_list]
-            else:
-                with ThreadPool(self.threads) as pool:
-                    results = pool.map(gene_finder.find_genes, seq_bytes_list)
-
             logger.info(f"Writing protein translations to {self.output_faa_path}")
             logger.info(f"Writing gene annotations to {self.output_gff_path}")
 
+            # Second pass: process sequences streamingly
+            genes_found = 0
+            sequence_count = 0
+            
             with self.output_faa_path.open('w') as prot_file, self.output_gff_path.open('w') as gff_file:
-                genes_found = 0
-                for (ori_seq_id, _), genes in zip(sequence_data, results):
-                    genes.write_gff(gff_file, sequence_id=ori_seq_id)
-                    temp_output = StringIO()
-                    genes.write_translations(temp_output, sequence_id=ori_seq_id)
-                    temp_output.seek(0)
+                # Process sequences in batches to balance memory and performance
+                batch_size = max(100, min(1000, self.threads * 50))  # Adaptive batch size
+                batch = []
+                batch_ids = []
+                
+                def process_batch(batch_data, batch_ids_data):
+                    """Process a batch of sequences."""
+                    if self.threads == 1:
+                        return [gene_finder.find_genes(seq_bytes) for seq_bytes in batch_data]
+                    else:
+                        with ThreadPool(self.threads) as pool:
+                            return pool.map(gene_finder.find_genes, batch_data)
+                
+                for rec_id, seq, _ in self.parse(self.input_raw_data_path):
+                    batch.append(seq.encode('utf-8'))
+                    batch_ids.append(rec_id)
+                    sequence_count += 1
                     
-                    for line in temp_output:
-                        if line.startswith(">"):
-                            if " # " in line:
-                                clean_id = line[1:].strip().split(" # ")[0]
-                                prot_file.write(f">{clean_id}\n")
+                    if len(batch) >= batch_size:
+                        # Process batch
+                        results = process_batch(batch, batch_ids)
+                        
+                        # Write results
+                        for (ori_seq_id, seq_bytes), genes in zip(zip(batch_ids, batch), results):
+                            genes.write_gff(gff_file, sequence_id=ori_seq_id)
+                            temp_output = StringIO()
+                            genes.write_translations(temp_output, sequence_id=ori_seq_id)
+                            temp_output.seek(0)
+                            
+                            for line in temp_output:
+                                if line.startswith(">"):
+                                    if " # " in line:
+                                        clean_id = line[1:].strip().split(" # ")[0]
+                                        prot_file.write(f">{clean_id}\n")
+                                    else:
+                                        clean_id = line[1:].strip().split()[0]
+                                        prot_file.write(f">{clean_id}\n")
+                                else:
+                                    prot_file.write(line)
+                            genes_found += len(genes)
+                        
+                        # Clear batch
+                        batch = []
+                        batch_ids = []
+                
+                # Process remaining sequences
+                if batch:
+                    results = process_batch(batch, batch_ids)
+                    for (ori_seq_id, seq_bytes), genes in zip(zip(batch_ids, batch), results):
+                        genes.write_gff(gff_file, sequence_id=ori_seq_id)
+                        temp_output = StringIO()
+                        genes.write_translations(temp_output, sequence_id=ori_seq_id)
+                        temp_output.seek(0)
+                        
+                        for line in temp_output:
+                            if line.startswith(">"):
+                                if " # " in line:
+                                    clean_id = line[1:].strip().split(" # ")[0]
+                                    prot_file.write(f">{clean_id}\n")
+                                else:
+                                    clean_id = line[1:].strip().split()[0]
+                                    prot_file.write(f">{clean_id}\n")
                             else:
-                                clean_id = line[1:].strip().split()[0]
-                                prot_file.write(f">{clean_id}\n")
-                        else:
-                            prot_file.write(line)
-                    genes_found += len(genes)
+                                prot_file.write(line)
+                        genes_found += len(genes)
 
-            logger.info(f"Processed {len(sequence_data)} sequences, found {genes_found} genes")
+            logger.info(f"Processed {sequence_count} sequences, found {genes_found} genes")
 
             if not self._verify_output(self.output_faa_path):
                 return None, None
             if not self._verify_output(self.output_gff_path):
                 return None, None
-
 
             return str(self.output_faa_path), str(self.output_gff_path)
 

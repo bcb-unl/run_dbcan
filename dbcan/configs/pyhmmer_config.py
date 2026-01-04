@@ -15,6 +15,11 @@ class PyHMMERConfig(BaseConfig):
     output_file: str = None
     evalue_threshold: Optional[float] = None
     coverage_threshold: Optional[float] = None
+    # Memory management options
+    batch_size: Optional[int] = None  # Number of sequences per batch (auto-calculated if None)
+    max_memory_usage: float = 0.8  # Maximum memory usage ratio (0.0-1.0)
+    enable_memory_monitoring: bool = True  # Enable memory monitoring
+    memory_safety_factor: float = 0.5  # Safety factor for batch size calculation (0.0-1.0)
 
 # dbCAN
 @dataclass

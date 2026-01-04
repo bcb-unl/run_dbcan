@@ -11,3 +11,4 @@ class DBDownloaderConfig(GeneralConfig):
     no_overwrite: bool = False
     resume: bool = True
     verify_ssl: bool = True
+    aws_s3: bool = False

@@ -106,7 +106,16 @@ class CGCFinder:
                     self.df = io_read_gff_df(self.filename, columns=C.GFF_COLUMNS)
                 except Exception as e:
                     logger.warning(f"Failed to read GFF with io_read_gff_df: {e}")
-                    self.df = pd.read_csv(self.filename, sep='\t', names=C.GFF_COLUMNS)
+                    # Use chunked reading for large files (>100MB)
+                    file_size_mb = Path(self.filename).stat().st_size / (1024 * 1024)
+                    if file_size_mb > 100:
+                        logger.info(f"Large GFF file detected ({file_size_mb:.1f}MB), using chunked reading")
+                        chunks = []
+                        for chunk in pd.read_csv(self.filename, sep='\t', names=C.GFF_COLUMNS, chunksize=100000):
+                            chunks.append(chunk)
+                        self.df = pd.concat(chunks, ignore_index=True)
+                    else:
+                        self.df = pd.read_csv(self.filename, sep='\t', names=C.GFF_COLUMNS)
             #print("test0",self.df  )
 
             # Filter comments and feature types

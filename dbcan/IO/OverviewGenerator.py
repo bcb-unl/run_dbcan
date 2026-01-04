@@ -105,7 +105,17 @@ class OverviewGenerator:
                 logger.warning(f"{key} results not found at {path}")
                 continue
             try:
-                df = pd.read_csv(path, sep='\t')
+                # Use chunked reading for large files (>100MB)
+                file_size_mb = path.stat().st_size / (1024 * 1024)
+                if file_size_mb > 100:
+                    logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {key}")
+                    chunks = []
+                    for chunk in pd.read_csv(path, sep='\t', chunksize=100000):
+                        chunks.append(chunk)
+                    df = pd.concat(chunks, ignore_index=True)
+                else:
+                    df = pd.read_csv(path, sep='\t')
+                
                 required = list(self.column_names_map[key])
                 missing = [c for c in required if c not in df.columns]
                 if missing:

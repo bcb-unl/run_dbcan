@@ -5,10 +5,31 @@ from dbcan.parameter import (
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam,
     topology_annotation_options   # <--- added
     , diamond_sulfatase_options, diamond_peptidase_options
-    , database_download_options
+    , database_download_options, logging_options
 )
 from pathlib import Path
 import logging
+import warnings
+from typing import Optional
+
+# Suppress numpy UserWarnings about subnormal values
+warnings.filterwarnings("ignore", message=".*smallest subnormal.*", category=UserWarning)
+
+
+def setup_logging(log_level: str, log_file: Optional[str] = None, verbose: bool = False):
+    """Configure logging based on command line options"""
+    level = logging.DEBUG if verbose else getattr(logging, log_level.upper(), logging.WARNING)
+    
+    handlers = [logging.StreamHandler()]
+    if log_file:
+        handlers.append(logging.FileHandler(log_file, mode='w'))
+    
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=handlers,
+        force=True  # Override any existing configuration
+    )
 
 def _invoke_subset(ctx, cmd, all_kwargs):
     """
@@ -17,15 +38,18 @@ def _invoke_subset(ctx, cmd, all_kwargs):
     """
     names = {p.name for p in cmd.params}
     sub_kwargs = {k: v for k, v in all_kwargs.items() if k in names}
-    logging.getLogger(__name__).debug(
-        f"[easy_pipeline] invoking {cmd.name} with {len(sub_kwargs)}/{len(all_kwargs)} params"
-    )
     return ctx.invoke(cmd, **sub_kwargs)
 
 @click.group()
-def cli():
+@logging_options
+@click.pass_context
+def cli(ctx, log_level, log_file, verbose):
     """use dbCAN tools to annotate and analyze CAZymes and CGCs."""
-    pass
+    setup_logging(log_level, log_file, verbose)
+    ctx.ensure_object(dict)
+    ctx.obj['log_level'] = log_level
+    ctx.obj['log_file'] = log_file
+    ctx.obj['verbose'] = verbose
 
 @cli.command('version')
 @click.pass_context
@@ -35,16 +59,19 @@ def version_cmd(ctx):
     click.echo(f"dbCAN version: {__version__}")
 
 @cli.command('database')
+@logging_options
 @database_download_options
 @click.pass_context
-def database_cmd(ctx, **kwargs):
+def database_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """download dbCAN databases."""
+    setup_logging(log_level, log_file, verbose)
     from dbcan.configs.database_config import DBDownloaderConfig
     from dbcan.core import run_dbCAN_database
     config = create_config(DBDownloaderConfig, **kwargs)
     run_dbCAN_database(config)
 
 @cli.command('CAZyme_annotation')
+@logging_options
 @general_options
 @database_options
 @methods_option
@@ -54,8 +81,9 @@ def database_cmd(ctx, **kwargs):
 @dbcansub_options
 @topology_annotation_options
 @click.pass_context
-def cazyme_annotation_cmd(ctx, **kwargs):
+def cazyme_annotation_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """annotate CAZyme using run_dbcan with prokaryotic, metagenomics, and protein sequences."""
+    setup_logging(log_level, log_file, verbose)
     from dbcan.configs.signalp_tmhmm_config import SignalPTMHMMConfig
     from dbcan.configs.diamond_config import DiamondCAZyConfig
     from dbcan.configs.pyhmmer_config import PyHMMERDBCANConfig
@@ -82,6 +110,7 @@ def cazyme_annotation_cmd(ctx, **kwargs):
         run_dbCAN_topology_annotation(signalp_config)
 
 @cli.command('gff_process')
+@logging_options
 @database_options
 @output_dir_option
 @threads_option
@@ -93,13 +122,14 @@ def cazyme_annotation_cmd(ctx, **kwargs):
 @diamond_peptidase_options
 @cgc_gff_option
 @click.pass_context
-def gff_process_cmd(ctx, **kwargs):
+def gff_process_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """
     Generate GFF for CGC identification.
     need --input_gff when --input_raw_data is protein sequence.
     if --input_gff is not provided, will set default <output_dir>/uniInput.gff.
 
     """
+    setup_logging(log_level, log_file, verbose)
     from dbcan.configs.diamond_config import DiamondTFConfig, DiamondTCConfig, DiamondSulfataseConfig, DiamondPeptidaseConfig
     from dbcan.configs.pyhmmer_config import PyHMMERTFConfig, PyHMMERSTPConfig
     from dbcan.configs.base_config import GFFConfig
@@ -140,11 +170,13 @@ def gff_process_cmd(ctx, **kwargs):
     )
 
 @cli.command('cgc_finder')
+@logging_options
 @output_dir_option
 @cgc_options
 @click.pass_context
-def cgc_finder_cmd(ctx, **kwargs):
+def cgc_finder_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """identify CAZyme Gene Clusters(CGCs)"""
+    setup_logging(log_level, log_file, verbose)
     from dbcan.configs.cgcfinder_config import CGCFinderConfig
     from dbcan.core import run_dbCAN_CGCFinder
     config = create_config(CGCFinderConfig, **kwargs)
@@ -152,13 +184,15 @@ def cgc_finder_cmd(ctx, **kwargs):
 
 
 @cli.command('Pfam_null_cgc')
+@logging_options
 @threads_option
 @database_options
 @output_dir_option
 @pyhmmer_pfam
 @click.pass_context
-def pfam_null_cgc_cmd(ctx, **kwargs):
+def pfam_null_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """identify CAZyme Gene Clusters(CGCs)"""
+    setup_logging(log_level, log_file, verbose)
     from dbcan.configs.pyhmmer_config import PyHMMERPfamConfig
     from dbcan.core import run_dbCAN_Pfam_null_cgc
     config = create_config(PyHMMERPfamConfig, namespace="pfam", **kwargs)
@@ -166,11 +200,13 @@ def pfam_null_cgc_cmd(ctx, **kwargs):
 
 
 @cli.command('substrate_prediction')
+@logging_options
 @cgc_substrate_base_options
 @cgc_substrate_homology_params_options
 @cgc_substrate_dbcan_sub_param_options
 @click.pass_context
-def substrate_prediction_cmd(ctx, **kwargs):
+def substrate_prediction_cmd(ctx, log_level, log_file, verbose, **kwargs):
+    setup_logging(log_level, log_file, verbose)
     from dbcan.configs.cgc_substrate_config import CGCSubstrateConfig, SynPlotConfig
     from dbcan.core import run_dbCAN_CGCFinder_substrate, run_dbcan_syn_plot
     """predict substrate specificities of CAZyme Gene Clusters(CGCs)."""
@@ -182,10 +218,12 @@ def substrate_prediction_cmd(ctx, **kwargs):
 
 
 @cli.command('cgc_circle_plot')
+@logging_options
 @cgc_circle_plot_options
 @click.pass_context
-def cgc_circle_plot_cmd(ctx, **kwargs):
+def cgc_circle_plot_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """generate circular plots for CAZyme Gene Clusters(CGCs)."""
+    setup_logging(log_level, log_file, verbose)
     from dbcan.configs.base_config import CGCPlotConfig
     from dbcan.core import run_dbCAN_cgc_circle
     config = create_config(CGCPlotConfig, **kwargs)
@@ -193,6 +231,7 @@ def cgc_circle_plot_cmd(ctx, **kwargs):
 
 
 @cli.command('easy_CGC')
+@logging_options
 @general_options
 @database_options
 @methods_option
@@ -207,8 +246,9 @@ def cgc_circle_plot_cmd(ctx, **kwargs):
 @cgc_gff_option
 @cgc_options
 @click.pass_context
-def easy_cgc_cmd(ctx, **kwargs):
+def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, and CGC identification in one step."""
+    setup_logging(log_level, log_file, verbose)
     try:
         # step 1: CAZyme annotation
         click.echo("step 1/3  CAZyme annotation...")
@@ -228,6 +268,7 @@ def easy_cgc_cmd(ctx, **kwargs):
 
 
 @cli.command('easy_substrate')
+@logging_options
 @general_options
 @methods_option
 @threads_option
@@ -244,8 +285,9 @@ def easy_cgc_cmd(ctx, **kwargs):
 @cgc_substrate_homology_params_options
 @cgc_substrate_dbcan_sub_param_options
 @click.pass_context
-def easy_substrate_cmd(ctx, **kwargs):
+def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, CGC identification, and substrate prediction in one step."""
+    setup_logging(log_level, log_file, verbose)
     try:
         # step 1: CAZyme annotation
         click.echo("step 1/4  CAZyme annotation...")
