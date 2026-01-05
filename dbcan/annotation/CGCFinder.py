@@ -106,7 +106,16 @@ class CGCFinder:
                     self.df = io_read_gff_df(self.filename, columns=C.GFF_COLUMNS)
                 except Exception as e:
                     logger.warning(f"Failed to read GFF with io_read_gff_df: {e}")
-                    self.df = pd.read_csv(self.filename, sep='\t', names=C.GFF_COLUMNS)
+                    # Use chunked reading for large files (>100MB)
+                    file_size_mb = Path(self.filename).stat().st_size / (1024 * 1024)
+                    if file_size_mb > 100:
+                        logger.info(f"Large GFF file detected ({file_size_mb:.1f}MB), using chunked reading")
+                        chunks = []
+                        for chunk in pd.read_csv(self.filename, sep='\t', names=C.GFF_COLUMNS, chunksize=100000):
+                            chunks.append(chunk)
+                        self.df = pd.concat(chunks, ignore_index=True)
+                    else:
+                        self.df = pd.read_csv(self.filename, sep='\t', names=C.GFF_COLUMNS)
             #print("test0",self.df  )
 
             # Filter comments and feature types
@@ -355,7 +364,7 @@ class CGCFinder:
 
                 summary_path = output_path.replace(".tsv", "_summary.tsv")
                 pd.DataFrame(columns=["CGC#", "Contig ID", "Cluster Start", "Cluster End", "Genes",
-                                     "CAZymes", "TC", "TF", "STP", "Sulfatase", "Peptidase", 
+                                     "CAZymes", "TC", "TF", "STP", "Sulfatase", "Peptidase",
                                      "Signatures", "Length (bp)"]).to_csv(summary_path, sep='\t', index=False)
                 logger.info(f"Empty CGC output file created at {output_path}")
                 return
@@ -377,14 +386,14 @@ class CGCFinder:
                 end = int(group[C.GENE_STOP_FIELD].max())
                 genes = int(len(group))
                 cazy = int((group[C.GENE_TYPE_FIELD] == "CAZyme").sum())
-                
+
                 # Count specific additional gene types
                 tc = int((group[C.GENE_TYPE_FIELD] == "TC").sum())
                 tf = int((group[C.GENE_TYPE_FIELD] == "TF").sum())
                 stp = int((group[C.GENE_TYPE_FIELD] == "STP").sum())
-                sulfatase = int((group[C.GENE_TYPE_FIELD] == "SULFATLAS").sum())
-                peptidase = int((group[C.GENE_TYPE_FIELD] == "PEPTIDASE").sum())
-                
+                sulfatase = int((group[C.GENE_TYPE_FIELD] == "Sulfatase").sum())
+                peptidase = int((group[C.GENE_TYPE_FIELD] == "Peptidase").sum())
+
                 sigs = int(cazy + tc + tf + stp + sulfatase + peptidase)
                 span = end - start + 1
                 return pd.Series({

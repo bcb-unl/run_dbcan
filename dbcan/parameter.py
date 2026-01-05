@@ -36,6 +36,7 @@ methods_option = click.option('--methods',
     multiple=True)
 
 
+
 # Define group options
 def general_options(func):
     func = click.option('--input_raw_data', required=True, help='Path to the input raw data')(func)
@@ -45,8 +46,15 @@ def general_options(func):
     return func
 
 def database_options(func):
+    """Common database options shared by most commands (no CGC switch)."""
     func = click.option('--db_dir', required=True, help='Directory for the database')(func)
-    func = click.option('--cgc/--no-cgc', is_flag=True, default=True, help='Enable CGC-related databases')(func)
+    return func
+
+def database_download_options(func):
+    """Database downloader-only options (adds CGC switch)."""
+    func = database_options(func)
+    func = click.option('--cgc/--no-cgc', is_flag=True, default=True, help='Enable CGC-related databases (database download only)')(func)
+    func = click.option('--aws_s3', is_flag=True, default=False, help='Download databases from AWS S3')(func)
     return func
 
 def diamond_options(func):
@@ -59,14 +67,14 @@ def diamond_tc_options(func):
     func = click.option('--coverage_threshold_tc', type=float, help='Coverage threshold for TC', default=35)(func)
     return func
 def diamond_tf_options(func):
-    func = click.option('--e_value_threshold_tf', type=float, help='E-value threshold for TF' ,default=1e-4)(func)
-    func = click.option('--coverage_threshold_tf', type=float, help='Coverage threshold for TF', default=0.35)(func)
+    func = click.option('--e_value_threshold_tf_diamond', type=float, help='E-value threshold for TF' ,default=1e-4)(func)
+    func = click.option('--coverage_threshold_tf_diamond', type=float, help='Coverage threshold for TF', default=0.35)(func)
     func = click.option('--prokaryotic/--no-prokaryotic', is_flag=True, help='Enable prokaryotic mode for TF', default=True)(func)
     return func
 
 def pyhmmer_dbcan_options(func):
-    func = click.option('--e_value_threshold_dbcan',  type=float, help='E-value threshold for HMMER',  default=1e-15)(func)
-    func = click.option('--coverage_threshold_dbcan',  type=float, help='Coverage threshold for HMMER', default=0.35)(func)
+    func = click.option('--e_value_threshold_dbcan',  type=float, help='E-value threshold for dbCAN HMMER',  default=1e-15)(func)
+    func = click.option('--coverage_threshold_dbcan',  type=float, help='Coverage threshold for dbCAN HMMER', default=0.35)(func)
     return func
 
 def dbcansub_options(func):
@@ -160,7 +168,7 @@ def cgc_options(func):
 
 def cgc_substrate_base_options(func):
     """base opiton"""
-    func = output_dir_option(func)
+    func = general_options(func)
     func = click.option('--pul', help="dbCAN-PUL PUL.faa")(func)
     func = click.option('-o', '--out', default="substrate.out", help="substrate prediction result")(func)
     func = click.option('-w', '--workdir', default=".", type=str, help="work directory")(func)
@@ -221,6 +229,25 @@ def topology_annotation_options(func):
     func = click.option('--force_topology/--no-force_topology',
                         default=False,
                         help='Overwrite existing SignalP columns instead of only filling empty cells')(func)
+    return func
+
+def logging_options(func):
+    """Global logging options for all commands"""
+    func = click.option('--log-level',
+                        type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
+                        default='WARNING',
+                        help='Set logging level (default: WARNING, only shows warnings and errors)'
+                        )(func)
+    func = click.option('--log-file',
+                        type=click.Path(),
+                        default=None,
+                        help='Write logs to file in addition to console'
+                        )(func)
+    func = click.option('--verbose', '-v',
+                        is_flag=True,
+                        default=False,
+                        help='Enable verbose logging (equivalent to --log-level DEBUG)'
+                        )(func)
     return func
 
 

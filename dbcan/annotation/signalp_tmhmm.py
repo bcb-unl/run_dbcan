@@ -4,6 +4,7 @@ from pathlib import Path
 import psutil
 import pandas as pd
 from Bio import SeqIO
+import time
 
 from dbcan.configs.signalp_tmhmm_config import SignalPTMHMMConfig
 import dbcan.constants.signalp_tmhmm_constants as C
@@ -64,7 +65,16 @@ class SignalPTMHMMProcessor:
         path = self.output_dir / C.OVERVIEW_FILE
         if not path.exists():
             raise FileNotFoundError(f"overview file not found: {path}")
-        return pd.read_csv(path, sep="\t")
+        # Use chunked reading for large files (>100MB)
+        file_size_mb = path.stat().st_size / (1024 * 1024)
+        if file_size_mb > 100:
+            logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
+            chunks = []
+            for chunk in pd.read_csv(path, sep="\t", chunksize=100000):
+                chunks.append(chunk)
+            return pd.concat(chunks, ignore_index=True)
+        else:
+            return pd.read_csv(path, sep="\t")
 
     def collect_all_gene_ids(self, df: pd.DataFrame) -> set:
         if C.GENE_ID_COL not in df.columns:
@@ -76,7 +86,16 @@ class SignalPTMHMMProcessor:
         if not overview_path.exists():
             raise FileNotFoundError(f"overview file not found: {overview_path}")
         try:
-            df = pd.read_csv(overview_path, sep="\t")
+            # Use chunked reading for large files (>100MB)
+            file_size_mb = overview_path.stat().st_size / (1024 * 1024)
+            if file_size_mb > 100:
+                logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
+                chunks = []
+                for chunk in pd.read_csv(overview_path, sep="\t", chunksize=100000):
+                    chunks.append(chunk)
+                df = pd.concat(chunks, ignore_index=True)
+            else:
+                df = pd.read_csv(overview_path, sep="\t")
         except Exception as e:
             raise RuntimeError(f"failed to read overview.tsv: {e}")
         if C.GENE_ID_COL not in df.columns:
@@ -119,9 +138,17 @@ class SignalPTMHMMProcessor:
             "--torch_num_threads", str(self.threads)
         ]
         logger.info("Running SignalP6: %s", " ".join(cmd))
+        start = time.time()
         try:
-            subprocess.run(cmd, check=True)
-            logger.info("SignalP6 finished: %s", out_dir)
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            elapsed = time.time() - start
+            if result.returncode != 0:
+                logger.error("SignalP6 failed (exit %s)", result.returncode)
+                if result.stderr:
+                    logger.error("SignalP6 stderr: %s", result.stderr.strip())
+                raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout, stderr=result.stderr)
+
+            logger.info("SignalP6 finished in %.2fs: %s", elapsed, out_dir)
             return out_dir
         except FileNotFoundError:
             logger.error("signalp6 executable not found in PATH")
@@ -149,7 +176,16 @@ class SignalPTMHMMProcessor:
     def update_overview_with_signalp(self, signalp_results: dict):
         overview_path = self.output_dir / C.OVERVIEW_FILE
         try:
-            df = pd.read_csv(overview_path, sep="\t")
+            # Use chunked reading for large files (>100MB)
+            file_size_mb = overview_path.stat().st_size / (1024 * 1024)
+            if file_size_mb > 100:
+                logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
+                chunks = []
+                for chunk in pd.read_csv(overview_path, sep="\t", chunksize=100000):
+                    chunks.append(chunk)
+                df = pd.concat(chunks, ignore_index=True)
+            else:
+                df = pd.read_csv(overview_path, sep="\t")
             if signalp_results:
                 df[C.SIGNALP_COL] = df[C.GENE_ID_COL].astype(str).map(lambda x: signalp_results.get(x, C.DEFAULT_EMPTY))
             else:

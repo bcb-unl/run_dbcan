@@ -105,7 +105,17 @@ class OverviewGenerator:
                 logger.warning(f"{key} results not found at {path}")
                 continue
             try:
-                df = pd.read_csv(path, sep='\t')
+                # Use chunked reading for large files (>100MB)
+                file_size_mb = path.stat().st_size / (1024 * 1024)
+                if file_size_mb > 100:
+                    logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {key}")
+                    chunks = []
+                    for chunk in pd.read_csv(path, sep='\t', chunksize=100000):
+                        chunks.append(chunk)
+                    df = pd.concat(chunks, ignore_index=True)
+                else:
+                    df = pd.read_csv(path, sep='\t')
+                
                 required = list(self.column_names_map[key])
                 missing = [c for c in required if c not in df.columns]
                 if missing:
@@ -145,12 +155,46 @@ class OverviewGenerator:
     # ---------------------------
     @staticmethod
     def extract_cazy_id(cazy_id):
-        if not isinstance(cazy_id, str):
+        """
+        Extract CAZy family ids from a '|' separated string.
+        Rules:
+          - If any token contains 'fasta' (case-insensitive), truncate at the first pure-digit token
+            (drop that token and everything after it).
+          - Find the first token matching O.CAZY_ID_PATTERN; return all matching tokens from that
+            position onward, joined by O.RESULT_SEPARATOR (keeps multi-domain like GH5|GH3|GH6).
+          - If truncation happened but no CAZy token found, return the first remaining token.
+          - Otherwise, return the original value.
+        """
+        if not isinstance(cazy_id, str) or not cazy_id:
             return cazy_id
-        parts = cazy_id.split('|')
-        for part in parts:
-            if re.match(O.CAZY_ID_PATTERN, part):
-                return O.RESULT_SEPARATOR.join(parts[parts.index(part):])
+
+        parts = [p.strip() for p in cazy_id.split('|')]
+        truncated = False
+
+        # Special handling when filename present
+        if any("fasta" in p.lower() for p in parts if isinstance(p, str)):
+            for idx, tok in enumerate(parts):
+                if tok.isdigit():
+                    parts = parts[:idx]
+                    truncated = True
+                    break
+
+        # Find first CAZy token index
+        first_idx = None
+        for i, t in enumerate(parts):
+            if re.match(O.CAZY_ID_PATTERN, t or ""):
+                first_idx = i
+                break
+
+        if first_idx is not None:
+            # Collect all CAZy tokens from first match to the end (preserve multi-domain)
+            matches = [t for t in parts[first_idx:] if re.match(O.CAZY_ID_PATTERN, t or "")]
+            if matches:
+                return O.RESULT_SEPARATOR.join(matches)
+
+        # Fallbacks
+        if truncated and parts:
+            return parts[0]
         return cazy_id
 
     def calculate_overlap(self, start1: int, end1: int, start2: int, end2: int) -> bool:

@@ -19,13 +19,44 @@ def read_gff_to_df(path: str, columns=None, drop_comments: bool = True) -> pd.Da
     """
     Read a GFF file into a DataFrame with the standard 9 columns.
     If columns is None, uses GFF_COLUMNS from constants.
+
+    Important:
+    - Do NOT treat '#' as inline comment, because attributes/protein_id may contain '#'.
+    - We only drop lines that START WITH '#', which are true comment lines in GFF.
     """
     if columns is None:
         columns = G.GFF_COLUMNS
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"GFF file not found: {p}")
-    df = pd.read_csv(p, sep='\t', names=columns, comment='#' if drop_comments else None, dtype={})
+
+    # Never treat '#' as inline comment; some protein_id contain '#'
+    # Use the python engine for robust parsing of mixed content.
+    df = pd.read_csv(
+        p,
+        sep='\t',
+        header=None,
+        names=columns,
+        comment=None,      # critical: keep inline '#'
+        engine='python'
+    )
+
+    if drop_comments:
+        # Only drop lines that start with '#' (true comment lines)
+        first_col = columns[0]
+        df = df[~df[first_col].astype(str).str.startswith('#')]
+
+    # Sanity check: if many rows have 'protein_id=.*#' but no 'CGC_annotation=', warn the caller.
+    attr_col = columns[-1]
+    attrs_str = df[attr_col].astype(str)
+    has_hash_pid = attrs_str.str.contains(r'protein_id=[^;]*#').any()
+    has_cgc_ann = attrs_str.str.contains(r'\bCGC_annotation=').any()
+    if has_hash_pid and not has_cgc_ann:
+        logger.warning(
+            "GFF appears to contain inline '#' in protein_id but no 'CGC_annotation=' was detected. "
+            "Make sure no upstream reader uses comment='#'."
+        )
+
     return df
 
 def read_gff(path: str) -> pd.DataFrame:

@@ -29,6 +29,8 @@ from dbcan.constants.utils_constants import (
     OVERVIEW_FILE,
 )
 from dbcan.configs.utils_config import AbundanceConfig
+from dbcan.parameter import logging_options
+from dbcan.main import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -707,6 +709,7 @@ def gff_refine(args):
 
 
 @click.command()
+@logging_options
 @click.argument(
     "function", 
     type=click.Choice([
@@ -759,7 +762,7 @@ def gff_refine(args):
               help="Number of worker processes.")
 @click.option("--hifi", "hifi", is_flag=True, 
               help="Input reads are HiFi.")
-def cli(function, input_path, bedtools_file, gff_file, r1, r2, output_path, abundance, db_dir, overlap_base_ratio, mapping_quality, identity, threads, hifi):
+def cli(function, log_level, log_file, verbose, input_path, bedtools_file, gff_file, r1, r2, output_path, abundance, db_dir, overlap_base_ratio, mapping_quality, identity, threads, hifi):
     """dbCAN abundance utilities
     
     # Functions:
@@ -788,6 +791,7 @@ def cli(function, input_path, bedtools_file, gff_file, r1, r2, output_path, abun
     
     Example: `dbcan_utils gff_fix -i UT30.3.faa -g UT30.3.gff`
     """
+    setup_logging(log_level, log_file, verbose)
     # Build AbundanceConfig
     cfg = AbundanceConfig(
         input_dir=input_path if os.path.isdir(input_path) else os.path.dirname(os.path.abspath(input_path)) or ".",

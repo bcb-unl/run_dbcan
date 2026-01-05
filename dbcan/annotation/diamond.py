@@ -3,6 +3,7 @@ import subprocess
 import logging
 import pandas as pd
 from abc import ABC
+import time
 
 from dbcan.configs.diamond_config import (
     DiamondConfig, DiamondCAZyConfig,DiamondTCConfig, DiamondSulfataseConfig, DiamondPeptidaseConfig, DiamondTFConfig
@@ -68,19 +69,35 @@ class DiamondProcessor(ABC):
         if self.config.coverage_threshold is not None:
             cmd.extend([D.DIAMOND_CMD_QUERY_COVER, str(self.config.coverage_threshold)])
 
-        logger.info(f"Running DIAMOND BLASTp: db={Path(self.diamond_db).name} out={Path(self.output_file).name}")
+        logger.info("Running DIAMOND BLASTp: %s", " ".join(cmd))
+        start = time.time()
         try:
-            subprocess.run(cmd, check=True)
-            logger.info("DIAMOND BLASTp completed")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            elapsed = time.time() - start
+            if result.returncode != 0:
+                logger.error("DIAMOND BLASTp failed (exit %s)", result.returncode)
+                if result.stderr:
+                    logger.error("DIAMOND stderr: %s", result.stderr.strip())
+                raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout, stderr=result.stderr)
+
+            logger.info("DIAMOND BLASTp completed in %.2fs", elapsed)
             self.format_results()
         except subprocess.CalledProcessError as e:
-            logger.error(f"DIAMOND BLASTp failed: {e}")
+            logger.error("DIAMOND BLASTp failed: %s", e)
             raise
 
     def format_results(self):
         of = Path(self.output_file)
         if not of.exists() or of.stat().st_size == 0:
-            logger.warning(f"No results to format: {self.output_file} is empty or missing")
+            # Create a header-only TSV to avoid downstream warnings
+            cols = list(self.config.column_names) if getattr(self.config, "column_names", None) else []
+            # Keep the 'Database' column convention if label is provided
+            if self.config.label and 'Database' not in cols:
+                cols.append('Database')
+            header_df = pd.DataFrame(columns=cols)
+            of.parent.mkdir(parents=True, exist_ok=True)
+            header_df.to_csv(of, sep='\t', index=False)
+            logger.info(f"No DIAMOND hits. Wrote header-only file: {self.output_file}")
             return
         try:
             df = pd.read_csv(of, sep='\t', header=None, names=self.config.column_names)
@@ -99,7 +116,7 @@ class DiamondProcessor(ABC):
 class CAZYDiamondProcessor(DiamondProcessor):
     def __init__(self, config: DiamondCAZyConfig):
         super().__init__(config)
-        
+
     def _postprocess_ids(self, df: pd.DataFrame, id_col: str):
         df[id_col] = df[id_col].apply(lambda x: x.split(' ')[0].split('|')[-1] if isinstance(x, str) else x)
 

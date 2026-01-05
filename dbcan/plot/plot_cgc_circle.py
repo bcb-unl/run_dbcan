@@ -26,7 +26,8 @@ from dbcan.constants.plot_cgc_circle_constants import (
     DEG_LOG2FC_RANGE, DEG_TRACK_RANGE, CGC_FEATURE_LEGEND, DEG_FILE
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Logging configuration is handled by main command or setup_logging()
+# Removed hardcoded basicConfig to avoid interfering with global logging configuration
 
 class CGCCircosPlot:
     def __init__(self, config: CGCPlotConfig):

@@ -20,7 +20,11 @@ Key Features and Improvements
 
 1. **Simplified Database Downloading**
 
-   - Added a new function for downloading database files, making the process simpler than before.
+   - Added a new `database` command for downloading database files, making the process simpler than before.
+
+   - Supports downloading from both HTTP and AWS S3 sources (use `--aws_s3` flag for faster and more stable downloads).
+
+   - Use `--cgc/--no-cgc` option to control whether to download CGC-related databases.
 
 2. **Enhanced Input Processing**
 
@@ -68,6 +72,26 @@ Key Features and Improvements
 
    - Improved steps for metagenomic data processing (https://www.biorxiv.org/content/10.1101/2024.01.10.575125v1).
 
+9. **SignalP6.0 Topology Annotation**
+
+   - Added support for SignalP6.0 signal peptide prediction in the `CAZyme_annotation` command.
+
+   - Use `--run_signalp` flag to enable topology annotation. Results are automatically added to the overview.tsv file in a "SignalP" column.
+
+   - Supports organism type selection with `--signalp_org` option (other/euk).
+
+   - Note: SignalP6.0 needs to be installed separately by users following the `installation instructions <https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md>`_.
+
+10. **Global Logging System**
+
+    - Implemented comprehensive logging system available for all commands.
+
+    - Use `--log-level` to set logging level (DEBUG/INFO/WARNING/ERROR/CRITICAL, default: WARNING).
+
+    - Use `--log-file` to write logs to a file in addition to console output.
+
+    - Use `--verbose` or `-v` flag for detailed debug logging (equivalent to --log-level DEBUG).
+
 .. hint::
 
    If you want to run the pipeline from raw metagenomic reads, please refer to the following part:
@@ -84,6 +108,7 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
    :caption: Getting start
 
    getting_started/installation
+   getting_started/database_description
    getting_started/quick_start
 
 
