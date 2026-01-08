@@ -152,6 +152,12 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
 
 .. toctree::
    :maxdepth: 1
+   :caption: Nextflow Pipeline
+
+   nextflow/index
+
+.. toctree::
+   :maxdepth: 1
    :caption: Change logs
 
    change-logs/index
