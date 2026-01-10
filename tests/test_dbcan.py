@@ -26,7 +26,8 @@ def actual_db_dir(tmp_path, runner):
     db_dir.mkdir()
     result = runner.invoke(cli, [
         'database',
-        '--db_dir', str(db_dir)
+        '--db_dir', str(db_dir),
+        '--aws_s3'
     ])
     if result.exit_code != 0:
         print(f"Database command failed with exit code {result.exit_code}")
