@@ -5,7 +5,7 @@ import gzip
 import logging
 import gc
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import rich_click as click
 from rich import print as rprint
 from dbcan.parameter import logging_options
@@ -90,8 +90,9 @@ def extract_CAZy_from_Tsn(tsn):
         first_part_after_pipe = parts[1].strip()
         if first_part_after_pipe.isdigit():
             # Special case: first part after | is a pure number
-            # Return the part before | as CAZy annotation
-            return [parts[0].strip()]
+            # Return the part before | as CAZy annotation (if not empty)
+            cazy_part = parts[0].strip()
+            return [cazy_part] if cazy_part else []
         
         # Otherwise, collect all parts before the first pure number
         cazy_parts = []
@@ -100,7 +101,7 @@ def extract_CAZy_from_Tsn(tsn):
             if stripped_part.isdigit():
                 # Found first pure number, stop here
                 break
-            else:
+            elif stripped_part:  # Only add non-empty parts
                 # Collect non-numeric parts (stripped)
                 cazy_parts.append(stripped_part)
         
@@ -109,7 +110,7 @@ def extract_CAZy_from_Tsn(tsn):
     else:
         # Normal case: return everything after the first |, with each part stripped
         parts = tsn.strip("|").split("|")[1:]
-        return [part.strip() for part in parts]
+        return [part.strip() for part in parts if part.strip()]  # Filter out empty strings
 
 class PafRecord(object):
     def __init__(self, lines):
@@ -253,6 +254,9 @@ def FPKMToCsv(args, tool, cazyfpkm, readtable, cazy2seqid):
     with open(outfilename, 'w') as f:
         f.write("Family\tAbundance\tSeqNum\tReadCount\n")
         for cazyid in cazyfpkm:
+            # Skip empty CAZy IDs
+            if not cazyid or len(cazyid) == 0:
+                continue
             seqnum = len(cazy2seqid[cazyid])
             readcount = CAZyReadCount(cazyid, cazy2seqid, readtable)
             fpkm = cazyfpkm[cazyid]
@@ -297,7 +301,7 @@ def get_count_reads(file):
     return 0.0
 
 def diamond_unassemble_data(args):
-    """Process unassembled DIAMOND data (supports multithreading)"""
+    """Process unassembled DIAMOND data (supports multiprocessing)"""
     check_read_type(args.raw_reads)
     threads = getattr(args, 'threads', 1)
     
@@ -413,57 +417,79 @@ def CAZyFPKM(seqfpkm, cazy2seqid):
         cazyfpkm[cazy] = tmp_fpkm
     return cazyfpkm
 
-def _process_paf_chunk(filename, start_line, chunk_size, CAZyID2subfam=None):
-    """Process a chunk of PAF file (for multithreading)"""
+def _get_file_chunks(filename, num_chunks):
+    """Get byte offsets for file chunks (much faster than counting lines)"""
+    file_size = os.path.getsize(filename)
+    if file_size == 0:
+        return [0]
+    
+    chunk_size_bytes = max(1, file_size // num_chunks)
+    chunks = [0]  # Start at beginning
+    
+    with open(filename, 'rb') as f:
+        for i in range(num_chunks - 1):
+            target_pos = chunks[-1] + chunk_size_bytes
+            if target_pos >= file_size:
+                break
+            f.seek(target_pos)
+            # Move to next line boundary
+            f.readline()
+            chunks.append(f.tell())
+    
+    chunks.append(file_size)  # Last chunk goes to end
+    return chunks
+
+def _process_paf_chunk_by_offset(filename, start_offset, end_offset, CAZyID2subfam=None):
+    """Process a chunk of PAF file using byte offsets (much faster - O(1) seek vs O(n) skip)"""
     seq2len = {}
     cazy2seqid = defaultdict(set)
     seqid2readid = defaultdict(list)
     subfam2seqid = defaultdict(set) if CAZyID2subfam else None
     
     try:
-        with open(filename) as f:
-            # Skip preceding lines
-            for _ in range(start_line):
-                try:
-                    next(f)
-                except StopIteration:
-                    break
+        with open(filename, 'rb') as f:
+            f.seek(start_offset)
+            # If not at start of file, skip to next line boundary
+            if start_offset > 0:
+                f.readline()
             
-            # Process current chunk
-            for i, line in enumerate(f):
-                if i >= chunk_size:
+            # Process until end_offset
+            while f.tell() < end_offset:
+                line_bytes = f.readline()
+                if not line_bytes:
                     break
-                line = line.strip()
+                
+                try:
+                    line = line_bytes.decode('utf-8', errors='ignore').strip()
+                except UnicodeDecodeError:
+                    continue
+                
                 if not line:
                     continue
+                
                 try:
                     parts = line.split()
-                    if len(parts) < 14:  # Ensure sufficient columns
+                    if len(parts) < 14:
                         continue
                     record = PafRecord(parts)
-                    # Collect sequence length
                     seqid = record.SeqID
                     tsl_int = int(record.Tsl)
                     if seqid not in seq2len or tsl_int > int(seq2len[seqid]):
                         seq2len[seqid] = record.Tsl
                     
-                    # Collect CAZy to sequence ID mapping
                     for cazy in record.CAZys:
                         cazy2seqid[cazy].add(seqid)
                     
-                    # Collect sequence ID to Read ID mapping
                     seqid2readid[seqid].append(record.Qsn)
                     
-                    # If subfam mapping exists, collect subfam information
                     if CAZyID2subfam and subfam2seqid is not None:
                         subfams = CAZyID2subfam.get(record.Tsn, [])
                         for subfam in subfams:
                             subfam2seqid[subfam].add(seqid)
-                except (IndexError, ValueError) as e:
-                    logging.debug(f"Skipping malformed line in chunk: {e}")
+                except (IndexError, ValueError):
                     continue
     except Exception as e:
-        logging.error(f"Error processing chunk starting at line {start_line}: {e}")
+        logging.error(f"Error processing chunk at offset {start_offset}-{end_offset}: {e}")
         raise
     
     result = {
@@ -476,31 +502,104 @@ def _process_paf_chunk(filename, start_line, chunk_size, CAZyID2subfam=None):
     
     return result
 
-def _count_lines(filename):
-    """Quickly count file lines"""
+def _process_paf_file_streaming(filename, CAZyID2subfam=None):
+    """Process PAF file in streaming mode (single-threaded, optimized)"""
+    seq2len = {}
+    cazy2seqid = defaultdict(set)
+    seqid2readid = defaultdict(list)
+    subfam2seqid = defaultdict(set) if CAZyID2subfam else None
+    
     with open(filename) as f:
-        return sum(1 for _ in f)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                parts = line.split()
+                if len(parts) < 14:
+                    continue
+                record = PafRecord(parts)
+                seqid = record.SeqID
+                tsl_int = int(record.Tsl)
+                if seqid not in seq2len or tsl_int > int(seq2len[seqid]):
+                    seq2len[seqid] = record.Tsl
+                
+                for cazy in record.CAZys:
+                    cazy2seqid[cazy].add(seqid)
+                
+                seqid2readid[seqid].append(record.Qsn)
+                
+                if CAZyID2subfam and subfam2seqid is not None:
+                    subfams = CAZyID2subfam.get(record.Tsn, [])
+                    for subfam in subfams:
+                        subfam2seqid[subfam].add(seqid)
+            except (IndexError, ValueError):
+                continue
+    
+    result = {
+        'seq2len': dict(seq2len),
+        'cazy2seqid': dict(cazy2seqid),
+        'seqid2readid': dict(seqid2readid)
+    }
+    if subfam2seqid is not None:
+        result['subfam2seqid'] = dict(subfam2seqid)
+    return result
 
 def Cal_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
-    """Calculate FPKM/TPM/RPM (supports multithreading)"""
-    # If thread count is 1 or file is small, use single-threaded processing
-    use_threading = threads > 1
-    
-    if use_threading:
-        # Multithreaded processing
-        chunk_size = 10000  # Process 10000 lines per chunk
+    """Calculate FPKM/TPM/RPM (supports multiprocessing)"""
+    # For single thread, use optimized streaming processing
+    if threads == 1:
+        # Single-threaded processing (optimized streaming)
+        result1 = _process_paf_file_streaming(paf1.filename)
+        seq2len1 = result1['seq2len']
+        cazy2seqid1 = result1['cazy2seqid']
+        seqid2readid1 = result1['seqid2readid']
         
-        def process_file(filename, CAZyID2subfam=None):
-            total_lines = _count_lines(filename)
-            num_chunks = max(1, (total_lines + chunk_size - 1) // chunk_size)
+        if paf2:
+            result2 = _process_paf_file_streaming(paf2.filename)
+            seq2len2 = result2['seq2len']
+            cazy2seqid2 = result2['cazy2seqid']
+            seqid2readid2 = result2['seqid2readid']
             
-            # Use thread pool for processing
+            seq2len = merge_two_dicts(seq2len1, seq2len2)
+            for seqid, length in seq2len2.items():
+                if seqid not in seq2len1 or int(length) > int(seq2len1[seqid]):
+                    seq2len[seqid] = length
+            
+            cazy2seqid = defaultdict(set)
+            for cazy in set(cazy2seqid1.keys()) | set(cazy2seqid2.keys()):
+                seqids1 = cazy2seqid1.get(cazy, set())
+                seqids2 = cazy2seqid2.get(cazy, set())
+                if isinstance(seqids1, list):
+                    seqids1 = set(seqids1)
+                if isinstance(seqids2, list):
+                    seqids2 = set(seqids2)
+                cazy2seqid[cazy] = seqids1 | seqids2
+            
+            seqid2readid = defaultdict(list)
+            for seqid in set(seqid2readid1.keys()) | set(seqid2readid2.keys()):
+                seqid2readid[seqid] = seqid2readid1.get(seqid, []) + seqid2readid2.get(seqid, [])
+            
+            cazy2seqid = dict(cazy2seqid)
+            seqid2readid = dict(seqid2readid)
+        else:
+            seq2len = seq2len1
+            cazy2seqid = dict(cazy2seqid1)
+            seqid2readid = dict(seqid2readid1)
+    else:
+        # Multiprocessing using byte offsets (much faster - no line counting or skipping, bypasses GIL)
+        def process_file(filename, CAZyID2subfam=None):
+            # Use byte offsets instead of line numbers - O(1) vs O(n)
+            chunks = _get_file_chunks(filename, threads)
+            
+            # Use process pool for processing (bypasses GIL for true parallelism)
             results = []
-            with ThreadPoolExecutor(max_workers=threads) as executor:
+            with ProcessPoolExecutor(max_workers=threads) as executor:
                 futures = []
-                for i in range(num_chunks):
-                    start_line = i * chunk_size
-                    future = executor.submit(_process_paf_chunk, filename, start_line, chunk_size, CAZyID2subfam)
+                for i in range(len(chunks) - 1):
+                    start_offset = chunks[i]
+                    end_offset = chunks[i + 1]
+                    future = executor.submit(_process_paf_chunk_by_offset, filename, start_offset, end_offset, CAZyID2subfam)
                     futures.append(future)
                 
                 for future in as_completed(futures):
@@ -566,11 +665,6 @@ def Cal_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
             seq2len = seq2len1
             cazy2seqid = cazy2seqid1
             seqid2readid = seqid2readid1
-    else:
-        # Single-threaded processing (original logic)
-        seq2len = getSeqlen(paf1, paf2)
-        cazy2seqid = getCazySeqId(paf1, paf2)
-        seqid2readid = getSeqReadID(paf1, paf2)
     
     readtable = SeqReadCount(seqid2readid)
     if normalized == "FPKM":
@@ -684,29 +778,56 @@ def CAZyme_substrate(args):
             f.write(sub + "\t" + str(sum(Sub2Abund[sub])) + "\t" + ";".join(Sub2subfam[sub]) + "\n")
 
 def Cal_subfam_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
-    """Calculate subfamily FPKM/TPM/RPM (supports multithreading)"""
+    """Calculate subfamily FPKM/TPM/RPM (supports multiprocessing)"""
     # Get CAZyID2subfam mapping
     CAZyID2subfam = getattr(paf1, 'CAZyID2subfam', None)
     if not CAZyID2subfam and paf2:
         CAZyID2subfam = getattr(paf2, 'CAZyID2subfam', None)
     
-    # If thread count is 1 or file is small, use single-threaded processing
-    use_threading = threads > 1 and CAZyID2subfam
-    
-    if use_threading:
-        # Multithreaded processing
-        chunk_size = 10000
+    # For single thread, use optimized streaming processing
+    if threads == 1:
+        result1 = _process_paf_file_streaming(paf1.filename, CAZyID2subfam)
+        seq2len1 = result1['seq2len']
+        subfam2seqid1 = result1.get('subfam2seqid', {})
+        seqid2readid1 = result1['seqid2readid']
         
+        if paf2:
+            result2 = _process_paf_file_streaming(paf2.filename, CAZyID2subfam)
+            seq2len2 = result2['seq2len']
+            subfam2seqid2 = result2.get('subfam2seqid', {})
+            seqid2readid2 = result2['seqid2readid']
+            
+            seq2len = merge_two_dicts(seq2len1, seq2len2)
+            for seqid, length in seq2len2.items():
+                if seqid not in seq2len1 or int(length) > int(seq2len1[seqid]):
+                    seq2len[seqid] = length
+            
+            subfam2seqid = defaultdict(set)
+            for subfam in set(subfam2seqid1.keys()) | set(subfam2seqid2.keys()):
+                subfam2seqid[subfam] = subfam2seqid1.get(subfam, set()) | subfam2seqid2.get(subfam, set())
+            
+            seqid2readid = defaultdict(list)
+            for seqid in set(seqid2readid1.keys()) | set(seqid2readid2.keys()):
+                seqid2readid[seqid] = seqid2readid1.get(seqid, []) + seqid2readid2.get(seqid, [])
+            
+            subfam2seqid = dict(subfam2seqid)
+            seqid2readid = dict(seqid2readid)
+        else:
+            seq2len = seq2len1
+            subfam2seqid = dict(subfam2seqid1) if subfam2seqid1 else {}
+            seqid2readid = dict(seqid2readid1)
+    elif threads > 1 and CAZyID2subfam:
+        # Multiprocessing using byte offsets (much faster, bypasses GIL for true parallelism)
         def process_file(filename, CAZyID2subfam):
-            total_lines = _count_lines(filename)
-            num_chunks = max(1, (total_lines + chunk_size - 1) // chunk_size)
+            chunks = _get_file_chunks(filename, threads)
             
             results = []
-            with ThreadPoolExecutor(max_workers=threads) as executor:
+            with ProcessPoolExecutor(max_workers=threads) as executor:
                 futures = []
-                for i in range(num_chunks):
-                    start_line = i * chunk_size
-                    future = executor.submit(_process_paf_chunk, filename, start_line, chunk_size, CAZyID2subfam)
+                for i in range(len(chunks) - 1):
+                    start_offset = chunks[i]
+                    end_offset = chunks[i + 1]
+                    future = executor.submit(_process_paf_chunk_by_offset, filename, start_offset, end_offset, CAZyID2subfam)
                     futures.append(future)
                 
                 for future in as_completed(futures):
@@ -722,8 +843,9 @@ def Cal_subfam_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
                     if seqid not in seq2len or int(length) > int(seq2len[seqid]):
                         seq2len[seqid] = length
                 
-                for subfam, seqids in result['subfam2seqid'].items():
-                    subfam2seqid[subfam].update(seqids)
+                if 'subfam2seqid' in result and result['subfam2seqid']:
+                    for subfam, seqids in result['subfam2seqid'].items():
+                        subfam2seqid[subfam].update(seqids)
                 
                 for seqid, readids in result['seqid2readid'].items():
                     seqid2readid[seqid].extend(readids)
@@ -734,18 +856,24 @@ def Cal_subfam_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
         if paf2:
             seq2len2, subfam2seqid2, seqid2readid2 = process_file(paf2.filename, CAZyID2subfam)
             seq2len = merge_two_dicts(seq2len1, seq2len2)
+            for seqid, length in seq2len2.items():
+                if seqid not in seq2len1 or int(length) > int(seq2len1[seqid]):
+                    seq2len[seqid] = length
+            
             subfam2seqid = defaultdict(set)
             for subfam in set(subfam2seqid1.keys()) | set(subfam2seqid2.keys()):
                 subfam2seqid[subfam] = subfam2seqid1.get(subfam, set()) | subfam2seqid2.get(subfam, set())
+            
             seqid2readid = defaultdict(list)
             for seqid in set(seqid2readid1.keys()) | set(seqid2readid2.keys()):
                 seqid2readid[seqid] = seqid2readid1.get(seqid, []) + seqid2readid2.get(seqid, [])
+            
             subfam2seqid = dict(subfam2seqid)
             seqid2readid = dict(seqid2readid)
         else:
             seq2len = seq2len1
-            subfam2seqid = subfam2seqid1
-            seqid2readid = seqid2readid1
+            subfam2seqid = dict(subfam2seqid1)
+            seqid2readid = dict(seqid2readid1)
     else:
         # Single-threaded processing (original logic)
         seq2len = getSeqlen(paf1, paf2)
@@ -768,7 +896,7 @@ def Cal_subfam_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
     return cazyfpkm, readtable, subfam2seqid
 
 def diamond_subfam_abund(args):
-    """Calculate subfamily abundance (supports multithreading)"""
+    """Calculate subfamily abundance (supports multiprocessing)"""
     if not args.db.endswith("/"):
         args.db += "/"
     check_read_type(args.raw_reads)
