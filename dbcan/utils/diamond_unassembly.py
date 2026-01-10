@@ -8,7 +8,6 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import rich_click as click
 from rich import print as rprint
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from dbcan.parameter import logging_options
 from dbcan.main import setup_logging
 
@@ -69,7 +68,7 @@ def extract_CAZy_from_Tsn(tsn):
     
     Normal case: CAD7272370.1|GH33 -> CAZy is ['GH33'] (content after |)
     Special case: CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta 
-                  -> When ID contains 'fasta', if the first part after | is a pure number,
+                  -> When ID contains '.fasta' (case-insensitive), if the first part after | is a pure number,
                      then CAZy is the part before | (i.e., 'CE16')
                   -> Otherwise, extract all parts before the first pure number
     
@@ -77,10 +76,11 @@ def extract_CAZy_from_Tsn(tsn):
         tsn: Target sequence name from DIAMOND result (sseqid)
     
     Returns:
-        List of CAZy annotations
+        List of CAZy annotations (stripped of whitespace)
     """
-    # Check if 'fasta' is in the ID
-    if 'fasta' in tsn.lower():
+    # Check if '.fasta' is in the ID (case-insensitive, more precise than just 'fasta')
+    tsn_lower = tsn.lower()
+    if '.fasta' in tsn_lower:
         # Split by |
         parts = tsn.split('|')
         if len(parts) < 2:
@@ -91,7 +91,7 @@ def extract_CAZy_from_Tsn(tsn):
         if first_part_after_pipe.isdigit():
             # Special case: first part after | is a pure number
             # Return the part before | as CAZy annotation
-            return [parts[0]]
+            return [parts[0].strip()]
         
         # Otherwise, collect all parts before the first pure number
         cazy_parts = []
@@ -101,14 +101,15 @@ def extract_CAZy_from_Tsn(tsn):
                 # Found first pure number, stop here
                 break
             else:
-                # Collect non-numeric parts
-                cazy_parts.append(part)
+                # Collect non-numeric parts (stripped)
+                cazy_parts.append(stripped_part)
         
         # Return collected parts, or empty list if none found
         return cazy_parts
     else:
-        # Normal case: return everything after the first |
-        return tsn.strip("|").split("|")[1:]
+        # Normal case: return everything after the first |, with each part stripped
+        parts = tsn.strip("|").split("|")[1:]
+        return [part.strip() for part in parts]
 
 class PafRecord(object):
     def __init__(self, lines):
@@ -171,28 +172,21 @@ class Paf(object):
         return seq2len
     
     def CAZy2SeqID(self, CazySeqId):
-        """Map CAZy ID to sequence ID (optimized with defaultdict, maintain compatibility)"""
-        if not isinstance(CazySeqId, defaultdict):
-            # If not defaultdict, convert to use setdefault
-            for record in self:
-                for cazy in record.CAZys:
-                    CazySeqId.setdefault(cazy, []).append(record.SeqID)
-        else:
-            # If defaultdict, add directly
-            for record in self:
-                for cazy in record.CAZys:
-                    CazySeqId[cazy].append(record.SeqID)
+        """Map CAZy ID to sequence ID.
+        
+        Accepts any dict-like object and uses setdefault for compatibility.
+        """
+        for record in self:
+            for cazy in record.CAZys:
+                CazySeqId.setdefault(cazy, []).append(record.SeqID)
     
     def SeqID2ReadID(self, aa):
-        """Map sequence ID to Read ID (optimized with defaultdict, maintain compatibility)"""
-        if not isinstance(aa, defaultdict):
-            # If not defaultdict, convert to use setdefault
-            for record in self:
-                aa.setdefault(record.SeqID, []).append(record.Qsn)
-        else:
-            # If defaultdict, add directly
-            for record in self:
-                aa[record.SeqID].append(record.Qsn)
+        """Map sequence ID to Read ID.
+        
+        Accepts any dict-like object and uses setdefault for compatibility.
+        """
+        for record in self:
+            aa.setdefault(record.SeqID, []).append(record.Qsn)
     
     def ReadID2Record(self):
         """Get Read ID to record mapping (Note: this will load all records into memory)"""
@@ -216,21 +210,37 @@ class Paf(object):
             record.CAZys = CAZy_filter(record.Qsn.strip("|").split("|")[1:])
     
     def Assign_subfam(self, CAZyID2subfam):
-        """Assign subfamily (streaming processing, store mapping as instance variable)"""
+        """Assign subfamily mapping.
+        
+        .. note:: **API Change (Breaking)**: This method no longer modifies individual 
+           record objects. Due to streaming processing, records are generated on-the-fly 
+           and cannot be modified persistently. Instead, this method stores the mapping 
+           as an instance variable, which is used by Get_subfam2SeqID() during traversal.
+        
+        Previous behavior: Modified each record's subfams attribute directly.
+        Current behavior: Stores mapping for later use during iteration.
+        
+        Args:
+            CAZyID2subfam: Dictionary mapping CAZy IDs to subfamily lists
+        """
         self.CAZyID2subfam = CAZyID2subfam
     
     def Get_subfam2SeqID(self, subfam2SeqID):
-        """Get subfamily to sequence ID mapping (dynamically assign subfam during traversal)"""
+        """Get subfamily to sequence ID mapping.
+        
+        Dynamically looks up subfams during traversal using the mapping stored by 
+        Assign_subfam(). This is necessary because records are generated on-the-fly 
+        in streaming mode and cannot have persistent attributes.
+        
+        Args:
+            subfam2SeqID: Dictionary to populate (accepts any dict-like object)
+        """
         CAZyID2subfam = getattr(self, 'CAZyID2subfam', {})
-        is_defaultdict = isinstance(subfam2SeqID, defaultdict)
         for record in self:
-            # Dynamically assign subfam
+            # Dynamically look up subfam from stored mapping
             subfams = CAZyID2subfam.get(record.Tsn, [])
             for subfam in subfams:
-                if is_defaultdict:
-                    subfam2SeqID[subfam].append(record.SeqID)
-                else:
-                    subfam2SeqID.setdefault(subfam, []).append(record.SeqID)
+                subfam2SeqID.setdefault(subfam, []).append(record.SeqID)
 
 def CAZyReadCount(cazyid, cazy2seqid, readtable):
     tmp_sum = 0
@@ -297,18 +307,10 @@ def diamond_unassemble_data(args):
     if args.paf2:
         totalreadnumber = float(totalreadnumber) * 2
     
-    # Use progress bar to show processing progress
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        transient=False
-    ) as progress:
-        task = progress.add_task("[cyan]Processing PAF files...", total=100)
-        cazyfpkm, readtable, cazy2seqid = Cal_FPKM(paf1, paf2, totalreadnumber, args.normalized, threads)
-        progress.update(task, completed=100)
+    # Process PAF files
+    logging.info("Processing PAF files...")
+    cazyfpkm, readtable, cazy2seqid = Cal_FPKM(paf1, paf2, totalreadnumber, args.normalized, threads)
+    logging.info("PAF file processing completed")
     
     FPKMToCsv(args, "Diamond", cazyfpkm, readtable, cazy2seqid)
     
@@ -544,7 +546,7 @@ def Cal_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
             
             cazy2seqid = defaultdict(set)
             # Merge cazy2seqid
-            for cazy in set(list(cazy2seqid1.keys()) + list(cazy2seqid2.keys())):
+            for cazy in set(cazy2seqid1.keys()) | set(cazy2seqid2.keys()):
                 seqids1 = cazy2seqid1.get(cazy, set())
                 seqids2 = cazy2seqid2.get(cazy, set())
                 if isinstance(seqids1, list):
@@ -555,7 +557,7 @@ def Cal_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
             
             seqid2readid = defaultdict(list)
             # Merge seqid2readid
-            for seqid in set(list(seqid2readid1.keys()) + list(seqid2readid2.keys())):
+            for seqid in set(seqid2readid1.keys()) | set(seqid2readid2.keys()):
                 seqid2readid[seqid] = seqid2readid1.get(seqid, []) + seqid2readid2.get(seqid, [])
             
             cazy2seqid = dict(cazy2seqid)
@@ -733,10 +735,10 @@ def Cal_subfam_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
             seq2len2, subfam2seqid2, seqid2readid2 = process_file(paf2.filename, CAZyID2subfam)
             seq2len = merge_two_dicts(seq2len1, seq2len2)
             subfam2seqid = defaultdict(set)
-            for subfam in set(list(subfam2seqid1.keys()) + list(subfam2seqid2.keys())):
+            for subfam in set(subfam2seqid1.keys()) | set(subfam2seqid2.keys()):
                 subfam2seqid[subfam] = subfam2seqid1.get(subfam, set()) | subfam2seqid2.get(subfam, set())
             seqid2readid = defaultdict(list)
-            for seqid in set(list(seqid2readid1.keys()) + list(seqid2readid2.keys())):
+            for seqid in set(seqid2readid1.keys()) | set(seqid2readid2.keys()):
                 seqid2readid[seqid] = seqid2readid1.get(seqid, []) + seqid2readid2.get(seqid, [])
             subfam2seqid = dict(subfam2seqid)
             seqid2readid = dict(seqid2readid)
@@ -783,18 +785,10 @@ def diamond_subfam_abund(args):
     if args.paf2:
         totalreadnumber = float(totalreadnumber) * 2
     
-    # Use progress bar to show processing progress
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        transient=False
-    ) as progress:
-        task = progress.add_task("[cyan]Processing subfamily abundance...", total=100)
-        subfamfpkm, readtable, subfam2seqid = Cal_subfam_FPKM(paf1, paf2, totalreadnumber, args.normalized, threads)
-        progress.update(task, completed=100)
+    # Process subfamily abundance
+    logging.info("Processing subfamily abundance...")
+    subfamfpkm, readtable, subfam2seqid = Cal_subfam_FPKM(paf1, paf2, totalreadnumber, args.normalized, threads)
+    logging.info("Subfamily abundance processing completed")
     
     FPKMToCsv(args, "Diamond", subfamfpkm, readtable, subfam2seqid)
     
@@ -856,9 +850,9 @@ def common_threads_option(f):
     return click.option(
         "-t", "--threads",
         type=int,
-        default=os.cpu_count() or 1,
+        default=min(os.cpu_count() or 1, 4),
         show_default=True,
-        help="Number of threads for parallel processing"
+        help="Number of threads for parallel processing (default: min(cpu_count, 4) for I/O-bound tasks)"
     )(f)
 
 @cli.command("diamond_fam_abund", help="Compute CAZy family abundance (FPKM/TPM/RPM).")
