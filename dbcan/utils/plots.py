@@ -827,7 +827,15 @@ def bar_plot(cfg: PlotsConfig, input_files: str, samples: str, plot_style: str, 
         plt.xlabel("")
         plt.ylabel("Abundance")
 
-    plt.title(f"The most top {top} different families")
+    # Determine plot type from input filename
+    title_word = "families"  # default
+    input_files_lower = input_files.lower()
+    if "subfam" in input_files_lower:
+        title_word = "subfamilies"
+    elif "ec" in input_files_lower and "subfam" not in input_files_lower:
+        title_word = "ECs"
+    
+    plt.title(f"The most top {top} different {title_word}")
     if not pdf.endswith(".pdf"):
         pdf = pdf + ".pdf"
     plt.savefig(pdf, bbox_inches="tight")
