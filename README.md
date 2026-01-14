@@ -19,6 +19,35 @@
   <a href="https://github.com/bcb-unl/run_dbcan/actions/workflows/test_dbcan.yml"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/bcb-unl/run_dbcan/test_dbcan.yml?branch=master&style=for-the-badge&logo=github&label=Test&labelColor=363a4f&color=a6d189"></a>
 </p>
 
+## Announcement
+
+⚠️ **Important Notice:**  
+Due to a recent cyberattack, our primary dbCAN web server is currently offline, and you will not be able to access the online database. Our IT team is actively working to resolve the issue. We apologize for any inconvenience this may cause.
+
+In the meantime, you can still obtain the dbCAN database using our AWS S3 backup. Recommended methods:
+
+**1. Use the run_dbcan database command (recommended):**
+```bash
+run_dbcan database --db_dir db --aws_s3
+```
+This command will download and organize the database files automatically.
+
+**2. Download via wget (not for folders):**
+
+Please note that `wget` cannot directly download an entire folder from an S3 bucket. It can only fetch individual files. To download all files, you will need to list the files and download them one by one or use AWS CLI. If you still want to download using `wget`, you must specify each file’s URL directly, for example:
+```bash
+wget https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2_9-13-2025/some_file
+```
+If you want to download the entire folder, please use the AWS CLI as follows:
+```bash
+aws s3 cp s3://dbcan/db_v5-2_9-13-2025/ ./db --recursive
+```
+For more details on database downloads, please refer to our [documentation](https://run-dbcan.readthedocs.io/en/latest/).
+
+If you have any questions or need help, feel free to open an [issue](https://github.com/bcb-unl/run_dbcan/issues).
+
+
+
 ## Update
 10/20/2025:
 1. **SignalP6.0 Topology Annotation**: Added support for SignalP6.0 signal peptide prediction. Use `--run_signalp` flag in `CAZyme_annotation` command to enable topology annotation. Results are automatically added to the overview.tsv file.
