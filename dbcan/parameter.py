@@ -30,10 +30,44 @@ def create_config(config_class, namespace: Optional[str] = None, **kwargs):
 output_dir_option = click.option('--output_dir', required=True, help='Directory for the output files')
 threads_option = click.option('--threads',  type=int, help='Number of threads', default=psutil.cpu_count())
 
+
+class MethodsType(click.ParamType):
+    """Click parameter type for comma-separated methods string."""
+    name = "methods"
+    
+    def convert(self, value, param, ctx):
+        if value is None or not value.strip():
+            return ('diamond', 'hmm', 'dbCANsub')
+        
+        valid_methods = {'diamond', 'hmm', 'dbCANsub'}
+        methods = [m.strip().lower() for m in value.split(',') if m.strip()]
+        
+        if not methods:
+            return ('diamond', 'hmm', 'dbCANsub')
+        
+        normalized = []
+        for m in methods:
+            if m == 'dbcansub':
+                normalized.append('dbCANsub')
+            elif m in valid_methods:
+                normalized.append(m)
+            else:
+                self.fail(
+                    f"Invalid method '{m}'. Valid options are: diamond, hmm, dbCANsub",
+                    param=param,
+                    ctx=ctx
+                )
+        
+        return tuple(normalized)
+
+
 methods_option = click.option('--methods',
-    default=['diamond', 'hmm', 'dbCANsub'],
-    help='Specify the annotation methods to use. Options are diamond, hmm, and dbCANsub.',
-    multiple=True)
+    default='diamond,hmm,dbCANsub',
+    type=MethodsType(),
+    help='Specify the annotation methods to use (comma-separated). '
+         'Options: diamond, hmm, dbCANsub. Example: --methods diamond,hmm or --methods hmm',
+    show_default=True,
+    )
 
 
 
@@ -75,11 +109,24 @@ def diamond_tf_options(func):
 def pyhmmer_dbcan_options(func):
     func = click.option('--e_value_threshold_dbcan',  type=float, help='E-value threshold for dbCAN HMMER',  default=1e-15)(func)
     func = click.option('--coverage_threshold_dbcan',  type=float, help='Coverage threshold for dbCAN HMMER', default=0.35)(func)
+    func = click.option('--csv_buffer_size', type=int, default=5000, show_default=True,
+                        help='Flush this many HMM hits to disk at once (larger can be faster, uses a bit more RAM).')(func)
+    func = click.option('--large/--no-large', 'large_mode', is_flag=True, default=False, show_default=True,
+                        help='Enable streaming-safe mode for very large inputs (reduces OOM risk).')(func)
+    func = click.option('--large_input_threshold_mb', type=int, default=5000, show_default=True,
+                        help='Auto-enable large mode when input fasta size exceeds this threshold (MB).')(func)
     return func
 
 def dbcansub_options(func):
     func = click.option('--e_value_threshold_dbsub',  type=float, help='E-value threshold for dbCAN-sub HMMER', default=1e-15)(func)
     func = click.option('--coverage_threshold_dbsub',  type=float, help='Coverage threshold for dbCAN-sub HMMER', default=0.35)(func)
+    # keep same knobs for dbCAN-sub
+    func = click.option('--csv_buffer_size_dbsub', type=int, default=5000, show_default=True,
+                        help='(dbCAN-sub) Flush this many HMM hits to disk at once.')(func)
+    func = click.option('--large_dbsub/--no-large_dbsub', 'large_mode_dbsub', is_flag=True, default=False, show_default=True,
+                        help='(dbCAN-sub) Enable streaming-safe mode for very large inputs.')(func)
+    func = click.option('--large_input_threshold_mb_dbsub', type=int, default=5000, show_default=True,
+                        help='(dbCAN-sub) Auto-enable large mode when input fasta exceeds this threshold (MB).')(func)
     return func
 
 def pyhmmer_tf(func):
