@@ -254,12 +254,23 @@ class PyHMMERProcessor(ABC):
         preload_targets = (not large_mode) and (input_size_bytes < available_bytes * 0.10)
 
         # Optional: preload all HMMs into memory *only if* we have enough headroom.
-        # HMM objects have overhead; estimate ~2x the file size, and keep 30% RAM free.
-        estimated_hmm_mem_bytes = int(hmm_file_size_bytes * 2.0)
+        # HMM objects have significant overhead; estimate ~5x the file size (conservative).
+        # Real-world observation: 2.35GB HMM file can use 10-15GB+ in memory.
+        estimated_hmm_mem_bytes = int(hmm_file_size_bytes * 5.0)
         preload_hmms = (estimated_hmm_mem_bytes < available_bytes * 0.70)
-        # In large_mode we still *may* preload HMMs if RAM is abundant, but be conservative:
+        # In large_mode, be very conservative or disable preloading entirely for safety:
         if large_mode:
-            preload_hmms = preload_hmms and (estimated_hmm_mem_bytes < available_bytes * 0.50)
+            # For large inputs, disable HMM preloading if HMM file is >1GB to avoid OOM risk
+            # Even with abundant RAM, large HMM files can cause memory spikes during loading
+            if hmm_file_size_mb > 1000:  # 1GB threshold
+                preload_hmms = False
+                logger.info(
+                    f"Large mode + large HMM file ({hmm_file_size_mb:.1f}MB): "
+                    f"disabling HMM preload for safety (will use streaming mode)"
+                )
+            else:
+                # Only preload if we have massive headroom (10% threshold) to avoid OOM
+                preload_hmms = (estimated_hmm_mem_bytes < available_bytes * 0.10)
 
         # Pre-compute constants to avoid repeated calculations
         hmm_file_stem = self.hmm_file.stem
@@ -287,13 +298,46 @@ class PyHMMERProcessor(ABC):
                     targets = seqs.read_block() if preload_targets else seqs
 
                     # Decide HMMs strategy
+                    hmms = None  # Default to streaming
                     if preload_hmms:
                         logger.info("Pre-loading all HMMs into memory for speed...")
-                        hmms = []
-                        with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
-                            for hmm in hmm_file_handle:
-                                hmms.append(hmm)
-                        logger.info(f"Loaded {len(hmms)} HMMs into memory.")
+                        logger.info(f"Estimated HMM memory: {estimated_hmm_mem_bytes / (1024*1024):.1f}MB")
+                        hmms_list = []
+                        hmm_count = 0
+                        preload_success = True
+                        try:
+                            with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
+                                for hmm in hmm_file_handle:
+                                    hmms_list.append(hmm)
+                                    hmm_count += 1
+                                    # Monitor memory every 1000 HMMs in large_mode
+                                    if large_mode and hmm_count % 1000 == 0:
+                                        if getattr(self.config, 'enable_memory_monitoring', True):
+                                            current_available = memory_monitor.get_available_memory_mb()
+                                            if current_available < available_mb * 0.20:  # Less than 20% remaining
+                                                logger.warning(
+                                                    f"Memory dropping during HMM load ({current_available:.1f}MB remaining). "
+                                                    f"Stopping preload at {hmm_count} HMMs to avoid OOM."
+                                                )
+                                                preload_success = False
+                                                break
+                            if preload_success:
+                                hmms = hmms_list
+                                logger.info(f"Loaded {len(hmms)} HMMs into memory.")
+                            else:
+                                logger.warning(
+                                    f"HMM preload stopped early at {hmm_count} HMMs due to memory pressure. "
+                                    f"Falling back to streaming HMM mode."
+                                )
+                                hmms = None
+                        except MemoryError as e:
+                            logger.error(
+                                f"OOM during HMM preload after {len(hmms_list)} HMMs. "
+                                f"Falling back to streaming HMM mode."
+                            )
+                            hmms = None  # Will trigger fallback to streaming
+                    
+                    if hmms is not None:
 
                         for hits in self._iter_hmmsearch_hits(hmms, targets, cpus=cpus):
                             for hit in hits:

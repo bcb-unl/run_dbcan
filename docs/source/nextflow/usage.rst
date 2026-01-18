@@ -3,18 +3,16 @@
 Nextflow Pipeline: Usage
 ==========================
 
-This document provides comprehensive guidance on using the Nextflow pipeline for CAZyme annotation in microbiome data. The pipeline supports multiple analysis modes and can be configured to suit various computational environments and data types.
+This document provides guidance on preparing input data and configuring the Nextflow pipeline for CAZyme annotation in microbiome data. For detailed information about each analysis mode, see the mode-specific documentation pages.
 
 Introduction
 ------------
 
-This pipeline supports three analysis modes for CAZyme annotation in microbiome data:
+This pipeline supports three analysis modes for CAZyme annotation in microbiome data. See the respective documentation pages for detailed information:
 
-- **Short reads** (``--type shortreads``): Assembly-based analysis for Illumina short-read data using MEGAHIT
-- **Long reads** (``--type longreads``): Assembly-based analysis for PacBio/Nanopore long-read data using Flye
-- **Assembly free** (``--type assemfree``): Direct annotation without assembly using seqtk and DIAMOND blastx
-
-The assembly free mode is particularly useful for large datasets where assembly is computationally expensive or when you want to avoid potential assembly artifacts. It directly converts reads to FASTA format and uses DIAMOND blastx to search against the CAZyme database, followed by abundance calculation using dbcan_asmfree.
+- :ref:`Short reads mode <shortreads-mode>` (``--type shortreads``): Assembly-based analysis for Illumina short-read data
+- :ref:`Long reads mode <longreads-mode>` (``--type longreads``): Assembly-based analysis for PacBio/Nanopore long-read data
+- :ref:`Assembly-free mode <assemfree-mode>` (``--type assemfree``): Direct annotation without assembly
 
 Samplesheet Input
 -----------------
@@ -180,53 +178,14 @@ If ``-profile`` is not specified, the pipeline will run locally and expect all r
 - ``conda``
   - A generic configuration profile to be used with `Conda <https://conda.io/docs/>`_. Please only use Conda as a last resort when containerization solutions (Docker, Singularity, Podman, Shifter, Charliecloud, or Apptainer) are not available or feasible.
 
-Short Reads Analysis Modes: Subsampling and Co-assembly
---------------------------------------------------------
+Analysis Modes
+--------------
 
-The following options are only available when using ``--type shortreads`` mode.
+For detailed information about each analysis mode and their specific options, see:
 
-Subsampling Mode
-~~~~~~~~~~~~~~~~
-
-- **Purpose**: Downsample each sample before assembly to reduce computational requirements and enable quick pipeline validation.
-- **Parameters**:
-  - ``--subsample``: Enable subsampling mode.
-  - ``--subsample_size``: Number of reads per file to retain (default: ``20000000`` as specified in the pipeline configuration).
-- **Behavior**:
-  - Subsampling is applied per-sample before MEGAHIT assembly using ``seqtk sample``.
-  - This mode is mutually exclusive with ``--coassembly``.
-- **Example**:
-
-.. code-block:: bash
-
-   nextflow run nf-core/dbcanmicrobiome \
-     --type shortreads \
-     --input samplesheet.csv \
-     --outdir results_subsample \
-     --subsample \
-     --subsample_size 5000000 \
-     -profile docker
-
-Co-assembly Mode
-~~~~~~~~~~~~~~~~
-
-- **Purpose**: Co-assemble all short-read samples together to improve contig continuity and enhance detection of shared genomic features across samples.
-- **Parameters**:
-  - ``--coassembly``: Enable co-assembly mode across all samples.
-- **Requirements & Behavior**:
-  - Requires at least 2 samples; the pipeline will produce an error if fewer samples are provided.
-  - Combines all reads (preserving paired-end or single-end structure) and performs a single MEGAHIT assembly.
-  - This mode is mutually exclusive with ``--subsample``.
-- **Example**:
-
-.. code-block:: bash
-
-   nextflow run nf-core/dbcanmicrobiome \
-     --type shortreads \
-     --input samplesheet.csv \
-     --outdir results_coassembly \
-     --coassembly \
-     -profile docker
+- :ref:`Short reads mode <shortreads-mode>` - Including subsampling and co-assembly options
+- :ref:`Long reads mode <longreads-mode>` - Including Flye mode selection
+- :ref:`Assembly-free mode <assemfree-mode>` - Direct read annotation
 
 ``-resume``
 ~~~~~~~~~~~
