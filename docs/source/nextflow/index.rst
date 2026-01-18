@@ -14,11 +14,16 @@ The pipeline supports three main analysis modes:
 - **Long Reads** (``--type longreads``): Assembly-based analysis for PacBio/Nanopore long-read data using Flye.
 - **Assembly Free** (``--type assemfree``): Direct annotation without assembly using DIAMOND blastx, ideal for large datasets.
 
-Basic usage example:
+Installation and basic usage:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   # Clone the repository
+   git clone https://github.com/bcb-unl/dbcan-nf.git
+   cd dbcan-nf
+
+   # Run the pipeline
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \

@@ -55,14 +55,17 @@ The assembly-free workflow consists of the following main steps:
 Usage
 -----
 
+.. note::
+   Before running the pipeline, make sure you have cloned the repository. See :ref:`nextflow-usage` for installation instructions.
+
 Basic Usage
 ~~~~~~~~~~~
 
-The simplest command to run assembly-free analysis:
+The simplest command to run assembly-free analysis (assuming you are in the ``dbcan-nf`` directory):
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type assemfree \
@@ -75,7 +78,7 @@ You can skip certain steps if needed:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type assemfree \
@@ -91,7 +94,7 @@ Combine assembly-free mode with other parameters:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type assemfree \

@@ -14,6 +14,16 @@ This pipeline supports three analysis modes for CAZyme annotation in microbiome 
 - :ref:`Long reads mode <longreads-mode>` (``--type longreads``): Assembly-based analysis for PacBio/Nanopore long-read data
 - :ref:`Assembly-free mode <assemfree-mode>` (``--type assemfree``): Direct annotation without assembly
 
+Installation
+------------
+
+Before running the pipeline, you need to clone the repository:
+
+.. code-block:: bash
+
+   git clone https://github.com/bcb-unl/dbcan-nf.git
+   cd dbcan-nf
+
 Samplesheet Input
 -----------------
 
@@ -75,9 +85,12 @@ The typical command for running the pipeline is as follows:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome --input ./samplesheet.csv --outdir ./results -profile docker
+   nextflow run main.nf --input ./samplesheet.csv --outdir ./results -profile docker
 
 This command launches the pipeline with the ``docker`` configuration profile, which ensures reproducible execution using containerized software. See below for more information about available profiles and configuration options.
+
+.. note::
+   Make sure you are in the ``dbcan-nf`` directory when running the pipeline, or use the full path to ``main.nf``: ``nextflow run /path/to/dbcan-nf/main.nf``
 
 Note that the pipeline will create the following files in your working directory:
 
@@ -99,7 +112,7 @@ The above pipeline run specified with a params file in yaml format:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome -profile docker -params-file params.yaml
+   nextflow run main.nf -profile docker -params-file params.yaml
 
 with:
 
@@ -110,25 +123,29 @@ with:
    outdir: './results/'
    <...>
 
-You can also generate such ``YAML``/``JSON`` parameter files using the `nf-core launch tool <https://nf-co.re/launch>`_ or by manually creating them based on your requirements.
+You can also generate such ``YAML``/``JSON`` parameter files manually based on your requirements.
 
 Updating the Pipeline
 ~~~~~~~~~~~~~~~~~~~~~~
 
-When you run the pipeline command, Nextflow automatically pulls the pipeline code from GitHub and stores it as a cached version. When running the pipeline subsequently, it will always use the cached version if available, even if the pipeline has been updated since the last run. To ensure that you're running the latest version of the pipeline, regularly update the cached version using:
+To update the pipeline to the latest version, pull the latest changes from the repository:
 
 .. code-block:: bash
 
-   nextflow pull nf-core/dbcanmicrobiome
+   cd dbcan-nf
+   git pull
 
 Reproducibility
 ~~~~~~~~~~~~~~~
 
-It is highly recommended to specify the pipeline version when running the pipeline on your data. This ensures that a specific version of the pipeline code and software are used, providing reproducibility across different runs. If you consistently use the same version tag, you will always run the same version of the pipeline, even if there have been updates to the code since your initial run.
+It is highly recommended to use a specific version or commit of the pipeline for reproducibility. You can checkout a specific version using git:
 
-To ensure reproducibility, specify the pipeline version when running. First, check the `nf-core/dbcanmicrobiome releases page <https://github.com/nf-core/dbcanmicrobiome/releases>`_ to find the latest stable version (e.g., ``1.3.1``). Then specify this version when running the pipeline using the ``-r`` flag (single hyphen), for example: ``-r 1.3.1``. You can switch to any other version by changing the version number after the ``-r`` flag.
+.. code-block:: bash
 
-This version number will be logged in reports when you run the pipeline, so that you'll know what you used when you look back in the future. For example, at the bottom of the MultiQC reports.
+   cd dbcan-nf
+   git checkout <tag-or-commit-hash>
+
+The version information will be logged in reports when you run the pipeline, so that you'll know what you used when you look back in the future. For example, at the bottom of the MultiQC reports.
 
 To further assist in reproducibility, you can use share and reuse `parameter files <#running-the-pipeline>`_ to repeat pipeline runs with the same settings without having to write out a command with every single parameter.
 

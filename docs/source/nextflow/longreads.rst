@@ -54,14 +54,17 @@ The long reads workflow consists of the following main steps:
 Usage
 -----
 
+.. note::
+   Before running the pipeline, make sure you have cloned the repository. See :ref:`nextflow-usage` for installation instructions.
+
 Basic Usage
 ~~~~~~~~~~~
 
-The simplest command to run long reads analysis:
+The simplest command to run long reads analysis (assuming you are in the ``dbcan-nf`` directory):
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
@@ -75,7 +78,7 @@ The ``--flye_mode`` parameter allows you to specify the appropriate Flye mode fo
 .. code-block:: bash
 
    # PacBio HiFi reads (default)
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
@@ -83,7 +86,7 @@ The ``--flye_mode`` parameter allows you to specify the appropriate Flye mode fo
      -profile docker
 
    # PacBio raw reads
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
@@ -91,7 +94,7 @@ The ``--flye_mode`` parameter allows you to specify the appropriate Flye mode fo
      -profile docker
 
    # Nanopore raw reads
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
@@ -99,7 +102,7 @@ The ``--flye_mode`` parameter allows you to specify the appropriate Flye mode fo
      -profile docker
 
    # Nanopore high-quality reads
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
@@ -121,7 +124,7 @@ Example with RNA-seq:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet_with_rna.csv \
      --outdir results \
      --type longreads \
@@ -135,7 +138,7 @@ You can skip certain steps if needed:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type longreads \

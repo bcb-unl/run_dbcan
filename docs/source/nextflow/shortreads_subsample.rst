@@ -20,11 +20,14 @@ When subsampling is enabled, the pipeline uses ``seqtk sample`` to randomly down
 Activation
 ----------
 
-To enable subsampling mode, use the ``--subsample`` flag along with ``--type shortreads``:
+.. note::
+   Before running the pipeline, make sure you have cloned the repository. See :ref:`nextflow-usage` for installation instructions.
+
+To enable subsampling mode, use the ``--subsample`` flag along with ``--type shortreads`` (assuming you are in the ``dbcan-nf`` directory):
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -61,7 +64,7 @@ Subsample to 20 million reads per file (default):
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -75,7 +78,7 @@ Subsample to 5 million reads per file:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -90,7 +93,7 @@ Combine subsampling with other parameters:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \

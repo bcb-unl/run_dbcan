@@ -5,6 +5,9 @@ Nextflow Pipeline: Parameters Reference
 
 This document provides a comprehensive reference for all parameters available in the Nextflow pipeline for CAZyme annotation in microbiome data. Parameters are organized by functional category.
 
+.. note::
+   Before running the pipeline, make sure you have cloned the repository. See :ref:`nextflow-usage` for installation instructions. All examples assume you are in the ``dbcan-nf`` directory or use the full path to ``main.nf``.
+
 Input/Output Options
 --------------------
 
@@ -226,7 +229,7 @@ Basic short reads analysis:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -236,7 +239,7 @@ Short reads with subsampling:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -248,7 +251,7 @@ Long reads analysis:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
@@ -259,7 +262,7 @@ Assembly-free analysis:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type assemfree \
@@ -269,7 +272,7 @@ With custom databases:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -281,7 +284,7 @@ Skipping quality control steps:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -293,7 +296,7 @@ Using parameter files:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      -profile docker \
      -params-file params.yaml
 

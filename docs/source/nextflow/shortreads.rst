@@ -58,14 +58,17 @@ The short reads workflow consists of the following main steps:
 Usage
 -----
 
+.. note::
+   Before running the pipeline, make sure you have cloned the repository. See :ref:`nextflow-usage` for installation instructions.
+
 Basic Usage
 ~~~~~~~~~~~
 
-The simplest command to run short reads analysis:
+The simplest command to run short reads analysis (assuming you are in the ``dbcan-nf`` directory):
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -88,7 +91,7 @@ Example with RNA-seq:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet_with_rna.csv \
      --outdir results \
      --type shortreads \
@@ -101,7 +104,7 @@ You can skip certain steps if needed:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -117,7 +120,7 @@ Using custom databases:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \

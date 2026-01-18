@@ -20,11 +20,14 @@ In co-assembly mode, all reads from all samples are combined (preserving paired-
 Activation
 ----------
 
-To enable co-assembly mode, use the ``--coassembly`` flag along with ``--type shortreads``:
+.. note::
+   Before running the pipeline, make sure you have cloned the repository. See :ref:`nextflow-usage` for installation instructions.
+
+To enable co-assembly mode, use the ``--coassembly`` flag along with ``--type shortreads`` (assuming you are in the ``dbcan-nf`` directory):
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -64,7 +67,7 @@ Co-assemble all samples in the samplesheet:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
@@ -91,7 +94,7 @@ Combine co-assembly with other parameters:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome \
+   nextflow run main.nf \
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
