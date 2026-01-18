@@ -20,6 +20,11 @@ class PyHMMERConfig(BaseConfig):
     max_memory_usage: float = 0.8  # Maximum memory usage ratio (0.0-1.0)
     enable_memory_monitoring: bool = True  # Enable memory monitoring
     memory_safety_factor: float = 0.5  # Safety factor for batch size calculation (0.0-1.0)
+    # Output / performance tuning
+    csv_buffer_size: int = 5000  # rows buffered before flushing to disk
+    # Large input handling
+    large_mode: bool = False  # force streaming-safe mode (avoid preloading targets/HMMs aggressively)
+    large_input_threshold_mb: int = 5000  # auto-enable large_mode when input fasta exceeds this size (MB)
 
 # dbCAN
 @dataclass

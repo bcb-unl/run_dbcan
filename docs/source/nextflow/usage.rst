@@ -3,18 +3,26 @@
 Nextflow Pipeline: Usage
 ==========================
 
-This document provides comprehensive guidance on using the Nextflow pipeline for CAZyme annotation in microbiome data. The pipeline supports multiple analysis modes and can be configured to suit various computational environments and data types.
+This document provides guidance on preparing input data and configuring the Nextflow pipeline for CAZyme annotation in microbiome data. For detailed information about each analysis mode, see the mode-specific documentation pages.
 
 Introduction
 ------------
 
-This pipeline supports three analysis modes for CAZyme annotation in microbiome data:
+This pipeline supports three analysis modes for CAZyme annotation in microbiome data. See the respective documentation pages for detailed information:
 
-- **Short reads** (``--type shortreads``): Assembly-based analysis for Illumina short-read data using MEGAHIT
-- **Long reads** (``--type longreads``): Assembly-based analysis for PacBio/Nanopore long-read data using Flye
-- **Assembly free** (``--type assemfree``): Direct annotation without assembly using seqtk and DIAMOND blastx
+- :ref:`Short reads mode <shortreads-mode>` (``--type shortreads``): Assembly-based analysis for Illumina short-read data
+- :ref:`Long reads mode <longreads-mode>` (``--type longreads``): Assembly-based analysis for PacBio/Nanopore long-read data
+- :ref:`Assembly-free mode <assemfree-mode>` (``--type assemfree``): Direct annotation without assembly
 
-The assembly free mode is particularly useful for large datasets where assembly is computationally expensive or when you want to avoid potential assembly artifacts. It directly converts reads to FASTA format and uses DIAMOND blastx to search against the CAZyme database, followed by abundance calculation using dbcan_asmfree.
+Installation
+------------
+
+Before running the pipeline, you need to clone the repository:
+
+.. code-block:: bash
+
+   git clone https://github.com/bcb-unl/dbcan-nf.git
+   cd dbcan-nf
 
 Samplesheet Input
 -----------------
@@ -77,9 +85,12 @@ The typical command for running the pipeline is as follows:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome --input ./samplesheet.csv --outdir ./results -profile docker
+   nextflow run main.nf --input ./samplesheet.csv --outdir ./results -profile docker
 
 This command launches the pipeline with the ``docker`` configuration profile, which ensures reproducible execution using containerized software. See below for more information about available profiles and configuration options.
+
+.. note::
+   Make sure you are in the ``dbcan-nf`` directory when running the pipeline, or use the full path to ``main.nf``: ``nextflow run /path/to/dbcan-nf/main.nf``
 
 Note that the pipeline will create the following files in your working directory:
 
@@ -101,7 +112,7 @@ The above pipeline run specified with a params file in yaml format:
 
 .. code-block:: bash
 
-   nextflow run nf-core/dbcanmicrobiome -profile docker -params-file params.yaml
+   nextflow run main.nf -profile docker -params-file params.yaml
 
 with:
 
@@ -112,25 +123,29 @@ with:
    outdir: './results/'
    <...>
 
-You can also generate such ``YAML``/``JSON`` parameter files using the `nf-core launch tool <https://nf-co.re/launch>`_ or by manually creating them based on your requirements.
+You can also generate such ``YAML``/``JSON`` parameter files manually based on your requirements.
 
 Updating the Pipeline
 ~~~~~~~~~~~~~~~~~~~~~~
 
-When you run the pipeline command, Nextflow automatically pulls the pipeline code from GitHub and stores it as a cached version. When running the pipeline subsequently, it will always use the cached version if available, even if the pipeline has been updated since the last run. To ensure that you're running the latest version of the pipeline, regularly update the cached version using:
+To update the pipeline to the latest version, pull the latest changes from the repository:
 
 .. code-block:: bash
 
-   nextflow pull nf-core/dbcanmicrobiome
+   cd dbcan-nf
+   git pull
 
 Reproducibility
 ~~~~~~~~~~~~~~~
 
-It is highly recommended to specify the pipeline version when running the pipeline on your data. This ensures that a specific version of the pipeline code and software are used, providing reproducibility across different runs. If you consistently use the same version tag, you will always run the same version of the pipeline, even if there have been updates to the code since your initial run.
+It is highly recommended to use a specific version or commit of the pipeline for reproducibility. You can checkout a specific version using git:
 
-To ensure reproducibility, specify the pipeline version when running. First, check the `nf-core/dbcanmicrobiome releases page <https://github.com/nf-core/dbcanmicrobiome/releases>`_ to find the latest stable version (e.g., ``1.3.1``). Then specify this version when running the pipeline using the ``-r`` flag (single hyphen), for example: ``-r 1.3.1``. You can switch to any other version by changing the version number after the ``-r`` flag.
+.. code-block:: bash
 
-This version number will be logged in reports when you run the pipeline, so that you'll know what you used when you look back in the future. For example, at the bottom of the MultiQC reports.
+   cd dbcan-nf
+   git checkout <tag-or-commit-hash>
+
+The version information will be logged in reports when you run the pipeline, so that you'll know what you used when you look back in the future. For example, at the bottom of the MultiQC reports.
 
 To further assist in reproducibility, you can use share and reuse `parameter files <#running-the-pipeline>`_ to repeat pipeline runs with the same settings without having to write out a command with every single parameter.
 
@@ -180,53 +195,14 @@ If ``-profile`` is not specified, the pipeline will run locally and expect all r
 - ``conda``
   - A generic configuration profile to be used with `Conda <https://conda.io/docs/>`_. Please only use Conda as a last resort when containerization solutions (Docker, Singularity, Podman, Shifter, Charliecloud, or Apptainer) are not available or feasible.
 
-Short Reads Analysis Modes: Subsampling and Co-assembly
---------------------------------------------------------
+Analysis Modes
+--------------
 
-The following options are only available when using ``--type shortreads`` mode.
+For detailed information about each analysis mode and their specific options, see:
 
-Subsampling Mode
-~~~~~~~~~~~~~~~~
-
-- **Purpose**: Downsample each sample before assembly to reduce computational requirements and enable quick pipeline validation.
-- **Parameters**:
-  - ``--subsample``: Enable subsampling mode.
-  - ``--subsample_size``: Number of reads per file to retain (default: ``20000000`` as specified in the pipeline configuration).
-- **Behavior**:
-  - Subsampling is applied per-sample before MEGAHIT assembly using ``seqtk sample``.
-  - This mode is mutually exclusive with ``--coassembly``.
-- **Example**:
-
-.. code-block:: bash
-
-   nextflow run nf-core/dbcanmicrobiome \
-     --type shortreads \
-     --input samplesheet.csv \
-     --outdir results_subsample \
-     --subsample \
-     --subsample_size 5000000 \
-     -profile docker
-
-Co-assembly Mode
-~~~~~~~~~~~~~~~~
-
-- **Purpose**: Co-assemble all short-read samples together to improve contig continuity and enhance detection of shared genomic features across samples.
-- **Parameters**:
-  - ``--coassembly``: Enable co-assembly mode across all samples.
-- **Requirements & Behavior**:
-  - Requires at least 2 samples; the pipeline will produce an error if fewer samples are provided.
-  - Combines all reads (preserving paired-end or single-end structure) and performs a single MEGAHIT assembly.
-  - This mode is mutually exclusive with ``--subsample``.
-- **Example**:
-
-.. code-block:: bash
-
-   nextflow run nf-core/dbcanmicrobiome \
-     --type shortreads \
-     --input samplesheet.csv \
-     --outdir results_coassembly \
-     --coassembly \
-     -profile docker
+- :ref:`Short reads mode <shortreads-mode>` - Including subsampling and co-assembly options
+- :ref:`Long reads mode <longreads-mode>` - Including Flye mode selection
+- :ref:`Assembly-free mode <assemfree-mode>` - Direct read annotation
 
 ``-resume``
 ~~~~~~~~~~~
