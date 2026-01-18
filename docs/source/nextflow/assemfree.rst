@@ -249,10 +249,16 @@ Comparison with Other Modes
      - Yes
      - Yes
 
+Example Results
+---------------
+
+For example visualizations from assembly-free mode, see the :ref:`assembly-free results section <nextflow-results-examples>`.
+
 See Also
 --------
 
 - :ref:`shortreads-mode` - Short reads assembly-based mode
 - :ref:`longreads-mode` - Long reads assembly-based mode
 - :ref:`nextflow-parameters` - Complete parameter reference
+- :ref:`nextflow-results-examples` - Example results and visualizations
 - `DIAMOND Documentation <https://github.com/bbuchfink/diamond>`_ - DIAMOND BLASTX documentation

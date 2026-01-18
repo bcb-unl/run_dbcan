@@ -166,9 +166,15 @@ When to Use Subsampling
 - Low-coverage samples (subsampling may further reduce coverage)
 - When maximum sensitivity is required
 
+Example Results
+---------------
+
+For example visualizations from subsampling mode, see the :ref:`subsampling results section <nextflow-results-examples>`.
+
 See Also
 --------
 
 - :ref:`shortreads-mode` - Main short reads mode documentation
 - :ref:`shortreads-coassembly` - Co-assembly mode (alternative to subsampling)
 - :ref:`nextflow-parameters` - Complete parameter reference
+- :ref:`nextflow-results-examples` - Example results and visualizations

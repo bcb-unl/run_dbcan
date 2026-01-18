@@ -29,7 +29,7 @@ Installation and basic usage:
      --type shortreads \
      -profile docker
 
-For detailed information about each mode, see the corresponding documentation pages below.
+For detailed information about each mode, see the corresponding documentation pages below. Example results and visualizations are available in the :ref:`results examples <nextflow-results-examples>` section.
 
 Documentation Sections
 ----------------------
@@ -62,4 +62,5 @@ Reference
 
    parameters
    output
+   results_examples
 

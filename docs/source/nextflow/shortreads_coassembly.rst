@@ -207,9 +207,15 @@ When to Use Co-assembly
 - When RNA-seq analysis is needed (automatically disabled)
 - Single sample analysis (requires at least 2 samples)
 
+Example Results
+---------------
+
+For example visualizations from co-assembly mode, see the :ref:`co-assembly results section <nextflow-results-examples>`.
+
 See Also
 --------
 
 - :ref:`shortreads-mode` - Main short reads mode documentation
 - :ref:`shortreads-subsample` - Subsampling mode (alternative to co-assembly)
 - :ref:`nextflow-parameters` - Complete parameter reference
+- :ref:`nextflow-results-examples` - Example results and visualizations
