@@ -27,7 +27,7 @@ Installation and basic usage:
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
-     -profile docker
+     -profile docker \
      --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 For detailed information about each mode, see the corresponding documentation pages below. Example results and visualizations are available in the :ref:`results examples <nextflow-results-examples>` section.
