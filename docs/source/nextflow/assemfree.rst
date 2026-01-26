@@ -69,7 +69,8 @@ The simplest command to run assembly-free analysis (assuming you are in the ``db
      --input samplesheet.csv \
      --outdir results \
      --type assemfree \
-     -profile docker
+     -profile docker \
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 Skipping Steps
 ~~~~~~~~~~~~~~

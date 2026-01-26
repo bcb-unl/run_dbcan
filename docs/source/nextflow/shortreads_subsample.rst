@@ -33,6 +33,7 @@ To enable subsampling mode, use the ``--subsample`` flag along with ``--type sho
      --type shortreads \
      --subsample \
      -profile docker
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 Parameters
 ----------
@@ -69,7 +70,8 @@ Subsample to 20 million reads per file (default):
      --outdir results \
      --type shortreads \
      --subsample \
-     -profile docker
+     -profile docker \
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 Custom Subsampling Size
 ~~~~~~~~~~~~~~~~~~~~~~~~

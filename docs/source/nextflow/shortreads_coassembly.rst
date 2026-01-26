@@ -32,6 +32,7 @@ To enable co-assembly mode, use the ``--coassembly`` flag along with ``--type sh
      --outdir results \
      --type shortreads \
      --coassembly \
+     --skip_kraken_extraction \ # based on the database size of kraken2, you can skip this step if the database is too large.
      -profile docker
 
 Requirements

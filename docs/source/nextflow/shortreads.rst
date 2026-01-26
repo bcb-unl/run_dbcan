@@ -72,7 +72,8 @@ The simplest command to run short reads analysis (assuming you are in the ``dbca
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
-     -profile docker
+     -profile docker \
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 With RNA-seq Data
 ~~~~~~~~~~~~~~~~~

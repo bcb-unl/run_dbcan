@@ -68,7 +68,8 @@ The simplest command to run long reads analysis (assuming you are in the ``dbcan
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
-     -profile docker
+     -profile docker \
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 Flye Mode Selection
 ~~~~~~~~~~~~~~~~~~~

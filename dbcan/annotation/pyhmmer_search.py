@@ -278,28 +278,50 @@ class PyHMMERProcessor(ABC):
         # Batch write buffer configuration (rows, not bytes)
         buffer_flush_threshold = int(getattr(self.config, 'csv_buffer_size', 5000) or 5000)
         
-        try:
-            # Use larger buffer for file I/O (8MB buffer)
-            with raw_hits_file.open("w", newline="", buffering=8 * 1024 * 1024) as raw_handle:
-                writer = csv.writer(raw_handle, delimiter="\t")
-                hit_buffer: List = []
+        max_retries = int(getattr(self.config, "max_retries", 3) or 3)
+        last_oom: MemoryError | None = None
 
-                alphabet = pyhmmer.easel.Alphabet.amino()
+        for attempt in range(max_retries + 1):
+            stats["retry_count"] = attempt
+            if attempt > 0:
+                # On retry: force the safest mode.
+                effective_large_mode = True
+                effective_preload_targets = False
+                effective_preload_hmms = False
+                # Reset counters because we will overwrite the raw hits file on retry
+                stats["total_sequences"] = 0
+                stats["total_batches"] = 0
+                stats["total_hits"] = 0
+                stats["memory_warnings"] = 0
+            else:
+                effective_large_mode = large_mode
+                effective_preload_targets = preload_targets
+                effective_preload_hmms = preload_hmms
 
-                logger.info(
-                    f"Input size: {input_size_mb:.1f}MB, HMM size: {hmm_file_size_mb:.1f}MB, "
-                    f"Available: {available_mb:.1f}MB, large_mode={large_mode}, "
-                    f"preload_targets={preload_targets}, preload_hmms={preload_hmms}, "
-                    f"csv_buffer_size={buffer_flush_threshold}"
-                )
+            try:
+                # Use larger buffer for file I/O (8MB buffer)
+                with raw_hits_file.open("w", newline="", buffering=8 * 1024 * 1024) as raw_handle:
+                    writer = csv.writer(raw_handle, delimiter="\t")
+                    hit_buffer = []
 
-                # Decide targets strategy (pyhmmer doc pattern)
-                with pyhmmer.easel.SequenceFile(str(self.input_faa), digital=True, alphabet=alphabet) as seqs:
-                    targets = seqs.read_block() if preload_targets else seqs
+                    alphabet = pyhmmer.easel.Alphabet.amino()
 
-                    # Decide HMMs strategy
+                    # Decide whether to force batching:
+                    # - always in large_mode (safety)
+                    # - or if user explicitly configured batch_size
+                    force_batching = effective_large_mode or (getattr(self.config, "batch_size", None) is not None)
+
+                    logger.info(
+                        f"Input size: {input_size_mb:.1f}MB, HMM size: {hmm_file_size_mb:.1f}MB, "
+                        f"Available: {available_mb:.1f}MB, large_mode={effective_large_mode}, "
+                        f"preload_targets={effective_preload_targets}, preload_hmms={effective_preload_hmms}, "
+                        f"force_batching={force_batching}, csv_buffer_size={buffer_flush_threshold}, "
+                        f"retry={attempt}/{max_retries}"
+                    )
+
+                    # Decide HMMs strategy (may be used across multiple batches)
                     hmms = None  # Default to streaming
-                    if preload_hmms:
+                    if effective_preload_hmms:
                         logger.info("Pre-loading all HMMs into memory for speed...")
                         logger.info(f"Estimated HMM memory: {estimated_hmm_mem_bytes / (1024*1024):.1f}MB")
                         hmms_list = []
@@ -311,7 +333,7 @@ class PyHMMERProcessor(ABC):
                                     hmms_list.append(hmm)
                                     hmm_count += 1
                                     # Monitor memory every 1000 HMMs in large_mode
-                                    if large_mode and hmm_count % 1000 == 0:
+                                    if effective_large_mode and hmm_count % 1000 == 0:
                                         if getattr(self.config, 'enable_memory_monitoring', True):
                                             current_available = memory_monitor.get_available_memory_mb()
                                             if current_available < available_mb * 0.20:  # Less than 20% remaining
@@ -330,96 +352,163 @@ class PyHMMERProcessor(ABC):
                                     f"Falling back to streaming HMM mode."
                                 )
                                 hmms = None
-                        except MemoryError as e:
+                        except MemoryError:
                             logger.error(
                                 f"OOM during HMM preload after {len(hmms_list)} HMMs. "
                                 f"Falling back to streaming HMM mode."
                             )
-                            hmms = None  # Will trigger fallback to streaming
-                    
-                    if hmms is not None:
+                            hmms = None
 
-                        for hits in self._iter_hmmsearch_hits(hmms, targets, cpus=cpus):
-                            for hit in hits:
-                                # Note: `hits` yields per query/target; don't treat this as "sequence count"
-                                for domain in hit.domains.included:
-                                    aln = domain.alignment
-                                    coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                                    hmm_name = aln.hmm_name.decode("utf-8")
-                                    if P.GT2_PREFIX in hmm_name:
-                                        hmm_name = P.GT2_FAMILY_NAME
-                                    i_evalue = domain.i_evalue
-                                    if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
-                                        hit_buffer.append([
-                                            hmm_name,
-                                            aln.hmm_length,
-                                            aln.target_name.decode("utf-8"),
-                                            aln.target_length,
-                                            i_evalue,
-                                            aln.hmm_from,
-                                            aln.hmm_to,
-                                            aln.target_from,
-                                            aln.target_to,
-                                            coverage,
-                                            hmm_file_stem,
-                                        ])
-                                        stats["total_hits"] += 1
+                    # Targets / batching loop
+                    with pyhmmer.easel.SequenceFile(str(self.input_faa), digital=True, alphabet=alphabet) as seqs:
+                        # If we explicitly preload targets, keep old fast path (single call)
+                        if effective_preload_targets and not force_batching:
+                            targets = seqs.read_block()
+                            if hmms is not None:
+                                for hits in self._iter_hmmsearch_hits(hmms, targets, cpus=cpus):
+                                    for hit in hits:
+                                        for domain in hit.domains.included:
+                                            aln = domain.alignment
+                                            coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
+                                            hmm_name = aln.hmm_name.decode("utf-8")
+                                            if P.GT2_PREFIX in hmm_name:
+                                                hmm_name = P.GT2_FAMILY_NAME
+                                            i_evalue = domain.i_evalue
+                                            if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
+                                                hit_buffer.append([
+                                                    hmm_name,
+                                                    aln.hmm_length,
+                                                    aln.target_name.decode("utf-8"),
+                                                    aln.target_length,
+                                                    i_evalue,
+                                                    aln.hmm_from,
+                                                    aln.hmm_to,
+                                                    aln.target_from,
+                                                    aln.target_to,
+                                                    coverage,
+                                                    hmm_file_stem,
+                                                ])
+                                                stats["total_hits"] += 1
+                                                if len(hit_buffer) >= buffer_flush_threshold:
+                                                    self._flush_hit_buffer(hit_buffer, writer)
+                                self._flush_hit_buffer(hit_buffer, writer)
+                            else:
+                                with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
+                                    for hits in self._iter_hmmsearch_hits(hmm_file_handle, targets, cpus=cpus):
+                                        for hit in hits:
+                                            for domain in hit.domains.included:
+                                                aln = domain.alignment
+                                                coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
+                                                hmm_name = aln.hmm_name.decode("utf-8")
+                                                if P.GT2_PREFIX in hmm_name:
+                                                    hmm_name = P.GT2_FAMILY_NAME
+                                                i_evalue = domain.i_evalue
+                                                if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
+                                                    hit_buffer.append([
+                                                        hmm_name,
+                                                        aln.hmm_length,
+                                                        aln.target_name.decode("utf-8"),
+                                                        aln.target_length,
+                                                        i_evalue,
+                                                        aln.hmm_from,
+                                                        aln.hmm_to,
+                                                        aln.target_from,
+                                                        aln.target_to,
+                                                        coverage,
+                                                        hmm_file_stem,
+                                                    ])
+                                                    stats["total_hits"] += 1
+                                                    if len(hit_buffer) >= buffer_flush_threshold:
+                                                        self._flush_hit_buffer(hit_buffer, writer)
+                                self._flush_hit_buffer(hit_buffer, writer)
+                        else:
+                            # True batching: read blocks of N sequences and run hmmsearch per block.
+                            batch_size = self._calculate_batch_size(self.input_faa, memory_monitor, retry_count=stats["retry_count"])
+                            stats["batch_size_history"].append(batch_size)
+                            while True:
+                                # Proactive: if memory is already above threshold, reduce batch size before reading more.
+                                if getattr(self.config, 'enable_memory_monitoring', True):
+                                    if not memory_monitor.is_memory_safe() and batch_size > 100:
+                                        new_bs = max(100, batch_size // 2)
+                                        if new_bs != batch_size:
+                                            logger.warning(
+                                                f"Memory pressure detected before reading next batch; "
+                                                f"reducing batch_size {batch_size} -> {new_bs}"
+                                            )
+                                            batch_size = new_bs
+                                            stats["batch_size_history"].append(batch_size)
+                                            stats["memory_warnings"] += 1
+
+                                seq_block = seqs.read_block(sequences=batch_size)
+                                if not seq_block:
+                                    break
+
+                                stats["total_batches"] += 1
+                                stats["total_sequences"] += len(seq_block)
+
+                                if getattr(self.config, 'enable_memory_monitoring', True):
+                                    if not memory_monitor.check_and_warn(f"batch {stats['total_batches']}"):
+                                        stats["memory_warnings"] += 1
+                                    # Periodic checkpoints for visibility/debugging (avoid per-batch overhead)
+                                    if stats["total_batches"] % 50 == 0:
+                                        memory_monitor.record_checkpoint(f"batch {stats['total_batches']}")
+
+                                if hmms is not None:
+                                    stats["total_hits"] += self._process_sequence_block(
+                                        seq_block,
+                                        hmms,
+                                        cpus=cpus,
+                                        hit_buffer=hit_buffer,
+                                        hmm_file_stem=hmm_file_stem,
+                                        buffer_flush_threshold=buffer_flush_threshold,
+                                    )
+                                    if len(hit_buffer) >= buffer_flush_threshold:
+                                        self._flush_hit_buffer(hit_buffer, writer)
+                                else:
+                                    # Streaming HMMFile cannot be reused across multiple hmmsearch calls safely,
+                                    # so reopen per batch.
+                                    with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
+                                        stats["total_hits"] += self._process_sequence_block(
+                                            seq_block,
+                                            hmm_file_handle,
+                                            cpus=cpus,
+                                            hit_buffer=hit_buffer,
+                                            hmm_file_stem=hmm_file_stem,
+                                            buffer_flush_threshold=buffer_flush_threshold,
+                                        )
                                         if len(hit_buffer) >= buffer_flush_threshold:
                                             self._flush_hit_buffer(hit_buffer, writer)
 
-                        # Flush remaining hits
-                        self._flush_hit_buffer(hit_buffer, writer)
-                    else:
-                        # Streaming HMMFile (fast + low memory) - must be used in a SINGLE hmmsearch call.
-                        with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
-                            for hits in self._iter_hmmsearch_hits(hmm_file_handle, targets, cpus=cpus):
-                                for hit in hits:
-                                    for domain in hit.domains.included:
-                                        aln = domain.alignment
-                                        coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                                        hmm_name = aln.hmm_name.decode("utf-8")
-                                        if P.GT2_PREFIX in hmm_name:
-                                            hmm_name = P.GT2_FAMILY_NAME
-                                        i_evalue = domain.i_evalue
-                                        if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
-                                            hit_buffer.append([
-                                                hmm_name,
-                                                aln.hmm_length,
-                                                aln.target_name.decode("utf-8"),
-                                                aln.target_length,
-                                                i_evalue,
-                                                aln.hmm_from,
-                                                aln.hmm_to,
-                                                aln.target_from,
-                                                aln.target_to,
-                                                coverage,
-                                                hmm_file_stem,
-                                            ])
-                                            stats["total_hits"] += 1
-                                            if len(hit_buffer) >= buffer_flush_threshold:
-                                                self._flush_hit_buffer(hit_buffer, writer)
+                            self._flush_hit_buffer(hit_buffer, writer)
 
-                        self._flush_hit_buffer(hit_buffer, writer)
-        except MemoryError as e:
-            # This should only be reached if retries are exhausted or in single-pass mode
-            error_msg = (
-                f"HMM search failed due to out of memory (OOM). "
-                f"Try reducing batch_size or increasing available memory. "
-                f"File size: {input_size_mb:.1f}MB, Available: {available_mb:.1f}MB. "
-                f"Consider using batch_size parameter."
-            )
-            logger.error(error_msg)
-            raise MemoryError(error_msg) from e
-        except Exception as e:
-            error_msg = f"HMM search failed for {self.hmm_file}: {e}"
-            if "memory" in str(e).lower() or "oom" in str(e).lower():
-                error_msg += (
-                    f" This may be a memory issue. "
-                    f"File size: {input_size_mb:.1f}MB, Available: {available_mb:.1f}MB. "
-                    f"Try reducing batch_size or increasing available memory."
+                # success (no OOM)
+                last_oom = None
+                break
+            except MemoryError as e:
+                last_oom = e
+                if attempt < max_retries:
+                    logger.warning(
+                        f"OOM during HMM search (retry {attempt+1}/{max_retries}). "
+                        f"Will retry with safer settings and smaller batch size."
+                    )
+                    continue
+                error_msg = (
+                    f"HMM search failed due to out of memory (OOM) after {max_retries} retries. "
+                    f"Try reducing batch_size or increasing available memory. "
+                    f"File size: {input_size_mb:.1f}MB, Available: {available_mb:.1f}MB."
                 )
-            logger.error(error_msg)
-            raise
+                logger.error(error_msg)
+                raise MemoryError(error_msg) from e
+            except Exception as e:
+                error_msg = f"HMM search failed for {self.hmm_file}: {e}"
+                if "memory" in str(e).lower() or "oom" in str(e).lower():
+                    error_msg += (
+                        f" This may be a memory issue. "
+                        f"File size: {input_size_mb:.1f}MB, Available: {available_mb:.1f}MB. "
+                        f"Try reducing batch_size or increasing available memory."
+                    )
+                logger.error(error_msg)
+                raise
 
         # Calculate elapsed time
         elapsed_time = time.time() - start_time
