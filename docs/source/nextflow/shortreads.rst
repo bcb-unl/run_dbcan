@@ -72,7 +72,8 @@ The simplest command to run short reads analysis (assuming you are in the ``dbca
      --input samplesheet.csv \
      --outdir results \
      --type shortreads \
-     -profile docker
+     -profile docker \
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 With RNA-seq Data
 ~~~~~~~~~~~~~~~~~
@@ -231,6 +232,11 @@ Key Features
 - **Abundance Calculation**: Gene-level and CGC-level abundance with visualization
 - **Quality Control**: Integrated QC pipeline with MultiQC reporting
 
+Example Results
+---------------
+
+For example visualizations and results from short reads mode analysis, see :ref:`nextflow-results-examples`.
+
 See Also
 --------
 
@@ -238,3 +244,4 @@ See Also
 - :ref:`shortreads-coassembly` - Co-assembly mode details
 - :ref:`nextflow-parameters` - Complete parameter reference
 - :ref:`nextflow-output` - General output documentation
+- :ref:`nextflow-results-examples` - Example results and visualizations

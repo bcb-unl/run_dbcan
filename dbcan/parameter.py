@@ -111,6 +111,16 @@ def pyhmmer_dbcan_options(func):
     func = click.option('--coverage_threshold_dbcan',  type=float, help='Coverage threshold for dbCAN HMMER', default=0.35)(func)
     func = click.option('--csv_buffer_size', type=int, default=5000, show_default=True,
                         help='Flush this many HMM hits to disk at once (larger can be faster, uses a bit more RAM).')(func)
+    func = click.option('--batch_size', type=int, default=None, show_default=True,
+                        help='Process this many sequences per batch in pyhmmer (None = auto).')(func)
+    func = click.option('--max_memory_usage', type=float, default=0.8, show_default=True,
+                        help='Maximum system memory usage ratio before warnings/throttling (0.0-1.0).')(func)
+    func = click.option('--memory_safety_factor', type=float, default=0.5, show_default=True,
+                        help='Safety factor for auto batch size (0.0-1.0, smaller = safer).')(func)
+    func = click.option('--max_retries', type=int, default=3, show_default=True,
+                        help='Maximum retries on OOM during pyhmmer search.')(func)
+    func = click.option('--enable_memory_monitoring/--no-enable_memory_monitoring', is_flag=True, default=True, show_default=True,
+                        help='Enable memory monitoring and adaptive throttling for pyhmmer.')(func)
     func = click.option('--large/--no-large', 'large_mode', is_flag=True, default=False, show_default=True,
                         help='Enable streaming-safe mode for very large inputs (reduces OOM risk).')(func)
     func = click.option('--large_input_threshold_mb', type=int, default=5000, show_default=True,
@@ -123,6 +133,16 @@ def dbcansub_options(func):
     # keep same knobs for dbCAN-sub
     func = click.option('--csv_buffer_size_dbsub', type=int, default=5000, show_default=True,
                         help='(dbCAN-sub) Flush this many HMM hits to disk at once.')(func)
+    func = click.option('--batch_size_dbsub', type=int, default=None, show_default=True,
+                        help='(dbCAN-sub) Sequences per batch in pyhmmer (None = auto).')(func)
+    func = click.option('--max_memory_usage_dbsub', type=float, default=0.8, show_default=True,
+                        help='(dbCAN-sub) Maximum system memory usage ratio before warnings/throttling (0.0-1.0).')(func)
+    func = click.option('--memory_safety_factor_dbsub', type=float, default=0.5, show_default=True,
+                        help='(dbCAN-sub) Safety factor for auto batch size (0.0-1.0).')(func)
+    func = click.option('--max_retries_dbsub', type=int, default=3, show_default=True,
+                        help='(dbCAN-sub) Maximum retries on OOM during pyhmmer search.')(func)
+    func = click.option('--enable_memory_monitoring_dbsub/--no-enable_memory_monitoring_dbsub', is_flag=True, default=True, show_default=True,
+                        help='(dbCAN-sub) Enable memory monitoring and adaptive throttling for pyhmmer.')(func)
     func = click.option('--large_dbsub/--no-large_dbsub', 'large_mode_dbsub', is_flag=True, default=False, show_default=True,
                         help='(dbCAN-sub) Enable streaming-safe mode for very large inputs.')(func)
     func = click.option('--large_input_threshold_mb_dbsub', type=int, default=5000, show_default=True,

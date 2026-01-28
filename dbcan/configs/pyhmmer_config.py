@@ -20,6 +20,7 @@ class PyHMMERConfig(BaseConfig):
     max_memory_usage: float = 0.8  # Maximum memory usage ratio (0.0-1.0)
     enable_memory_monitoring: bool = True  # Enable memory monitoring
     memory_safety_factor: float = 0.5  # Safety factor for batch size calculation (0.0-1.0)
+    max_retries: int = 3  # Maximum retries on MemoryError (OOM) during hmmsearch
     # Output / performance tuning
     csv_buffer_size: int = 5000  # rows buffered before flushing to disk
     # Large input handling

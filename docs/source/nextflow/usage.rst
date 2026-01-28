@@ -85,7 +85,7 @@ The typical command for running the pipeline is as follows:
 
 .. code-block:: bash
 
-   nextflow run main.nf --input ./samplesheet.csv --outdir ./results -profile docker
+   nextflow run main.nf --input ./samplesheet.csv --outdir ./results -profile docker --skip_kraken_extraction
 
 This command launches the pipeline with the ``docker`` configuration profile, which ensures reproducible execution using containerized software. See below for more information about available profiles and configuration options.
 

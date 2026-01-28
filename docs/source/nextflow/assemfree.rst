@@ -69,7 +69,8 @@ The simplest command to run assembly-free analysis (assuming you are in the ``db
      --input samplesheet.csv \
      --outdir results \
      --type assemfree \
-     -profile docker
+     -profile docker \
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 Skipping Steps
 ~~~~~~~~~~~~~~
@@ -249,10 +250,16 @@ Comparison with Other Modes
      - Yes
      - Yes
 
+Example Results
+---------------
+
+For example visualizations from assembly-free mode, see the :ref:`assembly-free results section <nextflow-results-examples>`.
+
 See Also
 --------
 
 - :ref:`shortreads-mode` - Short reads assembly-based mode
 - :ref:`longreads-mode` - Long reads assembly-based mode
 - :ref:`nextflow-parameters` - Complete parameter reference
+- :ref:`nextflow-results-examples` - Example results and visualizations
 - `DIAMOND Documentation <https://github.com/bbuchfink/diamond>`_ - DIAMOND BLASTX documentation

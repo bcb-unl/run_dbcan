@@ -68,7 +68,8 @@ The simplest command to run long reads analysis (assuming you are in the ``dbcan
      --input samplesheet.csv \
      --outdir results \
      --type longreads \
-     -profile docker
+     -profile docker \
+     --skip_kraken_extraction # based on the database size of kraken2, you can skip this step if the database is too large.
 
 Flye Mode Selection
 ~~~~~~~~~~~~~~~~~~~
@@ -300,10 +301,16 @@ When to Use Long Reads Mode
 - When computational resources are very limited
 - When only basic CAZyme annotation is needed
 
+Example Results
+---------------
+
+For example visualizations from long reads mode, see :ref:`nextflow-results-examples`.
+
 See Also
 --------
 
 - :ref:`shortreads-mode` - Short reads mode documentation
 - :ref:`assemfree-mode` - Assembly-free mode documentation
 - :ref:`nextflow-parameters` - Complete parameter reference
+- :ref:`nextflow-results-examples` - Example results and visualizations
 - `Flye Documentation <https://github.com/fenderglass/Flye>`_ - Flye assembler documentation
