@@ -25,6 +25,20 @@ import dbcan.constants.pyhmmer_search_constants as P
 logger = logging.getLogger(__name__)
 
 
+def _safe_decode(value):
+    """Safely decode bytes to string, or return string as-is.
+    
+    Args:
+        value: Either bytes or str
+        
+    Returns:
+        str: Decoded string
+    """
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
+    return value
+
+
 class PyHMMERProcessor(ABC):
     """Base PyHMMER processor: config is the single source of truth."""
 
@@ -110,7 +124,7 @@ class PyHMMERProcessor(ABC):
                     for domain in hit.domains.included:
                         aln = domain.alignment
                         coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                        hmm_name = aln.hmm_name.decode('utf-8')
+                        hmm_name = _safe_decode(aln.hmm_name)
                         if P.GT2_PREFIX in hmm_name:
                             hmm_name = P.GT2_FAMILY_NAME
                         i_evalue = domain.i_evalue
@@ -118,7 +132,7 @@ class PyHMMERProcessor(ABC):
                             hit_buffer.append([
                                 hmm_name,
                                 aln.hmm_length,
-                                aln.target_name.decode('utf-8'),
+                                _safe_decode(aln.target_name),
                                 aln.target_length,
                                 i_evalue,
                                 aln.hmm_from,
@@ -370,7 +384,7 @@ class PyHMMERProcessor(ABC):
                                         for domain in hit.domains.included:
                                             aln = domain.alignment
                                             coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                                            hmm_name = aln.hmm_name.decode("utf-8")
+                                            hmm_name = _safe_decode(aln.hmm_name)
                                             if P.GT2_PREFIX in hmm_name:
                                                 hmm_name = P.GT2_FAMILY_NAME
                                             i_evalue = domain.i_evalue
@@ -378,7 +392,7 @@ class PyHMMERProcessor(ABC):
                                                 hit_buffer.append([
                                                     hmm_name,
                                                     aln.hmm_length,
-                                                    aln.target_name.decode("utf-8"),
+                                                    _safe_decode(aln.target_name),
                                                     aln.target_length,
                                                     i_evalue,
                                                     aln.hmm_from,
@@ -399,7 +413,7 @@ class PyHMMERProcessor(ABC):
                                             for domain in hit.domains.included:
                                                 aln = domain.alignment
                                                 coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                                                hmm_name = aln.hmm_name.decode("utf-8")
+                                                hmm_name = _safe_decode(aln.hmm_name)
                                                 if P.GT2_PREFIX in hmm_name:
                                                     hmm_name = P.GT2_FAMILY_NAME
                                                 i_evalue = domain.i_evalue
@@ -407,7 +421,7 @@ class PyHMMERProcessor(ABC):
                                                     hit_buffer.append([
                                                         hmm_name,
                                                         aln.hmm_length,
-                                                        aln.target_name.decode("utf-8"),
+                                                        _safe_decode(aln.target_name),
                                                         aln.target_length,
                                                         i_evalue,
                                                         aln.hmm_from,
@@ -558,10 +572,20 @@ class PyHMMERDBCANSUBProcessor(PyHMMERProcessor):
         return Path(self.config.db_dir) / P.SUBSTRATE_MAPPING_FILE
 
     def run(self):
-        super().run()
+        logger.info("Starting PyHMMERDBCANSUBProcessor.run()")
+        try:
+            super().run()
+            logger.info("HMM search completed successfully")
+        except Exception as e:
+            logger.error(f"HMM search failed, but will still attempt to create empty dbCAN-sub results file: {e}")
+            # Continue to process_dbcan_sub even if HMM search failed, 
+            # so that empty file with headers can be created
         # Post-processing specific to dbCAN-sub
+        # This will create empty file if no results were found
+        logger.info("Calling process_dbcan_sub() to process results")
         sub_proc = DBCANSUBProcessor(self.config)
         sub_proc.process_dbcan_sub()
+        logger.info("PyHMMERDBCANSUBProcessor.run() completed")
 
 
 class PyHMMERTFProcessor(PyHMMERProcessor):

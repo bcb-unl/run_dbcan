@@ -39,6 +39,7 @@ class DBCANSUBProcessor:
             ok = False
         if not self.mapping_file_path.exists():
             logger.warning(f"Substrate mapping file not found: {self.mapping_file_path}. Substrate will be '-'.")
+            # Mapping file missing is not fatal, we can still process with empty substrate column
         return ok
 
     def load_substrate_mapping(self) -> Dict[Tuple[str, str], List[str]]:
@@ -64,7 +65,40 @@ class DBCANSUBProcessor:
             return {}
 
     def process_dbcan_sub(self) -> None:
+        logger.info(f"Starting dbCAN-sub processing. Input: {self.input_file_path}, Output: {self.output_file_path}")
+        # Get output columns for creating empty file if needed
+        out_cols = getattr(P, "DBCAN_SUB_COLUMN_NAMES", None)
+        if out_cols is None:
+            logger.error(f"DBCAN_SUB_COLUMN_NAMES not found in constants. Cannot create empty file with proper headers.")
+            # Still try to create a basic empty file
+            try:
+                basic_cols = ['Subfam Name', 'Subfam Composition', 'Subfam EC', 'Substrate', 
+                             'HMM Length', 'Target Name', 'Target Length', 'i-Evalue',
+                             'HMM From', 'HMM To', 'Target From', 'Target To', 'Coverage', 'HMM File Name']
+                empty_df = pd.DataFrame(columns=basic_cols)
+                self.output_file_path.parent.mkdir(parents=True, exist_ok=True)
+                empty_df.to_csv(self.output_file_path, sep='\t', index=False)
+                logger.info(f"Created empty dbCAN-sub results file with basic headers -> {self.output_file_path}")
+            except Exception as e:
+                logger.error(f"Failed to create basic empty file: {e}", exc_info=True)
+            return
+        else:
+            logger.info(f"DBCAN_SUB_COLUMN_NAMES found: {len(out_cols)} columns: {out_cols[:5]}...")
+        
         if not self._validate_for_run():
+            logger.info(f"Validation failed. Input file exists: {self.input_file_path.exists()}, "
+                       f"size: {self.input_file_path.stat().st_size if self.input_file_path.exists() else 0}")
+            # Create empty file with headers when input file doesn't exist or is empty
+            if out_cols:
+                try:
+                    empty_df = pd.DataFrame(columns=out_cols)
+                    self.output_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    empty_df.to_csv(self.output_file_path, sep='\t', index=False)
+                    logger.info(f"Created empty dbCAN-sub results file with headers -> {self.output_file_path}")
+                except Exception as e:
+                    logger.error(f"Failed to create empty file: {e}", exc_info=True)
+            else:
+                logger.warning(f"Cannot create empty file: DBCAN_SUB_COLUMN_NAMES is None")
             return
 
         subs_dict = self.load_substrate_mapping()
@@ -72,9 +106,37 @@ class DBCANSUBProcessor:
             logger.warning("No substrate mapping data loaded. Substrate annotation will be '-'.")
 
         try:
+            # Check if file is empty before reading
+            if self.input_file_path.stat().st_size == 0:
+                logger.warning(f"Input file is empty: {self.input_file_path}")
+                if out_cols:
+                    try:
+                        empty_df = pd.DataFrame(columns=out_cols)
+                        self.output_file_path.parent.mkdir(parents=True, exist_ok=True)
+                        empty_df.to_csv(self.output_file_path, sep='\t', index=False)
+                        logger.info(f"Created empty dbCAN-sub results file with headers (input file was empty) -> {self.output_file_path}")
+                        return
+                    except Exception as e:
+                        logger.error(f"Failed to create empty file: {e}", exc_info=True)
+                        return
+                else:
+                    logger.warning(f"Cannot create empty file: DBCAN_SUB_COLUMN_NAMES is None")
+                    return
+            
             df = pd.read_csv(self.input_file_path, sep='\t')
             if df.empty:
-                logger.warning("No dbCAN-sub results to process")
+                logger.warning("No dbCAN-sub results to process (DataFrame is empty)")
+                # Create empty file with headers when DataFrame is empty
+                if out_cols:
+                    try:
+                        empty_df = pd.DataFrame(columns=out_cols)
+                        self.output_file_path.parent.mkdir(parents=True, exist_ok=True)
+                        empty_df.to_csv(self.output_file_path, sep='\t', index=False)
+                        logger.info(f"Created empty dbCAN-sub results file with headers (no data rows) -> {self.output_file_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to create empty file: {e}", exc_info=True)
+                else:
+                    logger.warning(f"Cannot create empty file: DBCAN_SUB_COLUMN_NAMES is None")
                 return
 
             hmm_name_col = P.DBCAN_SUB_HMM_NAME_COLUMN
@@ -119,7 +181,6 @@ class DBCANSUBProcessor:
                 df[col] = df[col].fillna('-').astype(str)
 
             # Reorder/ensure final columns if constant provided
-            out_cols = getattr(P, "DBCAN_SUB_COLUMN_NAMES", None)
             if out_cols:
                 for c in out_cols:
                     if c not in df.columns:
@@ -131,6 +192,31 @@ class DBCANSUBProcessor:
             logger.info(f"Successfully processed dbCAN-sub results ({len(df)} entries) -> {self.output_file_path.name}")
         except Exception as e:
             logger.error(f"Error processing dbCAN-sub results: {e}", exc_info=True)
+            # Create empty file with headers even when there's an error
+            if out_cols:
+                try:
+                    empty_df = pd.DataFrame(columns=out_cols)
+                    self.output_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    empty_df.to_csv(self.output_file_path, sep='\t', index=False)
+                    logger.info(f"Created empty dbCAN-sub results file with headers after error -> {self.output_file_path}")
+                except Exception as write_error:
+                    logger.error(f"Failed to create empty file: {write_error}", exc_info=True)
+        
+        # Final check: ensure output file exists
+        if not self.output_file_path.exists():
+            logger.warning(f"Output file does not exist after processing: {self.output_file_path}. Creating empty file as fallback.")
+            if out_cols:
+                try:
+                    empty_df = pd.DataFrame(columns=out_cols)
+                    self.output_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    empty_df.to_csv(self.output_file_path, sep='\t', index=False)
+                    logger.info(f"Created empty dbCAN-sub results file as final fallback -> {self.output_file_path}")
+                except Exception as write_error:
+                    logger.error(f"Failed to create empty file in final fallback: {write_error}", exc_info=True)
+            else:
+                logger.error(f"Cannot create empty file: DBCAN_SUB_COLUMN_NAMES is None")
+        else:
+            logger.info(f"Output file exists: {self.output_file_path} (size: {self.output_file_path.stat().st_size} bytes)")
 
     @staticmethod
     def _extract_subfamily_names(hmm_name: str) -> str:

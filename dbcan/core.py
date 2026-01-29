@@ -21,6 +21,79 @@ def run_dbCAN_hmmer(config):
     processor = PyHMMERDBCANProcessor(config)
     processor.run()
 
+def _ensure_empty_diamond_file(config):
+    """Ensure empty diamond results file exists even if not run."""
+    import logging
+    from pathlib import Path
+    import pandas as pd
+    import dbcan.constants.diamond_constants as D
+    
+    output_path = Path(config.output_dir) / config.output_file
+    if not output_path.exists():
+        out_cols = getattr(config, "column_names", None) or D.CAZY_COLUMN_NAMES
+        if out_cols:
+            try:
+                empty_df = pd.DataFrame(columns=out_cols)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                empty_df.to_csv(output_path, sep='\t', index=False)
+                logging.info(f"Created empty diamond results file (not in methods) -> {output_path.name}")
+            except Exception as e:
+                logging.error(f"Failed to create empty diamond file: {e}", exc_info=True)
+
+def _ensure_empty_dbcan_hmm_file(config):
+    """Ensure empty dbCAN HMM results file exists even if not run."""
+    import logging
+    from pathlib import Path
+    import pandas as pd
+    import dbcan.constants.process_utils_constants as P
+    
+    output_path = Path(config.output_dir) / config.output_file
+    if not output_path.exists():
+        out_cols = P.HMMER_COLUMN_NAMES
+        if out_cols:
+            try:
+                empty_df = pd.DataFrame(columns=out_cols)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                empty_df.to_csv(output_path, sep='\t', index=False)
+                logging.info(f"Created empty dbCAN HMM results file (not in methods) -> {output_path.name}")
+            except Exception as e:
+                logging.error(f"Failed to create empty dbCAN HMM file: {e}", exc_info=True)
+
+def _ensure_empty_dbcansub_file(config):
+    """Ensure empty dbCAN-sub results file and raw file exist even if not run."""
+    import logging
+    from pathlib import Path
+    import pandas as pd
+    import dbcan.constants.process_dbcan_sub_constants as P
+    import dbcan.constants.process_utils_constants as P_UTILS
+    
+    # Create empty final results file
+    output_path = Path(config.output_dir) / P.DBCAN_SUB_HMM_RESULT_FILE
+    if not output_path.exists():
+        out_cols = getattr(P, "DBCAN_SUB_COLUMN_NAMES", None)
+        if out_cols:
+            try:
+                empty_df = pd.DataFrame(columns=out_cols)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                empty_df.to_csv(output_path, sep='\t', index=False)
+                logging.info(f"Created empty dbCAN-sub results file (not in methods) -> {output_path.name}")
+            except Exception as e:
+                logging.error(f"Failed to create empty dbCAN-sub results file: {e}", exc_info=True)
+    
+    # Create empty raw file (dbCANsub_hmm_raw.tsv.raw.tsv)
+    raw_output_path = Path(config.output_dir) / config.output_file
+    raw_output_path = raw_output_path.with_suffix(raw_output_path.suffix + ".raw.tsv")
+    if not raw_output_path.exists():
+        raw_cols = P_UTILS.HMMER_COLUMN_NAMES
+        if raw_cols:
+            try:
+                empty_df = pd.DataFrame(columns=raw_cols)
+                raw_output_path.parent.mkdir(parents=True, exist_ok=True)
+                empty_df.to_csv(raw_output_path, sep='\t', index=False)
+                logging.info(f"Created empty dbCAN-sub raw file (not in methods) -> {raw_output_path.name}")
+            except Exception as e:
+                logging.error(f"Failed to create empty dbCAN-sub raw file: {e}", exc_info=True)
+
 def run_dbCAN_dbcansub_hmmer(config):
     from dbcan.annotation.pyhmmer_search import PyHMMERDBCANSUBProcessor
     processor = PyHMMERDBCANSUBProcessor(config)
@@ -39,8 +112,14 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
         logging.info("DIAMOND CAZy...")
         try:
             run_dbCAN_cazy_diamond(diamondconfig)
+            logging.info("DIAMOND CAZy done")
         except Exception as e:
             logging.error(f"DIAMOND CAZy failed: {e}")
+            # Even if diamond fails, try to create empty result file
+            _ensure_empty_diamond_file(diamondconfig)
+    else:
+        # Even if diamond is not in methods, create empty result file to avoid warnings
+        _ensure_empty_diamond_file(diamondconfig)
 
     if 'hmm' in methods:
         logging.info("pyhmmer vs dbCAN-HMM...")
@@ -49,6 +128,11 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
             logging.info("HMMER dbCAN done")
         except Exception as e:
             logging.error(f"HMMER dbCAN failed: {e}")
+            # Even if hmm fails, try to create empty result file
+            _ensure_empty_dbcan_hmm_file(dbcanconfig)
+    else:
+        # Even if hmm is not in methods, create empty result file to avoid warnings
+        _ensure_empty_dbcan_hmm_file(dbcanconfig)
 
     if 'dbCANsub' in methods:
         logging.info("pyhmmer vs dbCAN-sub-HMM...")
@@ -56,7 +140,14 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
             run_dbCAN_dbcansub_hmmer(dbcansubconfig)
             logging.info("dbCAN-sub HMM done")
         except Exception as e:
-            logging.error(f"dbCAN-sub HMM failed: {e}")
+            logging.error(f"dbCAN-sub HMM failed: {e}", exc_info=True)
+            # Even if HMM search fails, we should still try to create empty result file
+            # This is handled inside PyHMMERDBCANSUBProcessor.run()
+            # But we also need to ensure raw file exists
+            _ensure_empty_dbcansub_file(dbcansubconfig)
+    else:
+        # Even if dbCANsub is not in methods, create empty result file to avoid warnings
+        _ensure_empty_dbcansub_file(dbcansubconfig)
 
     logging.info("generate overview of CAZymes...")
     try:
