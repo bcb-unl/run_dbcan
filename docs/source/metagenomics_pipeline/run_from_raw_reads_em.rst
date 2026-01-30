@@ -291,8 +291,8 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC --input_raw_data MAG_HS-60.faa --mode protein --output_dir MAG_HS-60.PUL --input_format NCBI --input_gff_format prodigal --input_gff MAG_HS-60.gff --db_dir db
-    run_dbcan easy_CGC --input_raw_data MAG_HS-05.faa --mode protein --output_dir MAG_HS-05.PUL --input_format NCBI --input_gff_format prodigal --input_gff MAG_HS-05.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data MAG_HS-60.faa --mode protein --output_dir MAG_HS-60.PUL --input_format NCBI --gff_type prodigal --input_gff MAG_HS-60.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data MAG_HS-05.faa --mode protein --output_dir MAG_HS-05.PUL --input_format NCBI --gff_type prodigal --input_gff MAG_HS-05.gff --db_dir db
 
 .. warning::
 
@@ -312,8 +312,8 @@ The following commands will re-run run_dbcan to predict CAZymes, CGCs, and their
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data MAG_HS-60.faa --mode protein --output_dir MAG_HS-60.PUL --input_format NCBI --input_gff_format prodigal --input_gff MAG_HS-60.gff --db_dir db
-    run_dbcan easy_substrate --input_raw_data MAG_HS-05.faa --mode protein --output_dir MAG_HS-05.PUL --input_format NCBI --input_gff_format prodigal --input_gff MAG_HS-05.gff --db_dir db
+    run_dbcan easy_substrate --input_raw_data MAG_HS-60.faa --mode protein --output_dir MAG_HS-60.PUL --input_format NCBI --gff_type prodigal --input_gff MAG_HS-60.gff --db_dir db
+    run_dbcan easy_substrate --input_raw_data MAG_HS-05.faa --mode protein --output_dir MAG_HS-05.PUL --input_format NCBI --gff_type prodigal --input_gff MAG_HS-05.gff --db_dir db
 
 
 Box 6. Example output folder content of run_dbcan substrate prediction

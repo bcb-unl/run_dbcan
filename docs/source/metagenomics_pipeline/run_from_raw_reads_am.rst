@@ -268,8 +268,8 @@ The following commands will re-run run_dbcan to predict CAZymes, CGCs, and their
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data HTOOS.faa --mode protein  --input_format NCBI --input_gff HTOOS.gff --input_gff_format prodigal   --output_dir HTOOS.dbCAN --db_dir db
-    run_dbcan easy_substrate --input_raw_data HCZGU.faa --mode protein  --input_format NCBI --input_gff HCZGU.gff --input_gff_format prodigal   --output_dir HCZGU.dbCAN --db_dir db
+    run_dbcan easy_substrate --input_raw_data HTOOS.faa --mode protein  --input_format NCBI --input_gff HTOOS.gff --gff_type prodigal   --output_dir HTOOS.dbCAN --db_dir db
+    run_dbcan easy_substrate --input_raw_data HCZGU.faa --mode protein  --input_format NCBI --input_gff HCZGU.gff --gff_type prodigal   --output_dir HCZGU.dbCAN --db_dir db
 
 
 

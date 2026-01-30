@@ -405,8 +405,8 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC --input_raw_data Wet2014.faa --mode protein --output_dir Wet2014.PUL --db_dir db  --input_format NCBI --input_gff Wet2014.gff --input_gff_format prodigal
-    run_dbcan easy_CGC --input_raw_data Dry2014.faa --mode protein --output_dir Dry2014.PUL --db_dir db  --input_format NCBI --input_gff Wet2014.gff --input_gff_format prodigal
+    run_dbcan easy_CGC --input_raw_data Wet2014.faa --mode protein --output_dir Wet2014.PUL --db_dir db  --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal
+    run_dbcan easy_CGC --input_raw_data Dry2014.faa --mode protein --output_dir Dry2014.PUL --db_dir db  --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal
 
 
 As mentioned above (see Fig. 1), CGC prediction is a featured function added into dbCAN2 in 2018.
@@ -427,8 +427,8 @@ P7. Substrate prediction for CAZymes and CGCs (TIMING ~5h)
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data Wet2014.faa --mode protein --input_format NCBI --input_gff Wet2014.gff --input_gff_format prodigal --output_dir Wet2014.dbCAN
-    run_dbcan easy_substrate --input_raw_data Dry2014.faa --mode protein --input_format NCBI --input_gff Wet2014.gff --input_gff_format prodigal --output_dir Dry2014.dbCAN
+    run_dbcan easy_substrate --input_raw_data Wet2014.faa --mode protein --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal --output_dir Wet2014.dbCAN
+    run_dbcan easy_substrate --input_raw_data Dry2014.faa --mode protein --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal --output_dir Dry2014.dbCAN
 
 
 

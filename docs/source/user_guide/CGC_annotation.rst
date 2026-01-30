@@ -68,7 +68,7 @@ To customize CGC prediction parameters:
    :caption: Advanced CGC prediction with custom parameters
    :emphasize-lines: 1
 
-   run_dbcan CGC_annotation --output_dir output_dir --use_null_genes true --num_null_gene 5 --use_distance true --base_pair_distance 15000 --additional_genes TC,TF,STP
+   run_dbcan cgc_finder --output_dir output_dir --use_null_genes --num_null_gene 5 --use_distance --base_pair_distance 15000 --additional_genes TC --additional_genes TF --additional_genes STP
 
 Key Parameters
 ~~~~~~~~~~~~~~~~

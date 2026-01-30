@@ -253,8 +253,8 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --input_format NCBI --input_gff_format prodigal --input_gff BML_MG.gff --db_dir db
-    run_dbcan easy_CGC --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --input_format NCBI --input_gff_format prodigal --input_gff SRF_MG.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --input_format NCBI --gff_type prodigal --input_gff BML_MG.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --input_format NCBI --gff_type prodigal --input_gff SRF_MG.gff --db_dir db
 
 .. warning::
 
@@ -274,8 +274,8 @@ The following commands will re-run run_dbcan to predict CAZymes, CGCs.
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --input_format NCBI --input_gff_format prodigal --input_gff BML_MG.gff --db_dir db
-    run_dbcan easy_substrate --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --input_format NCBI --input_gff_format prodigal --input_gff SRF_MG.gff --db_dir db
+    run_dbcan easy_substrate --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --input_format NCBI --gff_type prodigal --input_gff BML_MG.gff --db_dir db
+    run_dbcan easy_substrate --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --input_format NCBI --gff_type prodigal --input_gff SRF_MG.gff --db_dir db
 
 
 Box 6: Example output folder content of run_dbcan substrate prediction

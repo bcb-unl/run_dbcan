@@ -28,6 +28,9 @@ First, download the database files required for the analysis.
     run_dbcan database \
       --db_dir db
 
+    # Optional: use --aws_s3 for faster and more stable downloads from AWS S3
+    # run_dbcan database --db_dir db --aws_s3
+
 
 CAZyme Annotation
 ------------------

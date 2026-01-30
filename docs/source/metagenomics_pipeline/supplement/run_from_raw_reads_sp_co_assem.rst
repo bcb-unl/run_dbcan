@@ -304,7 +304,7 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC --input_raw_data Hadza_INDIV_157.faa --mode protein --output_dir Hadza_INDIV_157.PUL --db_dir db  --input_format NCBI --input_gff Hadza_INDIV_157.gff --input_gff_format prodigal
+    run_dbcan easy_CGC --input_raw_data Hadza_INDIV_157.faa --mode protein --output_dir Hadza_INDIV_157.PUL --db_dir db  --input_format NCBI --input_gff Hadza_INDIV_157.gff --gff_type prodigal
 
 
 As mentioned above (see Fig. 1), CGC prediction is a featured function added into dbCAN2 in 2018.
@@ -325,7 +325,7 @@ P7. Substrate prediction for CAZymes and CGCs (TIMING ~5h)
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data Hadza_INDIV_157.faa --mode protein --input_format NCBI --input_gff Hadza_INDIV_157.gff --input_gff_format prodigal --output_dir Hadza_INDIV_157.dbCAN
+    run_dbcan easy_substrate --input_raw_data Hadza_INDIV_157.faa --mode protein --input_format NCBI --input_gff Hadza_INDIV_157.gff --gff_type prodigal --output_dir Hadza_INDIV_157.dbCAN
 
 
 

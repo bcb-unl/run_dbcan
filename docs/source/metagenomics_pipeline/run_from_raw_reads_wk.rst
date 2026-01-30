@@ -260,8 +260,8 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC  --input_raw_data fefifo_8022_1.faa --mode protein --output_dir fefifo_8022_1.PUL --input_format NCBI --input_gff_format prodigal --input_gff fefifo_8022_1.gff --db_dir db
-    run_dbcan easy_CGC  --input_raw_data fefifo_8022_7.faa --mode protein --output_dir fefifo_8022_7.PUL --input_format NCBI --input_gff_format prodigal --input_gff fefifo_8022_7.gff --db_dir db
+    run_dbcan easy_CGC  --input_raw_data fefifo_8022_1.faa --mode protein --output_dir fefifo_8022_1.PUL --input_format NCBI --gff_type prodigal --input_gff fefifo_8022_1.gff --db_dir db
+    run_dbcan easy_CGC  --input_raw_data fefifo_8022_7.faa --mode protein --output_dir fefifo_8022_7.PUL --input_format NCBI --gff_type prodigal --input_gff fefifo_8022_7.gff --db_dir db
 
 .. warning::
 
@@ -281,8 +281,8 @@ The following commands will re-run run_dbcan to predict CAZymes, CGCs, and their
 
 .. code-block:: shell
 
-    run_dbcan  easy_substrate --input_raw_data  fefifo_8022_1.faa --mode protein  --input_format NCBI --input_gff fefifo_8022_1.gff --input_gff_format prodigal   --output_dir fefifo_8022_1.dbCAN --db_dir db
-    run_dbcan  easy_substrate --input_raw_data  fefifo_8022_7.faa --mode protein  --input_format NCBI --input_gff fefifo_8022_7.gff --input_gff_format prodigal   --output_dir fefifo_8022_7.dbCAN --db_dir db
+    run_dbcan  easy_substrate --input_raw_data  fefifo_8022_1.faa --mode protein  --input_format NCBI --input_gff fefifo_8022_1.gff --gff_type prodigal   --output_dir fefifo_8022_1.dbCAN --db_dir db
+    run_dbcan  easy_substrate --input_raw_data  fefifo_8022_7.faa --mode protein  --input_format NCBI --input_gff fefifo_8022_7.gff --gff_type prodigal   --output_dir fefifo_8022_7.dbCAN --db_dir db
 
 
 
