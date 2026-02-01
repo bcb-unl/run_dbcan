@@ -81,8 +81,7 @@ def _ensure_empty_dbcansub_file(config):
                 logging.error(f"Failed to create empty dbCAN-sub results file: {e}", exc_info=True)
     
     # Create empty raw file (dbCANsub_hmm_raw.tsv.raw.tsv)
-    raw_output_path = Path(config.output_dir) / config.output_file
-    raw_output_path = raw_output_path.with_suffix(raw_output_path.suffix + ".raw.tsv")
+    raw_output_path = Path(config.output_dir) / P.DBCAN_SUB_HMM_RAW_FILE
     if not raw_output_path.exists():
         raw_cols = P_UTILS.HMMER_COLUMN_NAMES
         if raw_cols:

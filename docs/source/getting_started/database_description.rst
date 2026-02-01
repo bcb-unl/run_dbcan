@@ -2,7 +2,7 @@ Database Description
 ====================
 
 All files are available on the `Web server <https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/>`_.
-An AWS-hosted dataset is planned and will be released soon.
+You can also download from AWS S3 for faster and more stable transfers by using the ``--aws_s3`` flag with the ``run_dbcan database`` command (see :doc:`Preparing Databases <../user_guide/prepare_the_database>`).
 The databases are generally updated annually between July and September.
 
 The databases used by run_dbCAN are described below.

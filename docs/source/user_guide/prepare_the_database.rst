@@ -14,6 +14,18 @@ The simplest way to obtain all required databases is using the built-in command 
 
    run_dbcan database --db_dir db
 
+To download from AWS S3 (faster and more stable in many regions), add the ``--aws_s3`` flag:
+
+.. code-block:: shell
+
+   run_dbcan database --db_dir db --aws_s3
+
+To download only CAZyme-related databases (without CGC-related databases), use ``--no-cgc``:
+
+.. code-block:: shell
+
+   run_dbcan database --db_dir db --no-cgc
+
 This command will automatically download all necessary databases and organize them in the specified directory.
 
 .. tip::

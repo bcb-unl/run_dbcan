@@ -105,24 +105,7 @@ class DBCANSUBProcessor:
         if not subs_dict:
             logger.warning("No substrate mapping data loaded. Substrate annotation will be '-'.")
 
-        try:
-            # Check if file is empty before reading
-            if self.input_file_path.stat().st_size == 0:
-                logger.warning(f"Input file is empty: {self.input_file_path}")
-                if out_cols:
-                    try:
-                        empty_df = pd.DataFrame(columns=out_cols)
-                        self.output_file_path.parent.mkdir(parents=True, exist_ok=True)
-                        empty_df.to_csv(self.output_file_path, sep='\t', index=False)
-                        logger.info(f"Created empty dbCAN-sub results file with headers (input file was empty) -> {self.output_file_path}")
-                        return
-                    except Exception as e:
-                        logger.error(f"Failed to create empty file: {e}", exc_info=True)
-                        return
-                else:
-                    logger.warning(f"Cannot create empty file: DBCAN_SUB_COLUMN_NAMES is None")
-                    return
-            
+        try:            
             df = pd.read_csv(self.input_file_path, sep='\t')
             if df.empty:
                 logger.warning("No dbCAN-sub results to process (DataFrame is empty)")
