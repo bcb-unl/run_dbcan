@@ -68,7 +68,7 @@ class PyHMMERProcessor(ABC):
 
     @property
     def e_value_threshold(self) -> float:
-        return float(self.config.evalue_threshold)
+        return float(self.config.e_value_threshold)
 
     @property
     def coverage_threshold(self) -> float:
