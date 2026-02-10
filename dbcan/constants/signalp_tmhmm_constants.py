@@ -22,10 +22,10 @@ DEFAULT_FORMAT = "none"
 # Output directories
 SIGNALP_OUT_DIR = "signalp6_out"
 
-# SignalP parameters
-SIGNALP_ORGANISMS = "other"
-SIGNALP_MODES = "fast"
-OUTPUT_FORMATS = "none"
+# SignalP parameters (must be sequences for "x in CONSTANT" validation)
+SIGNALP_ORGANISMS = ("other", "euk")
+SIGNALP_MODES = ("fast",)
+OUTPUT_FORMATS = ("none",)
 
 BIOLIB_SIGNALP_VARIANTS = [
     "DTU/SignalP-6.0",
