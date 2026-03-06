@@ -87,5 +87,10 @@ DATABASES_CGC_S3 = {
 
 COMPRESSED_DBCAN_PUL = "dbCAN-PUL.tar.gz"
 
+# Structure search (Foldseek vs CAZyme3D) - not in default download
+# Users place a pre-built Foldseek DB (prefix) and cazyme3d_to_cazy.tsv in db_dir.
+# See https://pro.unl.edu/CAZyme3D/dataset.php for CAZyme3D data.
+CAZYME3D_DOWNLOAD_INFO_URL = "https://pro.unl.edu/CAZyme3D/dataset.php"
+
 
 

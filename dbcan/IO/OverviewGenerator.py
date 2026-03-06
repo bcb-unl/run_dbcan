@@ -51,6 +51,10 @@ class OverviewGenerator:
         return self.output_dir_path / O.DBCAN_HMM_RESULT_FILE
 
     @property
+    def structure_result_path(self) -> Path:
+        return self.output_dir_path / O.STRUCTURE_RESULT_FILE
+
+    @property
     def overview_output_path(self) -> Path:
         return self.output_dir_path / O.OVERVIEW_FILE
 
@@ -64,6 +68,7 @@ class OverviewGenerator:
             "diamond": self.diamond_result_path,
             "dbcan_sub": self.dbcan_sub_result_path,
             "dbcan_hmm": self.dbcan_hmm_result_path,
+            "structure": self.structure_result_path,
         }
 
     @property
@@ -72,6 +77,7 @@ class OverviewGenerator:
             "diamond": list(O.DIAMOND_COLUMN_NAMES_OVERVIEW),
             "dbcan_sub": list(O.DBCAN_SUB_COLUMN_NAMES_OVERVIEW),
             "dbcan_hmm": list(O.DBCAN_HMM_COLUMN_NAMES_OVERVIEW),
+            "structure": list(O.STRUCTURE_COLUMN_NAMES_OVERVIEW),
         }
         # Ensure substrate column exists for dbcan_sub
         if O.DBCAN_SUB_SUBSTRATE_COLUMN not in cols["dbcan_sub"]:
@@ -132,7 +138,7 @@ class OverviewGenerator:
 
                 df = df[self.column_names_map[key]]
 
-                if key == "diamond":
+                if key == "diamond" or key == "structure":
                     df[O.CAZY_ID_FIELD] = df[O.CAZY_ID_FIELD].apply(self.extract_cazy_id)
                 elif key in ("dbcan_hmm", "dbcan_sub"):
                     hmm_col = O.HMM_NAME_FIELD if key == "dbcan_hmm" else O.SUBFAMILY_NAME_FIELD
@@ -226,6 +232,7 @@ class OverviewGenerator:
             O.DBCAN_HMM_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
             O.DBCAN_SUB_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
             O.DIAMOND_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
+            O.STRUCTURE_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
             O.TOOLS_COUNT_FIELD: 0,
             O.RECOMMEND_RESULTS_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
             O.SUBSTRATE_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
@@ -292,6 +299,15 @@ class OverviewGenerator:
                 )
                 results[O.TOOLS_COUNT_FIELD] += 1
 
+        # Structure search results (Foldseek vs CAZyme3D)
+        if "structure" in data and not data["structure"].empty:
+            structure_results = data["structure"][data["structure"][O.GENE_ID_FIELD] == gene_id]
+            if not structure_results.empty:
+                results[O.STRUCTURE_FIELD] = O.RESULT_SEPARATOR.join(
+                    structure_results[O.CAZY_ID_FIELD].tolist()
+                )
+                results[O.TOOLS_COUNT_FIELD] += 1
+
         # Recommend results if >=2 tools
         if results[O.TOOLS_COUNT_FIELD] >= O.MIN_TOOLS_FOR_RECOMMENDATION:
             if (
@@ -329,6 +345,14 @@ class OverviewGenerator:
             elif results[O.DBCAN_SUB_FIELD] != O.EMPTY_RESULT_PLACEHOLDER:
                 results[O.RECOMMEND_RESULTS_FIELD] = O.EC_SEPARATOR.join(
                     [name.split('(')[0] for name in results[O.DBCAN_SUB_FIELD].split(O.RESULT_SEPARATOR)]
+                )
+            elif results[O.DIAMOND_FIELD] != O.EMPTY_RESULT_PLACEHOLDER:
+                results[O.RECOMMEND_RESULTS_FIELD] = O.EC_SEPARATOR.join(
+                    results[O.DIAMOND_FIELD].split(O.RESULT_SEPARATOR)
+                )
+            elif results[O.STRUCTURE_FIELD] != O.EMPTY_RESULT_PLACEHOLDER:
+                results[O.RECOMMEND_RESULTS_FIELD] = O.EC_SEPARATOR.join(
+                    results[O.STRUCTURE_FIELD].split(O.RESULT_SEPARATOR)
                 )
 
         return results

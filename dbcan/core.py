@@ -99,13 +99,39 @@ def run_dbCAN_dbcansub_hmmer(config):
     processor.run()
 
 
+def _ensure_empty_structure_file(config):
+    """Ensure empty structure search results file exists even if not run."""
+    import logging
+    from pathlib import Path
+    import pandas as pd
+    import dbcan.constants.structure_search_constants as S
+
+    output_path = Path(config.output_dir) / config.output_file
+    if not output_path.exists():
+        out_cols = getattr(config, "column_names", None) or S.STRUCTURE_SEARCH_COLUMN_NAMES_OVERVIEW
+        if out_cols:
+            try:
+                empty_df = pd.DataFrame(columns=out_cols)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                empty_df.to_csv(output_path, sep='\t', index=False)
+                logging.info(f"Created empty structure search results file (not in methods) -> {output_path.name}")
+            except Exception as e:
+                logging.error(f"Failed to create empty structure search file: {e}", exc_info=True)
+
+
+def run_dbCAN_structure_search(config):
+    from dbcan.annotation.structure_search import StructureSearchProcessor
+    processor = StructureSearchProcessor(config)
+    processor.run()
+
+
 def run_dbCAN_CAZyme_overview(config):
     from dbcan.IO.OverviewGenerator import OverviewGenerator
     generator = OverviewGenerator(config)
     generator.run()
 
 
-def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, overviewconfig, methods):
+def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, overviewconfig, methods, structureconfig=None):
     import logging
     if 'diamond' in methods:
         logging.info("DIAMOND CAZy...")
@@ -147,6 +173,18 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
     else:
         # Even if dbCANsub is not in methods, create empty result file to avoid warnings
         _ensure_empty_dbcansub_file(dbcansubconfig)
+
+    if 'structure' in methods and structureconfig is not None:
+        logging.info("Structure search (Foldseek vs CAZyme3D)...")
+        try:
+            run_dbCAN_structure_search(structureconfig)
+            logging.info("Structure search done")
+        except Exception as e:
+            logging.error(f"Structure search failed: {e}", exc_info=True)
+            _ensure_empty_structure_file(structureconfig)
+    else:
+        if structureconfig is not None:
+            _ensure_empty_structure_file(structureconfig)
 
     logging.info("generate overview of CAZymes...")
     try:

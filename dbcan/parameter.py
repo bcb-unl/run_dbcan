@@ -39,7 +39,7 @@ class MethodsType(click.ParamType):
         if value is None or not value.strip():
             return ('diamond', 'hmm', 'dbCANsub')
         
-        valid_methods = {'diamond', 'hmm', 'dbCANsub'}
+        valid_methods = {'diamond', 'hmm', 'dbCANsub', 'structure'}
         methods = [m.strip().lower() for m in value.split(',') if m.strip()]
         
         if not methods:
@@ -49,11 +49,13 @@ class MethodsType(click.ParamType):
         for m in methods:
             if m == 'dbcansub':
                 normalized.append('dbCANsub')
+            elif m == 'structure':
+                normalized.append('structure')
             elif m in valid_methods:
                 normalized.append(m)
             else:
                 self.fail(
-                    f"Invalid method '{m}'. Valid options are: diamond, hmm, dbCANsub",
+                    f"Invalid method '{m}'. Valid options are: diamond, hmm, dbCANsub, structure",
                     param=param,
                     ctx=ctx
                 )
@@ -65,7 +67,7 @@ methods_option = click.option('--methods',
     default='diamond,hmm,dbCANsub',
     type=MethodsType(),
     help='Specify the annotation methods to use (comma-separated). '
-         'Options: diamond, hmm, dbCANsub. Example: --methods diamond,hmm or --methods hmm',
+         'Options: diamond, hmm, dbCANsub, structure. Example: --methods diamond,hmm or --methods diamond,hmm,structure',
     show_default=True,
     )
 
@@ -126,6 +128,13 @@ def pyhmmer_dbcan_options(func):
     func = click.option('--large_input_threshold_mb', type=int, default=5000, show_default=True,
                         help='Auto-enable large mode when input fasta size exceeds this threshold (MB).')(func)
     return func
+
+def structure_options(func):
+    """Options for structure-based CAZyme annotation (Foldseek vs CAZyme3D)."""
+    func = click.option('--e_value_threshold_structure', type=float,
+                        help='E-value threshold for structure search (Foldseek)', default=1e-3, show_default=True)(func)
+    return func
+
 
 def dbcansub_options(func):
     func = click.option('--e_value_threshold_dbsub',  type=float, help='E-value threshold for dbCAN-sub HMMER', default=1e-15)(func)

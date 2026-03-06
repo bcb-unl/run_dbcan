@@ -12,10 +12,12 @@ OVERVIEW_FILE = base_constants.OVERVIEW_FILE
 DIAMOND_RESULT_FILE = base_constants.CAZY_DIAMOND_OUTPUT
 DBCAN_SUB_RESULT_FILE = base_constants.DBCAN_SUB_HMM_RESULT_FILE
 DBCAN_HMM_RESULT_FILE = base_constants.DBCAN_HMM_RESULT_FILE
+STRUCTURE_RESULT_FILE = "structure_search_results.tsv"
 
 # Column names and data structures
-OVERVIEW_COLUMNS = ['Gene ID', 'EC#', 'dbCAN_hmm', 'dbCAN_sub', 'DIAMOND', '#ofTools', 'Recommend Results']
+OVERVIEW_COLUMNS = ['Gene ID', 'EC#', 'dbCAN_hmm', 'dbCAN_sub', 'DIAMOND', 'Structure', '#ofTools', 'Recommend Results']
 DIAMOND_COLUMN_NAMES_OVERVIEW = ['Gene ID', 'CAZy ID']
+STRUCTURE_COLUMN_NAMES_OVERVIEW = ['Gene ID', 'CAZy ID']
 DBCAN_SUB_COLUMN_NAMES_OVERVIEW = ['Target Name', 'Subfam Name', 'Subfam EC', 'Target From', 'Target To', 'i-Evalue']
 DBCAN_HMM_COLUMN_NAMES_OVERVIEW = ['Target Name', 'HMM Name', 'Target From', 'Target To', 'i-Evalue']
 
@@ -27,6 +29,7 @@ EC_FIELD = "EC#"
 DBCAN_HMM_FIELD = "dbCAN_hmm"
 DBCAN_SUB_FIELD = "dbCAN_sub"
 DIAMOND_FIELD = "DIAMOND"
+STRUCTURE_FIELD = "Structure"
 TOOLS_COUNT_FIELD = "#ofTools"
 RECOMMEND_RESULTS_FIELD = "Recommend Results"
 EMPTY_RESULT_PLACEHOLDER = "-"

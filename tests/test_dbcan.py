@@ -122,3 +122,49 @@ class TestEasySubstrate:
             assert (output_dir / fn).exists(), f"{fn} not found"
 
 
+class TestStructureMethod:
+    """Tests for structure search method and overview integration."""
+
+    def test_methods_accept_structure(self, runner):
+        """CLI accepts --methods with structure (no 'Invalid method' error)."""
+        result = runner.invoke(cli, [
+            'CAZyme_annotation',
+            '--methods', 'diamond,structure',
+            '--input_raw_data', str(TEST_PROTEIN),
+            '--output_dir', '/tmp/out',
+            '--db_dir', '/tmp/db',
+            '--mode', 'protein',
+        ])
+        assert 'Invalid method' not in (result.output or ''), "structure should be a valid method"
+
+    def test_overview_constants_include_structure(self):
+        """Overview constants define Structure column and field."""
+        import dbcan.constants.OverviewGenerator_constants as O
+        assert 'Structure' in O.OVERVIEW_COLUMNS
+        assert O.STRUCTURE_FIELD == 'Structure'
+        assert O.STRUCTURE_RESULT_FILE == 'structure_search_results.tsv'
+
+    @pytest.mark.integration
+    def test_cazyme_annotation_without_structure_creates_empty_structure_file(self, runner, actual_db_dir, tmp_path):
+        """With --methods diamond,hmm,dbCANsub (no structure), empty structure result file is created and overview has Structure column."""
+        output_dir = tmp_path / "output_no_structure"
+        output_dir.mkdir()
+        assert TEST_PROTEIN.exists()
+        result = runner.invoke(cli, [
+            'CAZyme_annotation',
+            '--mode', 'protein',
+            '--input_raw_data', str(TEST_PROTEIN),
+            '--output_dir', str(output_dir),
+            '--db_dir', actual_db_dir,
+            '--methods', 'diamond,hmm,dbCANsub',
+        ])
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        structure_file = output_dir / "structure_search_results.tsv"
+        assert structure_file.exists(), "structure_search_results.tsv should exist (empty when structure not in methods)"
+        overview = output_dir / "overview.tsv"
+        assert overview.exists()
+        with open(overview) as f:
+            header = f.readline()
+        assert "Structure" in header, "overview.tsv should contain Structure column"
+
+

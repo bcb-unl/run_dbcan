@@ -1,7 +1,8 @@
 import rich_click as click
 from dbcan.parameter import (
     create_config, general_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,diamond_tf_options,
-    pyhmmer_dbcan_options, dbcansub_options ,pyhmmer_tf, pyhmmer_stp, cgc_gff_option, cgc_options, cgc_sub_options, syn_plot_options,
+    pyhmmer_dbcan_options, dbcansub_options, structure_options,
+    pyhmmer_tf, pyhmmer_stp, cgc_gff_option, cgc_options, cgc_sub_options, syn_plot_options,
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam,
     topology_annotation_options   # <--- added
     , diamond_sulfatase_options, diamond_peptidase_options
@@ -79,6 +80,7 @@ def database_cmd(ctx, log_level, log_file, verbose, **kwargs):
 @diamond_options
 @pyhmmer_dbcan_options
 @dbcansub_options
+@structure_options
 @topology_annotation_options
 @click.pass_context
 def cazyme_annotation_cmd(ctx, log_level, log_file, verbose, **kwargs):
@@ -88,6 +90,7 @@ def cazyme_annotation_cmd(ctx, log_level, log_file, verbose, **kwargs):
     from dbcan.configs.diamond_config import DiamondCAZyConfig
     from dbcan.configs.pyhmmer_config import PyHMMERDBCANConfig
     from dbcan.configs.pyhmmer_config import DBCANSUBConfig
+    from dbcan.configs.structure_search_config import StructureSearchConfig
     from dbcan.configs.base_config import OverviewGeneratorConfig
     from dbcan.configs.base_config import GeneralConfig
     from dbcan.core import run_dbCAN_input_process, run_dbCAN_CAZyme_annotation, run_dbCAN_topology_annotation
@@ -100,9 +103,10 @@ def cazyme_annotation_cmd(ctx, log_level, log_file, verbose, **kwargs):
     diamond_config = create_config(DiamondCAZyConfig, **kwargs)
     pyhmmer_config = create_config(PyHMMERDBCANConfig, namespace="dbcan", **kwargs)
     dbcansubconfig = create_config(DBCANSUBConfig, namespace="dbsub", **kwargs)
+    structureconfig = create_config(StructureSearchConfig, namespace="structure", **kwargs)
     overviewconfig = create_config(OverviewGeneratorConfig, **kwargs)
     methods_option = kwargs.get('methods')
-    run_dbCAN_CAZyme_annotation(diamond_config, pyhmmer_config, dbcansubconfig, overviewconfig, methods_option)
+    run_dbCAN_CAZyme_annotation(diamond_config, pyhmmer_config, dbcansubconfig, overviewconfig, methods_option, structureconfig)
 
     # Step 3: Topology annotation (as supplement to CAZyme annotation)
     if kwargs.get('run_signalp', False):
