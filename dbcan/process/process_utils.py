@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 from typing import Dict, Iterable, Set, List, Optional
+import time
 
 import pandas as pd
 from Bio import SeqIO
@@ -26,22 +27,43 @@ def process_results(results: Optional[Iterable[List]], output_file, temp_hits_fi
     df = pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES)
 
     try:
+        read_start = time.time()
+        total_rows = 0
+
         if temp_hits_file and _is_nonempty_file(temp_hits_file):
             # Use chunked reading for large files (>100MB)
             file_size_mb = temp_hits_file.stat().st_size / (1024 * 1024)
             if file_size_mb > 100:
-                logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading")
+                logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading from {temp_hits_file}")
                 chunks = []
-                for chunk in pd.read_csv(temp_hits_file, sep='\t', header=None, names=PU.HMMER_COLUMN_NAMES, chunksize=100000):
+                for chunk in pd.read_csv(
+                    temp_hits_file,
+                    sep='\t',
+                    header=None,
+                    names=PU.HMMER_COLUMN_NAMES,
+                    chunksize=100000,
+                ):
+                    total_rows += len(chunk)
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
                 df = pd.read_csv(temp_hits_file, sep='\t', header=None, names=PU.HMMER_COLUMN_NAMES)
+                total_rows = len(df)
         elif results:
+            # results provided in-memory
             df = pd.DataFrame(list(results), columns=PU.HMMER_COLUMN_NAMES)
+            total_rows = len(df)
+
+        read_elapsed = time.time() - read_start
+        logger.info(
+            f"process_results loaded {total_rows} hits "
+            f"from {'temp file ' + str(temp_hits_file) if temp_hits_file else 'in-memory iterable'} "
+            f"in {read_elapsed:.2f}s"
+        )
 
         if df.empty:
             df.to_csv(out_path, index=False, sep='\t')
+            logger.info(f"process_results: no hits after loading/cleaning, wrote empty file to {out_path}")
             return
 
         # enforce numeric types
@@ -54,8 +76,17 @@ def process_results(results: Optional[Iterable[List]], output_file, temp_hits_fi
         # basic cleaning
         df = df.dropna(subset=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
         df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN], inplace=True)
+
+        filter_start = time.time()
         df_filtered = filter_overlaps(df)
+        filter_elapsed = time.time() - filter_start
+        logger.info(
+            f"process_results: filtered overlaps from {len(df)} to {len(df_filtered)} rows "
+            f"in {filter_elapsed:.2f}s"
+        )
+
         df_filtered.to_csv(out_path, index=False, sep='\t')
+        logger.info(f"process_results: wrote filtered results to {out_path}")
     except Exception as e:
         logger.error(f"Error in process_results: {e}", exc_info=True)
         # write empty as fallback
@@ -85,8 +116,18 @@ def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLA
     df = df.dropna(subset=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
     df = df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
 
-    kept_rows = []
-    for _, group in df.groupby(PU.TARGET_NAME_COLUMN, sort=False):
+    total_rows = len(df)
+    n_targets = df[PU.TARGET_NAME_COLUMN].nunique() if not df.empty else 0
+    avg_per_target = (total_rows / n_targets) if n_targets else 0.0
+    logger.info(
+        f"filter_overlaps: processing {total_rows} rows across {n_targets} targets "
+        f"(avg {avg_per_target:.1f} hits/target)"
+    )
+
+    kept_rows: List[pd.Series] = []
+    start_time = time.time()
+
+    for idx, (_, group) in enumerate(df.groupby(PU.TARGET_NAME_COLUMN, sort=False), start=1):
         group = group.reset_index(drop=True)
         keep: List[pd.Series] = []
         for i in range(len(group)):
@@ -96,7 +137,9 @@ def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLA
 
             last = keep[-1]
             cur = group.iloc[i]
-            overlap = min(last[PU.TARGET_TO_COLUMN], cur[PU.TARGET_TO_COLUMN]) - max(last[PU.TARGET_FROM_COLUMN], cur[PU.TARGET_FROM_COLUMN])
+            overlap = min(last[PU.TARGET_TO_COLUMN], cur[PU.TARGET_TO_COLUMN]) - max(
+                last[PU.TARGET_FROM_COLUMN], cur[PU.TARGET_FROM_COLUMN]
+            )
             if overlap > 0:
                 len_last = max(1, (last[PU.TARGET_TO_COLUMN] - last[PU.TARGET_FROM_COLUMN]))
                 len_cur = max(1, (cur[PU.TARGET_TO_COLUMN] - cur[PU.TARGET_FROM_COLUMN]))
@@ -116,6 +159,15 @@ def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLA
             else:
                 keep.append(cur)
         kept_rows.extend(keep)
+
+        if idx % 1000 == 0:
+            logger.debug(f"filter_overlaps: processed {idx} target groups so far")
+
+    elapsed = time.time() - start_time
+    logger.info(
+        f"filter_overlaps: reduced {total_rows} rows to {len(kept_rows)} rows "
+        f"across {n_targets} targets in {elapsed:.2f}s"
+    )
 
     return pd.DataFrame(kept_rows, columns=df.columns)
 

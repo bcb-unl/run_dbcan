@@ -220,7 +220,7 @@ class OverviewGenerator:
             return hmms[0]
         return group[0]
 
-    def determine_best_result(self, gene_id: str, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
+    def determine_best_result(self, gene_id: str, indexed: Dict[str, Dict[str, pd.DataFrame]]) -> Dict[str, Any]:
         results = {
             O.EC_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
             O.DBCAN_HMM_FIELD: O.EMPTY_RESULT_PLACEHOLDER,
@@ -232,71 +232,68 @@ class OverviewGenerator:
         }
 
         # HMM results
-        hmm_results = pd.DataFrame()
-        if "dbcan_hmm" in data and not data["dbcan_hmm"].empty:
-            hmm_results = data["dbcan_hmm"][data["dbcan_hmm"][O.TARGET_NAME_FIELD] == gene_id]
-            if not hmm_results.empty:
-                results[O.DBCAN_HMM_FIELD] = O.RESULT_SEPARATOR.join(
-                    [
-                        f"{row[O.HMM_NAME_FIELD]}({row[O.TARGET_FROM_FIELD]}-{row[O.TARGET_TO_FIELD]})"
-                        for _, row in hmm_results.iterrows()
-                    ]
-                )
-                results[O.TOOLS_COUNT_FIELD] += 1
+        hmm_results = indexed.get("dbcan_hmm", {}).get(gene_id)
+        if hmm_results is not None and not hmm_results.empty:
+            results[O.DBCAN_HMM_FIELD] = O.RESULT_SEPARATOR.join(
+                [
+                    f"{row[O.HMM_NAME_FIELD]}({row[O.TARGET_FROM_FIELD]}-{row[O.TARGET_TO_FIELD]})"
+                    for _, row in hmm_results.iterrows()
+                ]
+            )
+            results[O.TOOLS_COUNT_FIELD] += 1
 
         # Subfamily results
-        sub_results = pd.DataFrame()
-        if "dbcan_sub" in data and not data["dbcan_sub"].empty:
-            sub_results = data["dbcan_sub"][data["dbcan_sub"][O.TARGET_NAME_FIELD] == gene_id]
-            if not sub_results.empty:
-                results[O.DBCAN_SUB_FIELD] = O.RESULT_SEPARATOR.join(
-                    [
-                        f"{row[O.SUBFAMILY_NAME_FIELD]}({row[O.TARGET_FROM_FIELD]}-{row[O.TARGET_TO_FIELD]})"
-                        for _, row in sub_results.iterrows()
-                    ]
-                )
-                results[O.EC_FIELD] = O.EC_SEPARATOR.join(
-                    [
-                        str(ec) if ec is not None else O.EMPTY_RESULT_PLACEHOLDER
-                        for ec in sub_results[O.SUBFAMILY_EC_FIELD]
-                        .fillna(O.EMPTY_RESULT_PLACEHOLDER)
-                        .tolist()
-                    ]
-                )
-                results[O.TOOLS_COUNT_FIELD] += 1
-                # Substrate aggregation
-                if O.DBCAN_SUB_SUBSTRATE_COLUMN in sub_results.columns:
-                    subs_raw = [
-                        s
-                        for s in sub_results[O.DBCAN_SUB_SUBSTRATE_COLUMN]
-                        .astype(str)
-                        .tolist()
-                        if s and s != '-' and s.lower() != 'nan'
-                    ]
-                    if subs_raw:
-                        flat: List[str] = []
-                        for s in subs_raw:
-                            flat.extend([p for p in re.split(r'[;,]', s) if p])
-                        uniq = sorted(
-                            {p.strip() for p in flat if p and p.strip()}
-                        )
-                        if uniq:
-                            results[O.SUBSTRATE_FIELD] = O.SUB_SEPARATOR.join(uniq)
+        sub_results = indexed.get("dbcan_sub", {}).get(gene_id)
+        if sub_results is not None and not sub_results.empty:
+            results[O.DBCAN_SUB_FIELD] = O.RESULT_SEPARATOR.join(
+                [
+                    f"{row[O.SUBFAMILY_NAME_FIELD]}({row[O.TARGET_FROM_FIELD]}-{row[O.TARGET_TO_FIELD]})"
+                    for _, row in sub_results.iterrows()
+                ]
+            )
+            results[O.EC_FIELD] = O.EC_SEPARATOR.join(
+                [
+                    str(ec) if ec is not None else O.EMPTY_RESULT_PLACEHOLDER
+                    for ec in sub_results[O.SUBFAMILY_EC_FIELD]
+                    .fillna(O.EMPTY_RESULT_PLACEHOLDER)
+                    .tolist()
+                ]
+            )
+            results[O.TOOLS_COUNT_FIELD] += 1
+            # Substrate aggregation
+            if O.DBCAN_SUB_SUBSTRATE_COLUMN in sub_results.columns:
+                subs_raw = [
+                    s
+                    for s in sub_results[O.DBCAN_SUB_SUBSTRATE_COLUMN]
+                    .astype(str)
+                    .tolist()
+                    if s and s != '-' and s.lower() != 'nan'
+                ]
+                if subs_raw:
+                    flat: List[str] = []
+                    for s in subs_raw:
+                        flat.extend([p for p in re.split(r'[;,]', s) if p])
+                    uniq = sorted(
+                        {p.strip() for p in flat if p and p.strip()}
+                    )
+                    if uniq:
+                        results[O.SUBSTRATE_FIELD] = O.SUB_SEPARATOR.join(uniq)
 
         # DIAMOND results
-        if "diamond" in data and not data["diamond"].empty:
-            diamond_results = data["diamond"][data["diamond"][O.GENE_ID_FIELD] == gene_id]
-            if not diamond_results.empty:
-                results[O.DIAMOND_FIELD] = O.RESULT_SEPARATOR.join(
-                    diamond_results[O.CAZY_ID_FIELD].tolist()
-                )
-                results[O.TOOLS_COUNT_FIELD] += 1
+        diamond_results = indexed.get("diamond", {}).get(gene_id)
+        if diamond_results is not None and not diamond_results.empty:
+            results[O.DIAMOND_FIELD] = O.RESULT_SEPARATOR.join(
+                diamond_results[O.CAZY_ID_FIELD].tolist()
+            )
+            results[O.TOOLS_COUNT_FIELD] += 1
 
         # Recommend results if >=2 tools
         if results[O.TOOLS_COUNT_FIELD] >= O.MIN_TOOLS_FOR_RECOMMENDATION:
             if (
                 results[O.DBCAN_HMM_FIELD] != O.EMPTY_RESULT_PLACEHOLDER
                 and results[O.DBCAN_SUB_FIELD] != O.EMPTY_RESULT_PLACEHOLDER
+                and hmm_results is not None
+                and sub_results is not None
                 and not hmm_results.empty
                 and not sub_results.empty
             ):
@@ -329,6 +326,10 @@ class OverviewGenerator:
             elif results[O.DBCAN_SUB_FIELD] != O.EMPTY_RESULT_PLACEHOLDER:
                 results[O.RECOMMEND_RESULTS_FIELD] = O.EC_SEPARATOR.join(
                     [name.split('(')[0] for name in results[O.DBCAN_SUB_FIELD].split(O.RESULT_SEPARATOR)]
+                )
+            elif results[O.DIAMOND_FIELD] != O.EMPTY_RESULT_PLACEHOLDER:
+                results[O.RECOMMEND_RESULTS_FIELD] = O.EC_SEPARATOR.join(
+                    results[O.DIAMOND_FIELD].split(O.RESULT_SEPARATOR)
                 )
 
         return results
@@ -407,18 +408,16 @@ class OverviewGenerator:
                 final_results.append(self.select_best_result(group))
         return final_results
 
-    def aggregate_data(self, gene_ids: Iterable[str], data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-        aggregated = []
+    def aggregate_data(self, gene_ids: Iterable[str], indexed: Dict[str, Dict[str, pd.DataFrame]]) -> pd.DataFrame:
+        cols = self.overview_columns
+        aggregated: List[List[Any]] = []
         for gene_id in sorted(gene_ids):
-            result = self.determine_best_result(gene_id, data)
-            row = []
-            for col in self.overview_columns:
-                if col == self.overview_columns[0]:
-                    row.append(gene_id)
-                else:
-                    row.append(result.get(col, O.EMPTY_RESULT_PLACEHOLDER))
+            result = self.determine_best_result(gene_id, indexed)
+            row: List[Any] = [gene_id]
+            for col in cols[1:]:
+                row.append(result.get(col, O.EMPTY_RESULT_PLACEHOLDER))
             aggregated.append(row)
-        return pd.DataFrame(aggregated, columns=self.overview_columns)
+        return pd.DataFrame(aggregated, columns=cols)
 
     # ---------------------------
     # Orchestration
@@ -434,12 +433,22 @@ class OverviewGenerator:
                 return
 
             gene_ids = set()
+            indexed: Dict[str, Dict[str, pd.DataFrame]] = {}
             for key, df in loaded_data.items():
-                id_col = O.TARGET_NAME_FIELD if key in ("dbcan_hmm", "dbcan_sub") else O.GENE_ID_FIELD
+                if key in ("dbcan_hmm", "dbcan_sub"):
+                    id_col = O.TARGET_NAME_FIELD
+                else:
+                    id_col = O.GENE_ID_FIELD
                 if id_col in df.columns:
-                    gene_ids.update(df[id_col].unique())
+                    unique_ids = df[id_col].unique()
+                    gene_ids.update(unique_ids)
+                    # Build per-gene index to avoid repeated full-table scans
+                    groups: Dict[str, pd.DataFrame] = {}
+                    for gid, sub_df in df.groupby(id_col, sort=False):
+                        groups[str(gid)] = sub_df
+                    indexed[key] = groups
 
-            aggregated_df = self.aggregate_data(gene_ids, loaded_data)
+            aggregated_df = self.aggregate_data(gene_ids, indexed)
             aggregated_df.to_csv(self.overview_output_path, sep='\t', index=False)
             logger.info(f"Aggregated overview saved to: {self.overview_output_path}")
 
