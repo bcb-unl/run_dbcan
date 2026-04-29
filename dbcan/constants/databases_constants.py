@@ -1,7 +1,8 @@
 #############constants for downloading dbCAN databases##############################
 
-BASE_URL = "https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/db_current"
+BASE_URL = "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current"
 AWS_S3_URL = "https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2_9-13-2025"
+
 
 # main dbCAN database
 CAZY_DB_URL = f"{BASE_URL}/CAZy.dmnd"
