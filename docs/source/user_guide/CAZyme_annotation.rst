@@ -108,3 +108,7 @@ Available method combinations: ``hmm``, ``diamond``, ``dbCANsub``, or any combin
 
    After completing CAZyme annotation, you may want to proceed to :doc:`CGC Information Generation <CGC_information_generation>` to identify CAZyme gene clusters.
 
+.. tip::
+
+   Optional **signal peptide** and **transmembrane topology** columns (SignalP 6.0 / DeepTMHMM) require separate installation and testing. See :doc:`signalp6_deeptmhmm`.
+

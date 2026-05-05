@@ -72,15 +72,13 @@ Key Features and Improvements
 
    - Improved steps for metagenomic data processing (https://www.biorxiv.org/content/10.1101/2024.01.10.575125v1).
 
-9. **SignalP6.0 Topology Annotation**
+9. **SignalP 6.0 and DeepTMHMM (optional topology)**
 
-   - Added support for SignalP6.0 signal peptide prediction in the `CAZyme_annotation` command.
+   - **SignalP 6.0**: signal peptide prediction in the `CAZyme_annotation` command via `--run_signalp`. Results are merged into `overview.tsv` in a **SignalP** column. Organism class: `--signalp_org` (`other` / `euk`).
 
-   - Use `--run_signalp` flag to enable topology annotation. Results are automatically added to the overview.tsv file in a "SignalP" column.
+   - **DeepTMHMM**: transmembrane topology via `--run_deeptmhmm` and `--deeptmhmm_dir` (directory containing the user-installed `predict.py`). Results are merged into **DeepTMHMM** in `overview.tsv`.
 
-   - Supports organism type selection with `--signalp_org` option (other/euk).
-
-   - Note: SignalP6.0 needs to be installed separately by users following the `installation instructions <https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md>`_.
+   - Neither tool is bundled with `dbcan`. Install and test them locally, then enable the flags. See :doc:`user_guide/signalp6_deeptmhmm` and the `SignalP 6.0 installation instructions <https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md>`_.
 
 10. **Global Logging System**
 
@@ -119,6 +117,7 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
 
    user_guide/prepare_the_database
    user_guide/CAZyme_annotation
+   user_guide/signalp6_deeptmhmm
    user_guide/CGC_information_generation
    user_guide/CGC_annotation
    user_guide/predict_CGC_substrate
