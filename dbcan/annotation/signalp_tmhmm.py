@@ -1,4 +1,6 @@
 import logging
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +18,42 @@ logger = logging.getLogger(__name__)
 Processor for running optional local topology tools and annotating overview.tsv.
 SignalP6 and DeepTMHMM must be installed separately by users.
 """
+
+
+def _subprocess_env_with_python_lib(python_exe: str | None = None) -> dict:
+    """Prepend ``<prefix>/lib`` to LD_LIBRARY_PATH for a Python executable.
+
+    Conda-forge wheels (e.g. matplotlib) may require a newer ``libstdc++`` than
+    the system copy under ``/lib/x86_64-linux-gnu``; putting the env's ``lib``
+    first avoids ``CXXABI_* not found`` when the dynamic loader picks the wrong
+    ``libstdc++.so.6``.
+    """
+    env = os.environ.copy()
+    exe_path: Path | None = None
+    if python_exe and python_exe.strip():
+        p = Path(python_exe.strip())
+        if p.is_file():
+            exe_path = p.resolve()
+        else:
+            resolved = shutil.which(python_exe.strip())
+            if resolved:
+                exe_path = Path(resolved).resolve()
+    if exe_path is None:
+        exe_path = Path(sys.executable).resolve()
+
+    lib_dir = exe_path.parent.parent / "lib"
+    if not lib_dir.is_dir():
+        return env
+
+    prefix = str(lib_dir)
+    prev = env.get("LD_LIBRARY_PATH", "")
+    if prev:
+        parts = prev.split(os.pathsep)
+        if prefix not in parts:
+            env["LD_LIBRARY_PATH"] = prefix + os.pathsep + prev
+    else:
+        env["LD_LIBRARY_PATH"] = prefix
+    return env
 
 class SignalPTMHMMProcessor:
     def __init__(self, config: SignalPTMHMMConfig):
@@ -151,10 +189,12 @@ class SignalPTMHMMProcessor:
     def run_signalp_predict(self, faa: Path) -> Path | None:
         out_dir = self.output_dir / C.SIGNALP_OUT_DIR
         out_dir.mkdir(exist_ok=True)
+        faa_abs = faa.expanduser().resolve()
+        out_dir_abs = out_dir.expanduser().resolve()
         cmd = [
             "signalp6",
-            "--fastafile", str(faa),
-            "--output_dir", str(out_dir),
+            "--fastafile", str(faa_abs),
+            "--output_dir", str(out_dir_abs),
             "--mode", self.signalp_mode,
             "--organism", self.signalp_org,
             "--format", self.signalp_format,
@@ -163,7 +203,13 @@ class SignalPTMHMMProcessor:
         logger.info("Running SignalP6: %s", " ".join(cmd))
         start = time.time()
         try:
-            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=_subprocess_env_with_python_lib(),
+            )
             elapsed = time.time() - start
             if result.returncode != 0:
                 logger.error("SignalP6 failed (exit %s)", result.returncode)
@@ -213,13 +259,17 @@ class SignalPTMHMMProcessor:
             return None
         out_dir = self._next_deeptmhmm_output_dir()
         predict_script = self.deeptmhmm_dir / C.DEEPTMHMM_PREDICT_SCRIPT
+        # Use absolute paths: subprocess cwd is deeptmhmm_dir, so relative paths would
+        # resolve inside that directory and break (e.g. test_sp/... not found).
+        faa_abs = faa.expanduser().resolve()
+        out_dir_abs = out_dir.expanduser().resolve()
         cmd = [
             self.deeptmhmm_python,
             str(predict_script),
             "--fasta",
-            str(faa),
+            str(faa_abs),
             "--output-dir",
-            str(out_dir),
+            str(out_dir_abs),
         ]
         logger.info("Running DeepTMHMM: %s", " ".join(cmd))
         start = time.time()
@@ -230,6 +280,7 @@ class SignalPTMHMMProcessor:
                 capture_output=True,
                 text=True,
                 cwd=str(self.deeptmhmm_dir),
+                env=_subprocess_env_with_python_lib(self.deeptmhmm_python),
             )
             elapsed = time.time() - start
             if result.returncode != 0:
