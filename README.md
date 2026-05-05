@@ -21,7 +21,11 @@
 
 ## Announcement
 
-⚠️ **Important Notice:**  
+**Update**
+5/5/2026:
+The server issue caused by the recent cyberattack has been resolved by ITS and Revanth, and all services are now back to normal. Users can download the dbCAN databases from either the default server or AWS S3; both sources provide the same database files.
+
+⚠️ **Important Notice (5/5/2026: Fixed):**  
 Due to a recent cyberattack, our primary dbCAN web server is currently offline, and you will not be able to access the online database. Our IT team is actively working to resolve the issue. We apologize for any inconvenience this may cause.
 
 In the meantime, you can still obtain the dbCAN database using our AWS S3 backup. Recommended methods:

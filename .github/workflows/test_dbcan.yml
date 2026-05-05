@@ -57,4 +57,4 @@ jobs:
       - name: run dbCAN test
         shell: bash -el {0}
         run: |
-          pytest tests/test_dbcan.py -v
+          pytest tests -v

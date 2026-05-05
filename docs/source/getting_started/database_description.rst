@@ -1,8 +1,8 @@
 Database Description
 ====================
 
-All files are available on the `Web server <https://bcb.unl.edu/dbCAN2/download/run_dbCAN_database_total/>`_.
-You can also download from AWS S3 for faster and more stable transfers by using the ``--aws_s3`` flag with the ``run_dbcan database`` command (see :doc:`Preparing Databases <../user_guide/prepare_the_database>`).
+The built-in downloader uses the ``db_current`` HTTP snapshot from ``pro.unl.edu`` by default.
+You can also download the pinned S3 release for faster and more stable transfers by using the ``--aws_s3`` flag with the ``run_dbcan database`` command (see :doc:`Preparing Databases <../user_guide/prepare_the_database>`).
 The databases are generally updated annually between July and September.
 
 The databases used by run_dbCAN are described below.
@@ -20,7 +20,7 @@ CAZyme Databases
 
 - dbCAN-sub HMM database
   - Description: Subfamily-level HMM profiles for fine-grained CAZyme subfamily identification.
-  - Filename: ``dbCAN_sub.hmm``
+  - Filename: ``dbCAN-sub.hmm``
 
 
 CGC Databases

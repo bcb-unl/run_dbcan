@@ -80,7 +80,7 @@ and extract the tarball to the db folder, here we use standard database as an ex
 
     The CAZy.dmnd file is needed for DIAMOND search.
 
-    The dbCAN.hmm and dbCAN_sub.hmm files are for HMMER search.
+    The dbCAN.hmm and dbCAN-sub.hmm files are for HMMER search.
 
     The tcdb.dmnd, TF.HMM, and STP.hmm files are for CGC prediction.
 

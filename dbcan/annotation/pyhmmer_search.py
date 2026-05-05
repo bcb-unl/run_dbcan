@@ -7,7 +7,7 @@ import csv
 import psutil
 import pyhmmer
 import time
-from typing import List
+from typing import List, Optional
 
 from dbcan.configs.pyhmmer_config import (
     PyHMMERConfig,
@@ -51,6 +51,7 @@ class PyHMMERProcessor(ABC):
 
     def __init__(self, config: PyHMMERConfig):
         self.config = config
+        self._hmm_profile_count: Optional[int] = None
         self._validate_basic()
 
     # -------- Properties --------
@@ -95,9 +96,27 @@ class PyHMMERProcessor(ABC):
             writer.writerows(hit_buffer)
             hit_buffer.clear()
 
+    def _count_hmm_profiles(self) -> int:
+        """Count HMM profiles once so batched and unbatched searches use the same Z."""
+        if self._hmm_profile_count is None:
+            with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
+                self._hmm_profile_count = sum(1 for _ in hmm_file_handle)
+            if self._hmm_profile_count <= 0:
+                raise ValueError(f"HMM file contains no profiles: {self.hmm_file}")
+            logger.info("Using fixed HMMER Z=%s for %s", self._hmm_profile_count, self.hmm_file.name)
+        return self._hmm_profile_count
+
     # -------- Core search --------
-    def _process_sequence_block(self, seq_block, hmms: List, cpus: int, hit_buffer: List, 
-                                hmm_file_stem: str, buffer_flush_threshold: int = 5000) -> int:
+    def _process_sequence_block(
+        self,
+        seq_block,
+        hmms: List,
+        cpus: int,
+        hit_buffer: List,
+        hmm_file_stem: str,
+        z_value: int,
+        buffer_flush_threshold: int = 5000,
+    ) -> int:
         """Process a sequence block (streaming mode, no file I/O).
         
         Args:
@@ -118,7 +137,8 @@ class PyHMMERProcessor(ABC):
                 hmms,
                 seq_block,
                 cpus=cpus,
-                domE=self.e_value_threshold
+                domE=self.e_value_threshold,
+                Z=z_value,
             ):
                 for hit in hits:
                     for domain in hit.domains.included:
@@ -149,13 +169,14 @@ class PyHMMERProcessor(ABC):
         
         return hit_count
 
-    def _iter_hmmsearch_hits(self, hmms_or_hmmfile, targets, cpus: int):
+    def _iter_hmmsearch_hits(self, hmms_or_hmmfile, targets, cpus: int, z_value: int):
         """Small wrapper so we have exactly one place to tune hmmsearch kwargs."""
         return pyhmmer.hmmsearch(
             hmms_or_hmmfile,
             targets,
             cpus=cpus,
             domE=self.e_value_threshold,
+            Z=z_value,
         )
     
     def _calculate_batch_size(self, input_faa: Path, memory_monitor: MemoryMonitor, retry_count: int = 0) -> int:
@@ -254,6 +275,7 @@ class PyHMMERProcessor(ABC):
 
         hmm_file_size_bytes = self.hmm_file.stat().st_size
         hmm_file_size_mb = hmm_file_size_bytes / (1024 * 1024)
+        hmm_z = self._count_hmm_profiles()
 
         # Large mode switch:
         # - explicit: --large / large_mode=True
@@ -379,7 +401,7 @@ class PyHMMERProcessor(ABC):
                         if effective_preload_targets and not force_batching:
                             targets = seqs.read_block()
                             if hmms is not None:
-                                for hits in self._iter_hmmsearch_hits(hmms, targets, cpus=cpus):
+                                for hits in self._iter_hmmsearch_hits(hmms, targets, cpus=cpus, z_value=hmm_z):
                                     for hit in hits:
                                         for domain in hit.domains.included:
                                             aln = domain.alignment
@@ -408,7 +430,7 @@ class PyHMMERProcessor(ABC):
                                 self._flush_hit_buffer(hit_buffer, writer)
                             else:
                                 with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
-                                    for hits in self._iter_hmmsearch_hits(hmm_file_handle, targets, cpus=cpus):
+                                    for hits in self._iter_hmmsearch_hits(hmm_file_handle, targets, cpus=cpus, z_value=hmm_z):
                                         for hit in hits:
                                             for domain in hit.domains.included:
                                                 aln = domain.alignment
@@ -474,6 +496,7 @@ class PyHMMERProcessor(ABC):
                                         cpus=cpus,
                                         hit_buffer=hit_buffer,
                                         hmm_file_stem=hmm_file_stem,
+                                        z_value=hmm_z,
                                         buffer_flush_threshold=buffer_flush_threshold,
                                     )
                                     if len(hit_buffer) >= buffer_flush_threshold:
@@ -488,6 +511,7 @@ class PyHMMERProcessor(ABC):
                                             cpus=cpus,
                                             hit_buffer=hit_buffer,
                                             hmm_file_stem=hmm_file_stem,
+                                            z_value=hmm_z,
                                             buffer_flush_threshold=buffer_flush_threshold,
                                         )
                                         if len(hit_buffer) >= buffer_flush_threshold:
@@ -573,10 +597,12 @@ class PyHMMERDBCANSUBProcessor(PyHMMERProcessor):
 
     def run(self):
         logger.info("Starting PyHMMERDBCANSUBProcessor.run()")
+        search_error = None
         try:
             super().run()
             logger.info("HMM search completed successfully")
         except Exception as e:
+            search_error = e
             logger.error(f"HMM search failed, but will still attempt to create empty dbCAN-sub results file: {e}")
             # Continue to process_dbcan_sub even if HMM search failed, 
             # so that empty file with headers can be created
@@ -585,6 +611,10 @@ class PyHMMERDBCANSUBProcessor(PyHMMERProcessor):
         logger.info("Calling process_dbcan_sub() to process results")
         sub_proc = DBCANSUBProcessor(self.config)
         sub_proc.process_dbcan_sub()
+        if search_error is not None:
+            raise RuntimeError(
+                "dbCAN-sub HMM search failed; empty output was generated for downstream compatibility"
+            ) from search_error
         logger.info("PyHMMERDBCANSUBProcessor.run() completed")
 
 

@@ -107,6 +107,7 @@ def run_dbCAN_CAZyme_overview(config):
 
 def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, overviewconfig, methods):
     import logging
+    failures = []
     if 'diamond' in methods:
         logging.info("DIAMOND CAZy...")
         try:
@@ -116,6 +117,7 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
             logging.error(f"DIAMOND CAZy failed: {e}")
             # Even if diamond fails, try to create empty result file
             _ensure_empty_diamond_file(diamondconfig)
+            failures.append(f"DIAMOND CAZy: {e}")
     else:
         # Even if diamond is not in methods, create empty result file to avoid warnings
         _ensure_empty_diamond_file(diamondconfig)
@@ -129,6 +131,7 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
             logging.error(f"HMMER dbCAN failed: {e}")
             # Even if hmm fails, try to create empty result file
             _ensure_empty_dbcan_hmm_file(dbcanconfig)
+            failures.append(f"HMMER dbCAN: {e}")
     else:
         # Even if hmm is not in methods, create empty result file to avoid warnings
         _ensure_empty_dbcan_hmm_file(dbcanconfig)
@@ -144,6 +147,7 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
             # This is handled inside PyHMMERDBCANSUBProcessor.run()
             # But we also need to ensure raw file exists
             _ensure_empty_dbcansub_file(dbcansubconfig)
+            failures.append(f"dbCAN-sub HMM: {e}")
     else:
         # Even if dbCANsub is not in methods, create empty result file to avoid warnings
         _ensure_empty_dbcansub_file(dbcansubconfig)
@@ -154,6 +158,11 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
         logging.info("CAZyme overview generated")
     except Exception as e:
         logging.error(f"CAZyme overview failed: {e}")
+        failures.append(f"CAZyme overview: {e}")
+    if failures:
+        raise RuntimeError(
+            "CAZyme annotation completed with failed step(s): " + "; ".join(failures)
+        )
 #    else:
 #        logging.warning("No CAZyme results to generate overview.")
 

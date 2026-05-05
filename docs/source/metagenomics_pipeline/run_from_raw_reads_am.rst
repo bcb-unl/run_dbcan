@@ -426,7 +426,7 @@ P15. Synteny plot between a CGC and its best PUL hit with read mapping coverage 
 
 .. code-block:: shell
 
-    dbcan_plot CGC_synteny_coverage_plot -i HCZGU.dbCAN --readscount HCZGU_abund/HCZGU.cgc.depth.txt --cgcid '‘k141_1169008|CGC1'
+    dbcan_plot CGC_synteny_coverage_plot -i HCZGU.dbCAN --readscount HCZGU_abund/HCZGU.cgc.depth.txt --cgcid 'k141_1169008|CGC1'
 
 The ``HCZGU.dbCAN`` folder contains the ``PUL_blast.out`` file. Using this file, the ``cgc_standard.out`` file,
 and the best PUL's ``gff`` file in ``dbCAN-PUL.tar.gz``, the CGC_synteny_plot method will create the ``CGC-PUL synteny plot``.

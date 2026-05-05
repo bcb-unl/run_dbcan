@@ -53,6 +53,7 @@ class _FakeSequenceFile:
 class _FakeHMMFile:
     def __init__(self, path):
         self.path = path
+        self.profiles = [object(), object(), object(), object(), object(), object(), object()]
 
     def __enter__(self):
         return self
@@ -61,8 +62,8 @@ class _FakeHMMFile:
         return False
 
     def __iter__(self):
-        # Iterable placeholder; we never yield real HMMs because fake hmmsearch ignores it.
-        return iter([])
+        # Iterable placeholder; fake hmmsearch ignores profile contents.
+        return iter(self.profiles)
 
 
 def test_batching_uses_read_block_sequences(monkeypatch, tmp_path):
@@ -87,7 +88,7 @@ def test_batching_uses_read_block_sequences(monkeypatch, tmp_path):
 
     calls = {"read_block": [], "hmmsearch": 0, "hmmfile_open": 0}
 
-    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None):
+    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None, Z=None):
         calls["hmmsearch"] += 1
         # Yield no hits
         if False:
@@ -149,7 +150,7 @@ def test_retry_on_memoryerror(monkeypatch, tmp_path):
 
     calls = {"hmmsearch": 0}
 
-    def flaky_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None):
+    def flaky_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None, Z=None):
         calls["hmmsearch"] += 1
         if calls["hmmsearch"] == 1:
             raise MemoryError("simulated OOM")
@@ -200,7 +201,7 @@ def test_auto_large_mode_triggers_batching(monkeypatch, tmp_path):
 
     calls = {"read_block": []}
 
-    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None):
+    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None, Z=None):
         if False:
             yield None
         return iter(())
@@ -259,7 +260,7 @@ def test_very_large_input_sparse_file_no_oom(monkeypatch, tmp_path):
 
     calls = {"read_block": 0, "hmmfile_open": 0}
 
-    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None):
+    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None, Z=None):
         if False:
             yield None
         return iter(())
@@ -294,4 +295,109 @@ def test_very_large_input_sparse_file_no_oom(monkeypatch, tmp_path):
 
     assert calls["read_block"] > 0
     assert calls["hmmfile_open"] >= 1
+
+
+def test_hmmsearch_uses_fixed_z_in_batch_mode(monkeypatch, tmp_path):
+    from dbcan.annotation.pyhmmer_search import PyHMMERDBCANProcessor
+    from dbcan.configs.pyhmmer_config import PyHMMERDBCANConfig
+
+    faa, hmm = _make_minimal_files(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "uniInput.faa").write_text(faa.read_text())
+
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "dbcan.hmm").write_text(hmm.read_text())
+
+    z_values = []
+
+    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None, Z=None):
+        z_values.append(Z)
+        if False:
+            yield None
+        return iter(())
+
+    monkeypatch.setattr("pyhmmer.hmmsearch", fake_hmmsearch)
+    monkeypatch.setattr("pyhmmer.easel.SequenceFile", lambda *a, **k: _FakeSequenceFile(*a, **k))
+    monkeypatch.setattr("pyhmmer.plan7.HMMFile", lambda p: _FakeHMMFile(p))
+
+    cfg = PyHMMERDBCANConfig(
+        db_dir=str(db_dir),
+        output_dir=str(out_dir),
+        threads=1,
+        hmm_file="dbcan.hmm",
+        batch_size=2,
+        large_mode=True,
+        enable_memory_monitoring=False,
+    )
+    PyHMMERDBCANProcessor(cfg).hmmsearch()
+
+    assert z_values
+    assert set(z_values) == {7}
+
+
+def test_hmmsearch_uses_fixed_z_in_unbatched_mode(monkeypatch, tmp_path):
+    from dbcan.annotation.pyhmmer_search import PyHMMERDBCANProcessor
+    from dbcan.configs.pyhmmer_config import PyHMMERDBCANConfig
+
+    faa, hmm = _make_minimal_files(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "uniInput.faa").write_text(faa.read_text())
+
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "dbcan.hmm").write_text(hmm.read_text())
+
+    z_values = []
+
+    def fake_hmmsearch(hmms_or_hmmfile, targets, cpus=1, domE=None, Z=None):
+        z_values.append(Z)
+        if False:
+            yield None
+        return iter(())
+
+    class PlentyMemory:
+        def get_available_memory_mb(self):
+            return 1024 * 1024
+
+        def estimate_batch_size(self, avg_seq_size_mb, safety_factor=0.5):
+            return 1000
+
+        def start_monitoring(self):
+            pass
+
+        def log_memory_status(self, label):
+            pass
+
+        def is_memory_safe(self):
+            return True
+
+        def check_and_warn(self, label):
+            return True
+
+        def record_checkpoint(self, label):
+            pass
+
+        def log_report(self, label):
+            pass
+
+    monkeypatch.setattr("pyhmmer.hmmsearch", fake_hmmsearch)
+    monkeypatch.setattr("pyhmmer.easel.SequenceFile", lambda *a, **k: _FakeSequenceFile(*a, **k))
+    monkeypatch.setattr("pyhmmer.plan7.HMMFile", lambda p: _FakeHMMFile(p))
+    monkeypatch.setattr("dbcan.annotation.pyhmmer_search.get_memory_monitor", lambda **kwargs: PlentyMemory())
+
+    cfg = PyHMMERDBCANConfig(
+        db_dir=str(db_dir),
+        output_dir=str(out_dir),
+        threads=1,
+        hmm_file="dbcan.hmm",
+        batch_size=None,
+        large_mode=False,
+        enable_memory_monitoring=False,
+    )
+    PyHMMERDBCANProcessor(cfg).hmmsearch()
+
+    assert z_values == [7]
 

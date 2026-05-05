@@ -427,7 +427,7 @@ Calculate HiFi MG read abundance for proteins in the two samples:
 
     mkdir SRF_MG_abund && cd SRF_MG_abund 
 
-    dbcan_utils cal_coverage -g ../SRF_MG.fix.gff -i ../samfiles/SRF_MG.bam -o SRF_MG.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 –-identity 0.98 --hifi 
+    dbcan_utils cal_coverage -g ../SRF_MG.fix.gff -i ../samfiles/SRF_MG.bam -o SRF_MG.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98 --hifi 
 
     cd .. 
 
@@ -435,7 +435,7 @@ Calculate HiFi MG read abundance for proteins in the two samples:
 
     mkdir BML_MG_abund && cd BML_MG_abund 
 
-    dbcan_utils cal_coverage -g ../BML_MG.fix.gff -i ../samfiles/BML_MG.bam -o BML_MG.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 –-identity 0.98 --hifi 
+    dbcan_utils cal_coverage -g ../BML_MG.fix.gff -i ../samfiles/BML_MG.bam -o BML_MG.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98 --hifi 
 
     cd .. 
 
@@ -448,7 +448,7 @@ Calculate Illumina MT read abundance for proteins in the two samples:
 
     mkdir BML_MT_abund && cd BML_MT_abund 
 
-    dbcan_utils cal_coverage -g ../BML_MG.fix.gff -i ../samfiles/BML_MT.bam -o BML_MT.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 –-identity 0.98 
+    dbcan_utils cal_coverage -g ../BML_MG.fix.gff -i ../samfiles/BML_MT.bam -o BML_MT.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98 
 
     cd .. 
 
@@ -456,7 +456,7 @@ Calculate Illumina MT read abundance for proteins in the two samples:
 
     mkdir SRF_MT_abund && cd SRF_MT_abund 
 
-    dbcan_utils cal_coverage -g ../SRF_MG.fix.gff -i ../samfiles/SRF_MT.bam -o SRF_MT.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 –-identity 0.98 
+    dbcan_utils cal_coverage -g ../SRF_MG.fix.gff -i ../samfiles/SRF_MT.bam -o SRF_MT.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98 
 
     cd .. 
 

@@ -401,19 +401,19 @@ P10. Read count calculation for all proteins of each sample using dbcan_utils (T
 
     mkdir MAG_HS-05_abund && cd MAG_HS-05_abund 
 
-    dbcan_utils cal_coverage -g ../MAG_HS-05.fix.gff -i ../samfiles/MAG_HS-05.bam -o MAG_HS-05.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 ----identity 0.98  
+    dbcan_utils cal_coverage -g ../MAG_HS-05.fix.gff -i ../samfiles/MAG_HS-05.bam -o MAG_HS-05.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98  
 
     cd .. && mkdir MAG_HS-60_abund && cd MAG_HS-60_abund 
 
-    dbcan_utils cal_coverage -g ../MAG_HS-60.fix.gff -i ../samfiles/MAG_HS-60.bam -o MAG_HS-60.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --–-identity 0.98  
+    dbcan_utils cal_coverage -g ../MAG_HS-60.fix.gff -i ../samfiles/MAG_HS-60.bam -o MAG_HS-60.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98  
 
     cd .. && mkdir RNA_HS-05_abund && cd RNA_HS-05_abund 
 
-    dbcan_utils cal_coverage -g ../MAG_HS-05.fix.gff -i ../samfiles/RNA_HS-05.bam -o RNA_HS-05.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --–-identity 0.98 
+    dbcan_utils cal_coverage -g ../MAG_HS-05.fix.gff -i ../samfiles/RNA_HS-05.bam -o RNA_HS-05.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98 
 
     cd .. && mkdir RNA_HS-60_abund && cd MAG_HS-60_abund 
 
-    dbcan_utils cal_coverage -g ../MAG_HS-60.fix.gff -i ../samfiles/RNA_HS-60.bam -o RNA_HS-60.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 -–--identity 0.98 
+    dbcan_utils cal_coverage -g ../MAG_HS-60.fix.gff -i ../samfiles/RNA_HS-60.bam -o RNA_HS-60.depth.txt -t 6 --overlap_base_ratio 0.2 --mapping_quality 30 --identity 0.98 
 
     cd .. 
 
