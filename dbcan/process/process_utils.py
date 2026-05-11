@@ -232,7 +232,8 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 df = df.dropna(subset=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
                 df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN], inplace=True)
 
-                df['Type'] = name
+                _TYPE_MAP = {'TF_prok': 'TF', 'TF_fungi': 'TF'}
+                df['Type'] = _TYPE_MAP.get(name, name)
                 frames.append(df)
                 logger.info(f"Loaded {len(df)} {name} annotations from {fpath}")
             except Exception as e:
