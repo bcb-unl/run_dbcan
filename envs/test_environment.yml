@@ -4,6 +4,9 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  - pip
+  - setuptools
+  - wheel
   - diamond
   # Pre-install from conda-forge so macOS CI does not fall back to building
   # matplotlib from source (Meson + setuptools_scm), which often fails on runners.
