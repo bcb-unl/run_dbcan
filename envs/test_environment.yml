@@ -1,7 +1,10 @@
 name: test_dbcan
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
   - diamond
+  # Pre-install from conda-forge so macOS CI does not fall back to building
+  # matplotlib from source (Meson + setuptools_scm), which often fails on runners.
+  - matplotlib==3.10.1

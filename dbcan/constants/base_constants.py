@@ -101,7 +101,7 @@ GFF_RECOMMEND_RESULTS_COL = "Recommend Results"
 GFF_CGC_ANNOTATION_COL = 'CGC_annotation'
 GFF_FUNCTION_ANNOTATION_COL = "function_annotation"
 GFF_TYPE_COL = "type"
-GFF_CGC_SIG_COLUMNS = [0, 2, 10]
+GFF_CGC_SIG_COLUMNS = [0, 2, 11]
 GFF_MIN_TOOL_COUNT = 2
 
 # Annotation prefixes and defaults

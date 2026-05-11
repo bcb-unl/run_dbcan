@@ -7,10 +7,26 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from tqdm import tqdm
 from dbcan.configs.database_config import DBDownloaderConfig
-from dbcan.constants.databases_constants import (DATABASES_CAZYME, DATABASES_CGC, COMPRESSED_DBCAN_PUL, DATABASES_CAZYME_S3, DATABASES_CGC_S3)
+from dbcan.constants.databases_constants import (
+    COMPRESSED_DBCAN_PUL,
+    DATABASES_CAZYME,
+    DATABASES_CAZYME_S3,
+    DATABASES_CGC,
+    DATABASES_CGC_S3,
+)
 
 
 logger = logging.getLogger(__name__)
+
+
+class DatabaseDownloadError(RuntimeError):
+    """Raised when one or more database files fail to download or extract."""
+
+    def __init__(self, failures: Dict[str, str]):
+        self.failures = failures
+        detail = "; ".join(f"{name}: {error}" for name, error in failures.items())
+        super().__init__(f"Database download failed for {len(failures)} file(s): {detail}")
+
 
 class DBDownloader:
     """Download dbCAN databases from HTTP or AWS S3"""
@@ -40,7 +56,8 @@ class DBDownloader:
             logger.debug("CGC-related databases are disabled (cgc=False).")
             return dict(DATABASES_CAZYME_S3)
         else:
-            logger.debug("Using HTTP as download source")
+            logger.debug("Using HTTP db_current as download source")
+            logger.info("HTTP downloads use the moving db_current snapshot; use --aws_s3 for the pinned S3 release.")
             if self.config.cgc:
                 logger.debug("Including CGC-related databases in download list.")
                 return {**DATABASES_CAZYME, **DATABASES_CGC}
@@ -50,6 +67,7 @@ class DBDownloader:
     def download_file(self):
         """Download all databases from HTTP or AWS S3"""
         session = self._prepare_session()
+        failures: Dict[str, str] = {}
         try:
             for filename, url in self.databases.items():
                 output_path = self.db_dir_path / filename
@@ -78,8 +96,12 @@ class DBDownloader:
 
                 except Exception as e:
                     logger.error(f"{filename} download error: {e}", exc_info=True)
+                    failures[filename] = str(e)
         finally:
             session.close()
+
+        if failures:
+            raise DatabaseDownloadError(failures)
 
     def _prepare_session(self) -> requests.Session:
         """Prepare a requests session with retry policy."""
@@ -163,8 +185,7 @@ class DBDownloader:
             destination: Destination directory
         """
         if not tarfile.is_tarfile(str(tar_path)):
-            logger.error(f"File is not a valid tar archive: {tar_path}")
-            return
+            raise ValueError(f"File is not a valid tar archive: {tar_path}")
 
         with tarfile.open(str(tar_path)) as tar:
             members = tar.getmembers()

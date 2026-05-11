@@ -21,7 +21,11 @@
 
 ## Announcement
 
-⚠️ **Important Notice:**  
+**Update**
+5/5/2026:
+The server issue caused by the recent cyberattack has been resolved by ITS and Revanth, and all services are now back to normal. Users can download the dbCAN databases from either the default server or AWS S3; both sources provide the same database files.
+
+⚠️ **Important Notice (5/5/2026: Fixed):**  
 Due to a recent cyberattack, our primary dbCAN web server is currently offline, and you will not be able to access the online database. Our IT team is actively working to resolve the issue. We apologize for any inconvenience this may cause.
 
 In the meantime, you can still obtain the dbCAN database using our AWS S3 backup. Recommended methods:
@@ -49,6 +53,10 @@ If you have any questions or need help, feel free to open an [issue](https://git
 
 
 ## Update
+5/5/2026:
+1. **HMM search Z parameter**: Following feedback from the community (GitHub issue), we corrected how the pyHMMER **Z** parameter is set for dbCAN HMM searches. This improves statistical calibration and overall CAZyme annotation performance compared with the previous default.
+2. **DeepTMHMM topology (optional)**: `CAZyme_annotation` can now run a **user-installed** DeepTMHMM `predict.py` via `--run_deeptmhmm` and `--deeptmhmm_dir`, and merge transmembrane topology into `overview.tsv` together with SignalP. SignalP 6.0 and DeepTMHMM are **not** bundled with run_dbcan—see the [documentation](https://run-dbcan.readthedocs.io/en/latest/) (*SignalP 6.0 and DeepTMHMM*) for install and testing notes.
+
 10/20/2025:
 1. **SignalP6.0 Topology Annotation**: Added support for SignalP6.0 signal peptide prediction. Use `--run_signalp` flag in `CAZyme_annotation` command to enable topology annotation. Results are automatically added to the overview.tsv file.
 2. **Global Logging System**: Implemented comprehensive logging system with `--log-level`, `--log-file`, and `--verbose` options for better debugging and monitoring.

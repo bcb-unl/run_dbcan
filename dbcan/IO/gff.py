@@ -163,6 +163,7 @@ class GFFProcessor:
                     sep='\t',
                     usecols=G.GFF_CGC_SIG_COLUMNS,
                     header=None,
+                    skiprows=1,
                     names=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
                     chunksize=100_000
                 )

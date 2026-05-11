@@ -105,7 +105,7 @@ def cazyme_annotation_cmd(ctx, log_level, log_file, verbose, **kwargs):
     run_dbCAN_CAZyme_annotation(diamond_config, pyhmmer_config, dbcansubconfig, overviewconfig, methods_option)
 
     # Step 3: Topology annotation (as supplement to CAZyme annotation)
-    if kwargs.get('run_signalp', False):
+    if kwargs.get('run_signalp', False) or kwargs.get('run_deeptmhmm', False):
         signalp_config = create_config(SignalPTMHMMConfig, **kwargs)
         run_dbCAN_topology_annotation(signalp_config)
 

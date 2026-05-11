@@ -89,6 +89,11 @@ def database_download_options(func):
     func = database_options(func)
     func = click.option('--cgc/--no-cgc', is_flag=True, default=True, help='Enable CGC-related databases (database download only)')(func)
     func = click.option('--aws_s3', is_flag=True, default=False, help='Download databases from AWS S3')(func)
+    func = click.option('--timeout', type=int, default=30, show_default=True, help='HTTP timeout in seconds for database downloads')(func)
+    func = click.option('--retries', type=int, default=3, show_default=True, help='Retry count for transient database download failures')(func)
+    func = click.option('--resume/--no-resume', is_flag=True, default=True, show_default=True, help='Resume partial database downloads when possible')(func)
+    func = click.option('--no-overwrite', is_flag=True, default=False, show_default=True, help='Skip files that already exist in db_dir')(func)
+    func = click.option('--verify-ssl/--no-verify-ssl', is_flag=True, default=True, show_default=True, help='Verify TLS certificates for database downloads')(func)
     return func
 
 def diamond_options(func):
@@ -288,6 +293,17 @@ def topology_annotation_options(func):
     func = click.option('--run_signalp/--no-run_signalp',
                         default=False,
                         help='Run SignalP6.0 (biolib) to predict signal peptides for all proteins in overview')(func)
+    func = click.option('--run_deeptmhmm/--no-run_deeptmhmm',
+                        default=False,
+                        help='Run a user-installed local DeepTMHMM predict.py and add results to overview')(func)
+    func = click.option('--deeptmhmm_dir',
+                        type=click.Path(exists=False, file_okay=False, dir_okay=True),
+                        default=None,
+                        help='Directory containing the user-installed DeepTMHMM predict.py')(func)
+    func = click.option('--deeptmhmm_python',
+                        default='python',
+                        show_default=True,
+                        help='Python executable used to run DeepTMHMM predict.py')(func)
     func = click.option('--signalp_org',
                         default='other',
                         type=click.Choice(['other', 'euk']),
@@ -295,7 +311,7 @@ def topology_annotation_options(func):
                         help='Organism type passed to SignalP6')(func)
     func = click.option('--force_topology/--no-force_topology',
                         default=False,
-                        help='Overwrite existing SignalP columns instead of only filling empty cells')(func)
+                        help='Overwrite existing SignalP and DeepTMHMM columns instead of only filling empty cells')(func)
     return func
 
 def logging_options(func):
