@@ -36,7 +36,7 @@ output_dir_option = click.option(
 threads_option = click.option(
     '--threads',
     type=int,
-    default=psutil.cpu_count(),
+    default=psutil.cpu_count() or 1,
     show_default=True,
     help='Parallel worker count for supported tools (DIAMOND, pyhmmer CPU threads, etc.).',
 )
