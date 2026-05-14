@@ -32,6 +32,9 @@ class GFFConfig(BaseConfig):
     output_dir: str
     input_gff: str
     gff_type: str
+    # Prodigal: avoid BCBio GFF.parse on huge files (see annotate_prodigal_gff_streaming).
+    prodigal_gff_streaming: str = "auto"  # auto | on | off
+    prodigal_streaming_threshold_mb: int = 50
 
 
 

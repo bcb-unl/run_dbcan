@@ -63,6 +63,72 @@ def read_gff(path: str) -> pd.DataFrame:
     """Back-compat API: return DataFrame."""
     return read_gff_to_df(path, columns=G.GFF_COLUMNS, drop_comments=True)
 
+
+def _split_gff_attributes(attr_col: str) -> Dict[str, str]:
+    """Parse GFF column 9 key=value pairs (first '=' separates key from value)."""
+    out: Dict[str, str] = {}
+    if not attr_col or attr_col == ".":
+        return out
+    for raw in attr_col.split(";"):
+        part = raw.strip()
+        if not part or "=" not in part:
+            continue
+        key, _, val = part.partition("=")
+        k = key.strip()
+        if k:
+            out[k] = val.strip()
+    return out
+
+
+def annotate_prodigal_gff_streaming(
+    input_path: Path,
+    output_path: Path,
+    cgc_data: Dict[str, Dict[str, Any]],
+) -> int:
+    """
+    Stream-annotate Prodigal-style flat GFF3 without BCBio GFF.parse.
+    Output lines match GFFProcessor.write_gff for each input feature row.
+    """
+    wrote = 0
+    with input_path.open(encoding="utf-8", errors="replace") as inf, output_path.open(
+        "w", encoding="utf-8"
+    ) as outf:
+        for line in tqdm(inf, desc="Generating Prodigal GFF (streaming)", unit="lines", mininterval=2.0):
+            line = line.rstrip("\n\r")
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith(">"):
+                break
+            parts = line.split("\t")
+            if len(parts) < 9:
+                continue
+            seqid, _source, ftype, start_s, end_s, _score, strand_raw, _phase, attrs = parts[:9]
+            if ftype and ftype.lower() == "remark":
+                continue
+            try:
+                start_i = int(start_s)
+                end_i = int(end_s)
+            except ValueError:
+                continue
+            quals = _split_gff_attributes(attrs)
+            protein_id = quals.get(G.GFF_ID_ATTR_PRODIGAL, G.GFF_UNKNOWN_ANNOTATION)
+            cgc_annotation = cgc_data.get(protein_id, {}).get(G.GFF_CGC_ANNOTATION_COL, G.GFF_NULL_ANNOTATION)
+            protein_id = protein_id if protein_id else G.GFF_UNKNOWN_ANNOTATION
+            cgc_annotation = cgc_annotation if cgc_annotation else G.GFF_NULL_ANNOTATION
+            if strand_raw == "+":
+                strand = "+"
+            elif strand_raw == "-":
+                strand = "-"
+            else:
+                strand = "."
+            outf.write(
+                f"{seqid}\t.\t{ftype}\t{start_i}\t{end_i}\t.\t{strand}\t.\t"
+                f"{G.GFF_PROTEIN_ID_ATTR_NCBI}={protein_id};"
+                f"{G.GFF_CGC_ANNOTATION_COL}={cgc_annotation}\n"
+            )
+            wrote += 1
+    return wrote
+
 def _sort_record_features(record):
     """Worker function to sort features within a single GFF record."""
     sorted_features = sorted(record.features, key=lambda f: (f.location.start, f.location.end))
@@ -470,20 +536,44 @@ class JGIProcessor(GFFProcessor):
 class ProdigalProcessor(GFFProcessor):
     """Processor for Prodigal GFF format (features often CDS)."""
 
+    def _use_streaming_path(self, input_path: Path) -> bool:
+        mode = (getattr(self.config, "prodigal_gff_streaming", "auto") or "auto").strip().lower()
+        if mode == "on":
+            return True
+        if mode == "off":
+            return False
+        thresh_mb = int(getattr(self.config, "prodigal_streaming_threshold_mb", 50))
+        size_b = input_path.stat().st_size
+        return size_b > thresh_mb * 1_000_000
+
     def _process_gff_format(self, input_file, output_file, cgc_data):
+        inp = Path(input_file)
+        out = Path(output_file)
+        use_stream = self._use_streaming_path(inp)
+        size_mb = inp.stat().st_size / (1024 * 1024)
         try:
-            wrote = 0
-            with Path(input_file).open() as in_file, Path(output_file).open('w') as out_file:
-                for record in tqdm(GFF.parse(in_file), desc="Generating Prodigal GFF"):
-                    for feature in record.features:
-                        # Prodigal usually puts IDs in 'ID' qualifier
-                        protein_id = feature.qualifiers.get(G.GFF_ID_ATTR_PRODIGAL, [G.GFF_UNKNOWN_ANNOTATION])[0]
-                        cgc_annotation = cgc_data.get(protein_id, {}).get(
-                            G.GFF_CGC_ANNOTATION_COL,
-                            G.GFF_NULL_ANNOTATION
-                        )
-                        self.write_gff(record, feature, protein_id, cgc_annotation, out_file)
-                        wrote += 1
+            if use_stream:
+                logger.info(
+                    f"[Prodigal] Streaming GFF annotator (input {size_mb:.1f} MiB; "
+                    f"prodigal_gff_streaming={getattr(self.config, 'prodigal_gff_streaming', 'auto')!r})."
+                )
+                wrote = annotate_prodigal_gff_streaming(inp, out, cgc_data)
+            else:
+                logger.info(
+                    f"[Prodigal] BCBio GFF.parse annotator (input {size_mb:.1f} MiB; "
+                    f"threshold {getattr(self.config, 'prodigal_streaming_threshold_mb', 50)} MB for auto-streaming)."
+                )
+                wrote = 0
+                with inp.open() as in_file, out.open("w") as out_file:
+                    for record in tqdm(GFF.parse(in_file), desc="Generating Prodigal GFF"):
+                        for feature in record.features:
+                            protein_id = feature.qualifiers.get(G.GFF_ID_ATTR_PRODIGAL, [G.GFF_UNKNOWN_ANNOTATION])[0]
+                            cgc_annotation = cgc_data.get(protein_id, {}).get(
+                                G.GFF_CGC_ANNOTATION_COL,
+                                G.GFF_NULL_ANNOTATION,
+                            )
+                            self.write_gff(record, feature, protein_id, cgc_annotation, out_file)
+                            wrote += 1
             logger.info(f"[Prodigal] Written feature lines: {wrote}")
         except Exception as e:
             logger.error(f"Error processing Prodigal GFF: {e}")

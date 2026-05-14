@@ -249,16 +249,22 @@ def cgc_circle_plot_cmd(ctx, log_level, log_file, verbose, **kwargs):
 def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, and CGC identification in one step."""
     setup_logging(log_level, log_file, verbose)
+    merged = {
+        **kwargs,
+        "log_level": log_level,
+        "log_file": log_file,
+        "verbose": verbose,
+    }
     try:
         # step 1: CAZyme annotation
         click.echo("step 1/3  CAZyme annotation...")
-        _invoke_subset(ctx, cazyme_annotation_cmd, kwargs)
+        _invoke_subset(ctx, cazyme_annotation_cmd, merged)
         # step 2: GFF processing
         click.echo("step 2/3  GFF processing...")
-        _invoke_subset(ctx, gff_process_cmd, kwargs)
+        _invoke_subset(ctx, gff_process_cmd, merged)
         # step 3: CGC identification
         click.echo("step 3/3  CGC identification...")
-        _invoke_subset(ctx, cgc_finder_cmd, kwargs)
+        _invoke_subset(ctx, cgc_finder_cmd, merged)
         click.echo("CGC analysis completed.")
     except Exception as e:
         import traceback
@@ -285,22 +291,28 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, CGC identification, and substrate prediction in one step."""
     setup_logging(log_level, log_file, verbose)
+    merged = {
+        **kwargs,
+        "log_level": log_level,
+        "log_file": log_file,
+        "verbose": verbose,
+    }
     try:
         # step 1: CAZyme annotation
         click.echo("step 1/4  CAZyme annotation...")
-        _invoke_subset(ctx, cazyme_annotation_cmd, kwargs)
+        _invoke_subset(ctx, cazyme_annotation_cmd, merged)
 
         # step 2: GFF processing
         click.echo("step 2/4  GFF processing...")
-        _invoke_subset(ctx, gff_process_cmd, kwargs)
+        _invoke_subset(ctx, gff_process_cmd, merged)
 
         # step 3: CGC identification
         click.echo("step 3/4  CGC identification...")
-        _invoke_subset(ctx, cgc_finder_cmd, kwargs)
+        _invoke_subset(ctx, cgc_finder_cmd, merged)
 
         # step 4: Substrate prediction
         click.echo("step 4/4  Substrate prediction...")
-        _invoke_subset(ctx, substrate_prediction_cmd, kwargs)
+        _invoke_subset(ctx, substrate_prediction_cmd, merged)
 
 
     except Exception as e:
