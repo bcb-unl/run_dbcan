@@ -1,7 +1,7 @@
 #############constants for downloading dbCAN databases##############################
 
 HTTP_DATABASE_SNAPSHOT = "db_current"
-S3_DATABASE_RELEASE = "db_v5-2_9-13-2025"
+S3_DATABASE_RELEASE = "db_v5-2-9_5-5-2026"
 
 BASE_URL = f"https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/{HTTP_DATABASE_SNAPSHOT}"
 AWS_S3_URL = f"https://dbcan.s3.us-west-2.amazonaws.com/{S3_DATABASE_RELEASE}"
