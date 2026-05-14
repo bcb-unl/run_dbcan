@@ -681,6 +681,7 @@ def cgc_substrate_base_options(func):
     func = click.option(
         '-odbcan_sub',
         '--odbcan_sub',
+        type=bool,
         default=None,
         help='If set to true/false, force exporting extra dbCAN-sub tables; omit to use package default.',
     )(func)
