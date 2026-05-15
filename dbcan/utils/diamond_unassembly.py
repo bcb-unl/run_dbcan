@@ -971,7 +971,7 @@ def common_norm_option(f):
         type=click.Choice(["FPKM", "TPM", "RPM"], case_sensitive=False),
         default="TPM",
         show_default=True,
-        help="Normalization method"
+        help="Read-count normalization: FPKM, TPM, or RPM (case-insensitive).",
     )(f)
 
 def common_threads_option(f):
@@ -980,7 +980,7 @@ def common_threads_option(f):
         type=int,
         default=min(os.cpu_count() or 1, 4),
         show_default=True,
-        help="Number of threads for parallel processing (default: min(cpu_count, 4) for I/O-bound tasks)"
+        help="Worker threads (capped at min(cpu_count, 4) by default for I/O-heavy steps).",
     )(f)
 
 @cli.command("diamond_fam_abund", help="Compute CAZy family abundance (FPKM/TPM/RPM).")
@@ -1006,11 +1006,11 @@ def cmd_fam_abund(paf1, paf2, raw_reads, db, output, normalized, threads):
     rprint(f"[bold cyan]Done -> {output}[/bold cyan]")
 
 @cli.command("diamond_subfam_abund", help="Compute CAZy sub-family abundance.")
-@click.option("-paf1", required=True, type=click.Path(exists=True))
-@click.option("-paf2", type=click.Path(exists=True), default="", help="R2 DIAMOND blastx output (optional).")
-@click.option("--raw_reads", required=True, type=click.Path(exists=True))
-@click.option("-d", "--db", default="./db", show_default=True, type=click.Path())
-@click.option("-o", "--output", default="asmfree_subfam_abund", show_default=True)
+@click.option("-paf1", required=True, type=click.Path(exists=True), help="R1 DIAMOND blastx tabular output (path).")
+@click.option("-paf2", type=click.Path(exists=True), default="", help="Optional R2 DIAMOND blastx output (paired-end).")
+@click.option("--raw_reads", required=True, type=click.Path(exists=True), help="Matching reads FASTA/FASTQ (.gz allowed).")
+@click.option("-d", "--db", default="./db", show_default=True, type=click.Path(), help="dbCAN database directory used for CAZy mapping.")
+@click.option("-o", "--output", default="asmfree_subfam_abund", show_default=True, help="Output TSV path for subfamily abundances.")
 @common_norm_option
 @common_threads_option
 def cmd_subfam_abund(paf1, paf2, raw_reads, db, output, normalized, threads):
@@ -1028,9 +1028,9 @@ def cmd_subfam_abund(paf1, paf2, raw_reads, db, output, normalized, threads):
     rprint(f"[bold cyan]Done -> {output}[/bold cyan]")
 
 @cli.command("diamond_EC_abund", help="Summarize EC abundance from sub-family abundance file.")
-@click.option("-i", "--input", required=True, type=click.Path(exists=True), help="Sub-family abundance input file.")
-@click.option("-d", "--db", default="./db", show_default=True, type=click.Path())
-@click.option("-o", "--output", default="EC_abund.tsv", show_default=True)
+@click.option("-i", "--input", required=True, type=click.Path(exists=True), help="Subfamily abundance TSV produced by diamond_subfam_abund.")
+@click.option("-d", "--db", default="./db", show_default=True, type=click.Path(), help="dbCAN database directory.")
+@click.option("-o", "--output", default="EC_abund.tsv", show_default=True, help="Output TSV for EC-level abundances.")
 def cmd_ec_abund(input, db, output):
     class Args: pass
     args = Args()
@@ -1042,9 +1042,9 @@ def cmd_ec_abund(input, db, output):
     rprint(f"[bold cyan]Done -> {output}[/bold cyan]")
 
 @cli.command("diamond_substrate_abund", help="Infer substrate abundance from sub-family abundance file.")
-@click.option("-i", "--input", required=True, type=click.Path(exists=True), help="Sub-family abundance input file.")
-@click.option("-d", "--db", default="./db", show_default=True, type=click.Path())
-@click.option("-o", "--output", default="substrate_abund.tsv", show_default=True)
+@click.option("-i", "--input", required=True, type=click.Path(exists=True), help="Subfamily abundance TSV (same format as diamond_subfam_abund output).")
+@click.option("-d", "--db", default="./db", show_default=True, type=click.Path(), help="dbCAN database directory.")
+@click.option("-o", "--output", default="substrate_abund.tsv", show_default=True, help="Output TSV for inferred substrate abundances.")
 def cmd_substrate_abund(input, db, output):
     class Args: pass
     args = Args()
