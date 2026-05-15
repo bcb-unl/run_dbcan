@@ -33,10 +33,26 @@ output_dir_option = click.option(
     type=click.Path(file_okay=False, dir_okay=True),
     help='Output directory (created if needed). All run_dbcan result files are written here.',
 )
+def _default_threads() -> int:
+    """Default worker count, constrained to the CPUs the process may use.
+
+    ``psutil.cpu_count()`` reports every logical core on the host and ignores
+    the CPU-affinity mask the process runs under (SLURM cgroup, ``taskset``,
+    container limits). On a shared HPC node that makes the ``--threads``
+    default far larger than the allocation, oversubscribing DIAMOND badly
+    enough to trigger SIGBUS, multi-hour hangs, or node failures. Prefer the
+    affinity-constrained count where the platform exposes it.
+    """
+    try:
+        return len(psutil.Process().cpu_affinity()) or 1
+    except (AttributeError, NotImplementedError, OSError):
+        return psutil.cpu_count() or 1
+
+
 threads_option = click.option(
     '--threads',
     type=int,
-    default=psutil.cpu_count() or 1,
+    default=_default_threads(),
     show_default=True,
     help='Parallel worker count for supported tools (DIAMOND, pyhmmer CPU threads, etc.).',
 )
