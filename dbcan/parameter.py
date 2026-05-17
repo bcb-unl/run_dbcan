@@ -3,6 +3,8 @@ from dataclasses import fields
 from typing import Any, Dict, Optional
 import psutil
 
+from dbcan.constants.expression_constants import PLOT_METRIC_CHOICES
+
 
 
 # Utility to create config dataclass from kwargs with optional namespacing
@@ -995,7 +997,31 @@ def expression_options(func):
         '--also-heatmap',
         is_flag=True,
         default=False,
-        help='With --run-plots, also output CGC expression heatmap.',
+        help='With --run-plots, also output CGC-level summary heatmap.',
+    )(func)
+    func = click.option(
+        '--plot-metric',
+        default='log2_tpm',
+        type=click.Choice(list(PLOT_METRIC_CHOICES)),
+        show_default=True,
+        help=(
+            'Y-axis / heatmap scale. Prefer log2_* for expression tracks (log2_tpm default); '
+            'log2fc needs DESeq2; gene_zscore = within-CGC z-score per condition.'
+        ),
+    )(func)
+    func = click.option(
+        '--plot-deg-marker',
+        default='both',
+        type=click.Choice(['both', 'edge', 'arrow', 'star', 'edge-only']),
+        show_default=True,
+        help='How to mark DEG genes on CGC expression diagrams.',
+    )(func)
+    func = click.option(
+        '--plot-heatmap-rows',
+        default='sample',
+        type=click.Choice(['sample', 'condition']),
+        show_default=True,
+        help='Heatmap rows: per sample or per condition mean.',
     )(func)
     func = click.option(
         '--max-cgc',

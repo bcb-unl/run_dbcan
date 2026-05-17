@@ -16,6 +16,7 @@ from matplotlib import pyplot
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Polygon
 
+from dbcan.constants.expression_constants import PLOT_METRIC_CHOICES
 from dbcan.utils.utils import cgc_standard_line
 from dbcan.plot.syntenic_plot import (
     syntenic_plot,
@@ -917,10 +918,22 @@ click.rich_click.COMMAND_GROUPS = {
               help="Draw per-gene labels on CGC diagrams (off by default for readability).")
 @click.option("--expression-dir", "--expression_dir", default=None,
               help="run_dbcan expression output directory (for expression/DEG plots).")
-@click.option("--metric", default="counts", type=click.Choice(["counts", "tpm"]),
-              show_default=True, help="Y-axis metric for CGC_expression_plot.")
-@click.option("--deg-marker", "--deg_marker", default="edge",
-              type=click.Choice(["edge", "arrow", "star", "edge-only"]),
+@click.option(
+    "--metric",
+    default="log2_tpm",
+    type=click.Choice(list(PLOT_METRIC_CHOICES)),
+    show_default=True,
+    help="Y-axis / heatmap metric for CGC_expression_plot.",
+)
+@click.option(
+    "--heatmap-rows",
+    default="sample",
+    type=click.Choice(["sample", "condition"]),
+    show_default=True,
+    help="Per-CGC gene heatmap rows: sample or condition.",
+)
+@click.option("--deg-marker", "--deg_marker", default="both",
+              type=click.Choice(["both", "edge", "arrow", "star", "edge-only"]),
               show_default=True, help="How to mark DEG genes on CGC diagrams.")
 @click.option("--only-de", "--only_de", is_flag=True,
               help="Plot only differentially expressed CGCs (requires expression results).")
@@ -934,8 +947,8 @@ click.rich_click.COMMAND_GROUPS = {
 def cli(
     function, log_level, log_file, verbose, input_path, db_dir, cgcid, reads_count,
     samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map,
-    col, value, pdf, show_annotation, expression_dir, metric, deg_marker, only_de,
-    plot_output_dir, show_error_bars, max_cgc, force,
+    col, value, pdf, show_annotation, expression_dir, metric, heatmap_rows, deg_marker,
+    only_de, plot_output_dir, show_error_bars, max_cgc, force,
 ):
     """# dbCAN plotting utilities
     
@@ -1036,6 +1049,7 @@ def cli(
             top=top,
             metric=metric,
             deg_marker=marker,
+            heatmap_rows=heatmap_rows,
             output_dir=out,
             show_error_bars=show_error_bars,
             max_cgc=max_cgc,

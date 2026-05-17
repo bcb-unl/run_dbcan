@@ -124,19 +124,21 @@ def build_cgc_gene_counts_and_matrix(
                 else:
                     count = int(info.read_count)
                     length = max(int(info.length), 1)
-                if config.abundance == "TPM":
-                    val = (count / length * 1e6) / denom_tpm
-                elif config.abundance == "FPKM":
-                    val = count / norm_reads / (length / 1000.0)
-                else:
-                    val = count / norm_reads
-                tpms.append(val)
+                length_kb = max(length, 1) / 1000.0
+                tpm_val = (count / length * 1e6) / denom_tpm
+                fpkm_val = count / norm_reads / length_kb
+                rpm_val = count / norm_reads
+                rpkm_val = fpkm_val
+                tpms.append(tpm_val)
                 long_rows.append({
                     "cgcid": cgcid,
                     "protein_id": rec.seqid,
                     "sample_id": sample.sample_id,
                     "count": count,
-                    "tpm": round(val, 4),
+                    "tpm": round(tpm_val, 4),
+                    "fpkm": round(fpkm_val, 4),
+                    "rpm": round(rpm_val, 4),
+                    "rpkm": round(rpkm_val, 4),
                 })
             cgc_sample_tpm.setdefault(cgcid, {})[sample.sample_id] = round(
                 sum(tpms) / len(tpms) if tpms else 0.0, 4

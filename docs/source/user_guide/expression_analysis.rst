@@ -76,20 +76,45 @@ Outputs
 - ``gene_deg.tsv``, ``DEG.tsv`` — gene-level DESeq2 results
 - ``cgc_deg.tsv``, ``cgc_gene_deg_map.tsv`` — CGC-level summaries
 - ``cgc_gene_counts.tsv`` — long table for plotting
-- ``plots/CGC_expression/*.expression.pdf`` — dual-panel CGC figures
+- ``gene_norm_counts.tsv`` — DESeq2 normalized counts (after DE analysis)
+- ``plots/CGC_expression/*.expression.pdf`` — SeMa-Trap style dual-panel figures (step expression + gene map)
+- ``plots/CGC_expression/*.gene_heatmap.pdf`` — per-CGC gene × sample/condition heatmap
 
 Plotting
 --------
 
-Plot all CGCs (one PDF per cluster)::
+CGC expression figures use a **gene-level expression track** (SeMa-Trap style) in the top
+panel: for each gene, a **narrow rectangle** spans its genomic start–end (same x as arrows
+below); the rectangle's **vertical position** is the expression value and its **height is
+fixed**. Adjacent genes are joined by thin lines between rectangle edge centers, forming one
+colored **trajectory** per ``condition``. The bottom panel shows gene arrows with functional
+labels and DEG markers. Default metric is ``log2(TPM+1)``.
+
+Plot all CGCs (one PDF + heatmap per cluster)::
 
     dbcan_plot CGC_expression_plot \
       -i MAG_sample.dbCAN \
-      --expression-dir MAG_sample.expression
+      --expression-dir MAG_sample.expression \
+      --metric log2_tpm \
+      --heatmap-rows sample \
+      --deg-marker both
 
 Plot a single CGC::
 
     dbcan_plot CGC_expression_plot \
       -i MAG_sample.dbCAN \
       --expression-dir MAG_sample.expression \
-      --cgcid 'scaffold_1|CGC1'
+      --cgcid 'scaffold_1|CGC1' \
+      --metric log2fc
+
+``--plot-metric`` / ``dbcan_plot --metric`` choices:
+
+- **Recommended for expression tracks (log-transformed):** ``log2_tpm`` (default), ``log2_fpkm``,
+  ``log2_rpkm``, ``log2_rpm``, ``log2_cpm``, ``log2_norm``
+- **Differential / comparative:** ``log2fc`` (needs DESeq2 + replicates), ``gene_zscore`` (within-CGC
+  z-score per condition)
+- **Linear scale (optional):** ``tpm``, ``fpkm``, ``rpkm``, ``rpm``, ``counts``
+
+``cgc_gene_counts.tsv`` stores ``count``, ``tpm``, ``fpkm``, ``rpm``, and ``rpkm`` per gene for plotting.
+Re-run quantification after upgrading if older outputs lack the new columns.
+``--heatmap-rows``: ``sample`` (default) or ``condition``.

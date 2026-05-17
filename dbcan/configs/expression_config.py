@@ -33,6 +33,9 @@ class ExpressionConfig(BaseConfig):
     run_plots: bool = False
     run_plots_only_de: bool = False
     also_heatmap: bool = False
+    plot_metric: str = "log2_tpm"
+    plot_deg_marker: str = "both"
+    plot_heatmap_rows: str = "sample"
     max_cgc: int = DEFAULT_MAX_CGC
     force: bool = False
     db_dir: str = "db"

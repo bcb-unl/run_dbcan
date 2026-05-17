@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from dbcan.configs.expression_config import ExpressionConfig
-from dbcan.constants.expression_constants import DEG_FILE, GENE_DEG_FILE
+from dbcan.constants.expression_constants import DEG_FILE, GENE_DEG_FILE, GENE_NORM_COUNTS_FILE
 from dbcan.expression.samplesheet import Samplesheet
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,27 @@ def validate_deseq2_design(samplesheet: Samplesheet, design: str) -> None:
         )
 
 
+def write_gene_norm_counts(config: ExpressionConfig, dds) -> Path:
+    """Write DESeq2 size-factor normalized counts (samples x genes)."""
+    out = Path(config.output_dir) / GENE_NORM_COUNTS_FILE
+    try:
+        layer = dds.layers["normed_counts"]
+    except (KeyError, AttributeError):
+        try:
+            layer = dds.normed_counts
+        except AttributeError:
+            logger.warning("Could not extract normed counts from DESeq2; skipping gene_norm_counts.tsv")
+            return out
+    normed = pd.DataFrame(
+        layer,
+        index=dds.obs_names,
+        columns=dds.var_names,
+    )
+    normed.to_csv(out, sep="\t")
+    logger.info(f"Wrote {out}")
+    return out
+
+
 def write_sample_metadata(config: ExpressionConfig, samplesheet: Samplesheet) -> Path:
     """Export sample metadata for reproducibility."""
     rows = []
@@ -116,6 +137,7 @@ def run_deseq2(
     logger.info(f"Running PyDESeq2 with design {design}")
     dds = DeseqDataSet(counts=counts, metadata=metadata, design=design)
     dds.deseq2()
+    write_gene_norm_counts(config, dds)
 
     # Contrast: last level vs first (alphabetical) — standard for 2 groups
     conditions = sorted(metadata["condition"].unique())
