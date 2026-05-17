@@ -5,7 +5,7 @@ from dbcan.parameter import (
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam,
     topology_annotation_options   # <--- added
     , diamond_sulfatase_options, diamond_peptidase_options
-    , database_download_options, logging_options
+    , database_download_options, logging_options, expression_options
 )
 from pathlib import Path
 import logging
@@ -322,6 +322,46 @@ def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
         ctx.exit(1)
 
     click.echo("CGC substrate analysis completed.")
+
+
+@cli.command('expression')
+@logging_options
+@expression_options
+@click.pass_context
+def expression_cmd(ctx, log_level, log_file, verbose, **kwargs):
+    """Quantify expression from BAM/FASTQ, run DESeq2, and optionally plot CGC expression."""
+    setup_logging(log_level, log_file, verbose)
+    from dbcan.configs.expression_config import ExpressionConfig
+    from dbcan.core import run_dbcan_expression
+
+    input_dir = kwargs.get('input_dir') or kwargs.get('i')
+    if not kwargs.get('output_dir'):
+        kwargs['output_dir'] = f"{input_dir}.expression"
+    config = create_config(ExpressionConfig, **kwargs)
+    if not kwargs.get('gff'):
+        from dbcan.expression.gff_resolve import resolve_expression_gff
+        try:
+            auto_gff = resolve_expression_gff(config)
+            config.gff = auto_gff
+            click.echo(f"Auto-selected GFF: {auto_gff}")
+        except FileNotFoundError:
+            pass
+    if not config.reference_fasta and not config.skip_alignment:
+        ss_path = config.samplesheet
+        from dbcan.expression.samplesheet import load_samplesheet
+        sheet = load_samplesheet(ss_path)
+        needs_ref = any(s.has_fastq and not s.has_bam for s in sheet)
+        if needs_ref:
+            raise click.UsageError("--reference-fasta is required when samplesheet has FASTQ without BAM")
+    try:
+        run_dbcan_expression(config)
+        click.echo(f"Expression analysis completed: {config.output_dir}")
+    except Exception as e:
+        import traceback
+        click.echo(f"error: {str(e)}")
+        click.echo(traceback.format_exc())
+        ctx.exit(1)
+
 
 if __name__ == "__main__":
     cli()

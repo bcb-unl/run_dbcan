@@ -890,6 +890,157 @@ def topology_annotation_options(func):
     )(func)
     return func
 
+def expression_options(func):
+    """Options for run_dbcan expression."""
+    func = click.option(
+        '-i', '--input_dir',
+        required=True,
+        type=click.Path(exists=True, file_okay=False, dir_okay=True),
+        help='run_dbcan output directory (contains cgc_standard_out.tsv, overview.tsv).',
+    )(func)
+    func = click.option(
+        '--samplesheet',
+        required=True,
+        type=click.Path(exists=True, dir_okay=False),
+        help='TSV samplesheet: sample_id, condition, bam and/or r1/r2 columns.',
+    )(func)
+    func = click.option(
+        '--reference-fasta',
+        default=None,
+        type=click.Path(exists=True, dir_okay=False),
+        help='Reference assembly FASTA for BWA (required when aligning from FASTQ).',
+    )(func)
+    func = click.option(
+        '--gff',
+        required=False,
+        default=None,
+        type=click.Path(exists=True, dir_okay=False),
+        help=(
+            'Gene GFF for read counting. Default: {input_dir}/cgc.gff if present, '
+            'else *.fix.gff or uniInput.gff. Supports protein_id= (cgc.gff) and ID= (fix.gff).'
+        ),
+    )(func)
+    func = click.option(
+        '--output-dir',
+        'output_dir',
+        default=None,
+        show_default='{input_dir}.expression',
+        help='Expression analysis output directory.',
+    )(func)
+    func = click.option(
+        '--design',
+        default='~condition',
+        show_default=True,
+        help='PyDESeq2 design formula.',
+    )(func)
+    func = click.option(
+        '--abundance',
+        default='TPM',
+        type=click.Choice(['FPKM', 'RPM', 'TPM']),
+        show_default=True,
+        help='Normalization for abundance tables.',
+    )(func)
+    func = click.option(
+        '--alpha',
+        default=0.05,
+        type=float,
+        show_default=True,
+        help='Adjusted p-value threshold for DEG calling.',
+    )(func)
+    func = click.option(
+        '--lfc-threshold',
+        default=1.0,
+        type=float,
+        show_default=True,
+        help='Minimum |log2 fold change| for DEG calling.',
+    )(func)
+    func = click.option(
+        '--cgc-de-rule',
+        default='any',
+        type=click.Choice(['any', 'majority', 'all']),
+        show_default=True,
+        help='Rule to label CGC as DE based on gene-level DEGs.',
+    )(func)
+    func = click.option(
+        '--all-genes',
+        is_flag=True,
+        default=False,
+        help='Include all GFF genes in count matrix (default: CAZyme/CGC genes only).',
+    )(func)
+    func = click.option(
+        '--skip-alignment',
+        is_flag=True,
+        default=False,
+        help='Use BAM paths from samplesheet only (no BWA).',
+    )(func)
+    func = click.option(
+        '--skip-deseq2',
+        is_flag=True,
+        default=False,
+        help='Skip differential expression; only count and abundance.',
+    )(func)
+    func = click.option(
+        '--run-plots',
+        is_flag=True,
+        default=False,
+        help='Generate expression and DEG plots after analysis.',
+    )(func)
+    func = click.option(
+        '--run-plots-only-de',
+        is_flag=True,
+        default=False,
+        help='With --run-plots, only plot DE CGCs (not all CGCs).',
+    )(func)
+    func = click.option(
+        '--also-heatmap',
+        is_flag=True,
+        default=False,
+        help='With --run-plots, also output CGC expression heatmap.',
+    )(func)
+    func = click.option(
+        '--max-cgc',
+        default=500,
+        type=int,
+        show_default=True,
+        help='Max CGCs to plot without --force.',
+    )(func)
+    func = click.option(
+        '--force',
+        is_flag=True,
+        default=False,
+        help='Allow plotting more than --max-cgc CGCs.',
+    )(func)
+    func = click.option(
+        '--overlap-base-ratio',
+        default=0.2,
+        type=float,
+        show_default=True,
+        help='Minimum read overlap fraction for cal_coverage.',
+    )(func)
+    func = click.option(
+        '--mapping-quality',
+        default=30,
+        type=int,
+        show_default=True,
+        help='Minimum MAPQ for cal_coverage.',
+    )(func)
+    func = click.option(
+        '--identity',
+        default=0.98,
+        type=float,
+        show_default=True,
+        help='Minimum alignment identity for cal_coverage.',
+    )(func)
+    func = click.option(
+        '--hifi',
+        is_flag=True,
+        default=False,
+        help='HiFi read mode for cal_coverage overlap calculation.',
+    )(func)
+    func = threads_option(func)
+    return func
+
+
 def logging_options(func):
     """Global logging options for all commands."""
     func = click.option(

@@ -540,6 +540,45 @@ def get_attributes_value(attribute: str, ID: str = "ID=") -> str:
     return ""
 
 
+# Attribute keys tried in order (run_dbcan cgc.gff uses protein_id=; Prodigal uses ID=)
+_GFF_GENE_ID_ATTR_PREFIXES = (
+    "protein_id=",
+    "ID=",
+    "Name=",
+    "gene_id=",
+)
+
+
+def get_gene_id_from_gff_attributes(attribute: str) -> str:
+    """Resolve a stable gene/protein ID from a GFF attribute column."""
+    for prefix in _GFF_GENE_ID_ATTR_PREFIXES:
+        val = get_attributes_value(attribute, ID=prefix)
+        if val:
+            return val.strip()
+    return ""
+
+
+def dedupe_gff_genes(genes: List["GFF_record"]) -> List["GFF_record"]:
+    """Merge duplicate gene IDs to a single span (common when multiple CDS rows share one protein_id)."""
+    by_id: Dict[str, GFF_record] = {}
+    for gene in genes:
+        if not gene.seqid:
+            logger.warning(f"Skipping GFF row without gene ID on {gene.contig_id}:{gene.start}-{gene.end}")
+            continue
+        if gene.seqid in by_id:
+            existing = by_id[gene.seqid]
+            existing.start = min(existing.start, gene.start)
+            existing.end = max(existing.end, gene.end)
+            existing.length = existing.end - existing.start + 1
+            logger.warning(
+                f"Duplicate GFF entry for '{gene.seqid}' on {gene.contig_id}; "
+                f"merged to {existing.start}-{existing.end}"
+            )
+        else:
+            by_id[gene.seqid] = gene
+    return list(by_id.values())
+
+
 class GFF_record:
     def __init__(self, lines: List[str]):
         self.contig_id = lines[0]
@@ -551,7 +590,7 @@ class GFF_record:
         self.strand = lines[6]
         self.phase = lines[7]
         self.attribute = lines[8]
-        self.seqid = get_attributes_value(self.attribute)
+        self.seqid = get_gene_id_from_gff_attributes(self.attribute)
         self.length = self.end - self.start + 1
         self.read_count = 0
 
@@ -625,7 +664,14 @@ def justify_reads_alignment_properties(args, read, gene: GFF_record) -> bool:
 
 def cal_coverage(args):
     """Count reads per gene (bedtools-like)."""
-    genes = [GFF_record(line.rstrip("\n").split("\t")) for line in open(args.gff) if line.strip() and not line.startswith("#")]
+    genes = [
+        GFF_record(line.rstrip("\n").split("\t"))
+        for line in open(args.gff)
+        if line.strip() and not line.startswith("#")
+    ]
+    genes = dedupe_gff_genes(genes)
+    if not genes:
+        raise ValueError(f"No genes with valid IDs found in GFF: {args.gff}")
     with open(args.output, 'w') as coverage_file:
         if args.threads >= 2:
             results = multi_masks(args, genes, args.input)
