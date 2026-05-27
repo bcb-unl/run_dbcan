@@ -4,4 +4,4 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - dbcan=5.0.0
+  - dbcan=5.2.9
