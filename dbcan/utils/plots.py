@@ -16,6 +16,7 @@ from matplotlib import pyplot
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Polygon
 
+from dbcan.constants.expression_constants import PLOT_METRIC_CHOICES
 from dbcan.utils.utils import cgc_standard_line
 from dbcan.plot.syntenic_plot import (
     syntenic_plot,
@@ -721,12 +722,12 @@ def heatmap_plot(cfg: PlotsConfig, input_files: str, samples: str, show_abund: b
         data, _ = combined_datafram_based_on_first_col(pds, samples_list)
 
     if not col:
-        data = data.iloc[0 : int(top), :]
+        data = data.iloc[0 : int(top or 20), :]
     else:
         if value:
             data = data.loc[data[col].isin(value.split(","))]
         else:
-            data = data.iloc[0 : int(top), :]
+            data = data.iloc[0 : int(top or 20), :]
     data = data.set_index(data.iloc[:, 0])
     data = data[samples_list]
     sns.set_style("whitegrid")
@@ -810,12 +811,12 @@ def bar_plot(cfg: PlotsConfig, input_files: str, samples: str, plot_style: str, 
             data = data.rename(columns={old_abund_col: samples_list[0]})
 
     if not col:
-        data = data.iloc[0 : int(top), :]
+        data = data.iloc[0 : int(top or 20), :]
     else:
         if value:
             data = data.loc[data[col].isin(value.split(","))]
         else:
-            data = data.iloc[0 : int(top), :]
+            data = data.iloc[0 : int(top or 20), :]
 
     if vertical_bar:
         ax = data.plot.barh(x=x, y=samples_list)
@@ -860,6 +861,15 @@ click.rich_click.COMMAND_GROUPS = {
             "name": "Abundance Visualization",
             "commands": ["bar_plot", "heatmap_plot"],
         },
+        {
+            "name": "Expression / DEG Visualization",
+            "commands": [
+                "CGC_expression_plot",
+                "DEG_volcano",
+                "DEG_CGC_bar",
+                "CGC_expression_heatmap",
+            ],
+        },
     ]
 }
 
@@ -869,7 +879,8 @@ click.rich_click.COMMAND_GROUPS = {
     "function", 
     type=click.Choice([
         "CGC_plot", "CGC_coverage_plot", "CGC_synteny_plot", "CGC_synteny_coverage_plot",
-        "bar_plot", "heatmap_plot"
+        "bar_plot", "heatmap_plot",
+        "CGC_expression_plot", "DEG_volcano", "DEG_CGC_bar", "CGC_expression_heatmap",
     ])
 )
 @click.option("-i", "--input", "input_path", required=True, 
@@ -882,8 +893,8 @@ click.rich_click.COMMAND_GROUPS = {
               help="Read depth TSV (e.g. samtools depth) for coverage overlays.")
 @click.option("--samples", "samples", default=None, 
               help='Comma-separated sample labels matching bar/heatmap input order.')
-@click.option("--top", "top", default=20, show_default=True, type=int, 
-              help="Maximum number of categories to display.")
+@click.option("--top", "top", default=None, type=int,
+              help="Max categories (bar/heatmap, default 20) or max CGCs (CGC_expression_plot).")
 @click.option("--plot-style", "--plot_style", default="ggplot", show_default=True, 
               type=click.Choice(["ggplot", "seaborn", "seaborn-poster"]), 
               help="Matplotlib style preset for abundance charts.")
@@ -905,7 +916,40 @@ click.rich_click.COMMAND_GROUPS = {
               help="PDF path for saved bar plots.")
 @click.option("--show-annotation", "--show_annotation", is_flag=True,
               help="Draw per-gene labels on CGC diagrams (off by default for readability).")
-def cli(function, log_level, log_file, verbose, input_path, db_dir, cgcid, reads_count, samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map, col, value, pdf, show_annotation):
+@click.option("--expression-dir", "--expression_dir", default=None,
+              help="run_dbcan expression output directory (for expression/DEG plots).")
+@click.option(
+    "--metric",
+    default="log2_tpm",
+    type=click.Choice(list(PLOT_METRIC_CHOICES)),
+    show_default=True,
+    help="Y-axis / heatmap metric for CGC_expression_plot.",
+)
+@click.option(
+    "--heatmap-rows",
+    default="sample",
+    type=click.Choice(["sample", "condition"]),
+    show_default=True,
+    help="Per-CGC gene heatmap rows: sample or condition.",
+)
+@click.option("--deg-marker", "--deg_marker", default="both",
+              type=click.Choice(["both", "edge", "arrow", "star", "edge-only"]),
+              show_default=True, help="How to mark DEG genes on CGC diagrams.")
+@click.option("--only-de", "--only_de", is_flag=True,
+              help="Plot only differentially expressed CGCs (requires expression results).")
+@click.option("--plot-output-dir", "--plot_output_dir", default=None,
+              help="Output directory for batch CGC expression PDFs.")
+@click.option("--show-error-bars", "--show_error_bars", is_flag=True,
+              help="Show replicate-group error bars when replicate_group is in metadata.")
+@click.option("--max-cgc", default=500, type=int, show_default=True,
+              help="Maximum CGCs to plot without --force.")
+@click.option("--force", is_flag=True, help="Plot more than --max-cgc CGCs.")
+def cli(
+    function, log_level, log_file, verbose, input_path, db_dir, cgcid, reads_count,
+    samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map,
+    col, value, pdf, show_annotation, expression_dir, metric, heatmap_rows, deg_marker,
+    only_de, plot_output_dir, show_error_bars, max_cgc, force,
+):
     """# dbCAN plotting utilities
     
     ## CGC/PUL Visualization Commands
@@ -987,6 +1031,57 @@ def cli(function, log_level, log_file, verbose, input_path, db_dir, cgcid, reads
             logger.error("--samples is required for heatmap_plot")
             return
         heatmap_plot(cfg, input_files=input_path, samples=samples, show_abund=show_abund, cluster_map=cluster_map, palette=palette, col=col, value=value, plot_style=plot_style, top=top, show_fig=show_fig)
+    elif function == "CGC_expression_plot":
+        if not expression_dir:
+            logger.error("--expression-dir is required for CGC_expression_plot")
+            return
+        from dbcan.plot.expression_plots import run_cgc_expression_plots
+        dbcan_dir = input_path if os.path.isdir(input_path) else cfg.input_dir
+        out = plot_output_dir or os.path.join(expression_dir, "plots", "CGC_expression")
+        if pdf and cgcid and not plot_output_dir:
+            out = os.path.dirname(os.path.abspath(pdf)) or out
+        marker = "edge" if deg_marker == "edge-only" else deg_marker
+        run_cgc_expression_plots(
+            dbcan_dir=dbcan_dir,
+            expression_dir=expression_dir,
+            cgcid=cgcid,
+            only_de=only_de,
+            top=top,
+            metric=metric,
+            deg_marker=marker,
+            heatmap_rows=heatmap_rows,
+            output_dir=out,
+            show_error_bars=show_error_bars,
+            max_cgc=max_cgc,
+            force=force,
+            threads=1,
+        )
+    elif function == "DEG_volcano":
+        if not expression_dir:
+            logger.error("--expression-dir is required for DEG_volcano")
+            return
+        from dbcan.plot.expression_plots import plot_deg_volcano
+        from pathlib import Path
+        gene_deg = Path(expression_dir) / "gene_deg.tsv"
+        out_pdf = Path(pdf) if pdf != "bar_plot.pdf" else Path(expression_dir) / "plots" / "DEG_volcano.pdf"
+        plot_deg_volcano(gene_deg, out_pdf)
+    elif function == "DEG_CGC_bar":
+        if not expression_dir:
+            logger.error("--expression-dir is required for DEG_CGC_bar")
+            return
+        from dbcan.plot.expression_plots import plot_deg_cgc_bar
+        from pathlib import Path
+        cgc_deg = Path(expression_dir) / "cgc_deg.tsv"
+        out_pdf = Path(pdf) if pdf != "bar_plot.pdf" else Path(expression_dir) / "plots" / "DEG_CGC_bar.pdf"
+        plot_deg_cgc_bar(cgc_deg, out_pdf)
+    elif function == "CGC_expression_heatmap":
+        if not expression_dir:
+            logger.error("--expression-dir is required for CGC_expression_heatmap")
+            return
+        from dbcan.plot.expression_plots import plot_cgc_expression_heatmap
+        from pathlib import Path
+        out_pdf = Path(pdf) if pdf != "bar_plot.pdf" else Path(expression_dir) / "plots" / "heatmap.pdf"
+        plot_cgc_expression_heatmap(Path(expression_dir), out_pdf, top=top, cluster_map=cluster_map)
 
 
 if __name__ == "__main__":

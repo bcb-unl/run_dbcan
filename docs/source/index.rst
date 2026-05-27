@@ -122,6 +122,7 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
    user_guide/CGC_annotation
    user_guide/predict_CGC_substrate
    user_guide/CGC_plots
+   user_guide/expression_analysis
 
 .. toctree::
    :maxdepth: 1

@@ -631,5 +631,13 @@ If users only want to plot the synteny between the CGC and PUL:
     dbcan_plot CGC_synteny_plot -i SRF_MG.dbCAN --cgcid 'contig_12725|CGC1' 
 
 
+Automated expression and DEG analysis (optional)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Steps P8–P15 (BWA, ``dbcan_utils``, manual plotting) can be replaced by a single
+``run_dbcan expression`` run when all MT/MG samples map to the same MAG assembly.
+See :doc:`../user_guide/expression_analysis`.
+
+
 
 

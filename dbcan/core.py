@@ -281,6 +281,11 @@ def run_dbCAN_cgc_circle(config):
     cgc_plot = CGCCircosPlot(config)
     cgc_plot.plot()
 
+def run_dbcan_expression(config):
+    from dbcan.expression.pipeline import run_expression_pipeline
+    run_expression_pipeline(config)
+
+
 def run_dbCAN_topology_annotation(config):
     """
     Run SignalP6 to annotate proteins in overview.tsv with signal peptide information.

@@ -84,6 +84,12 @@ dbcan_asmfree="dbcan.utils.diamond_unassembly:cli"
 
 
 [project.optional-dependencies]
+expression = [
+    "pydeseq2>=0.4.0",
+    "anndata>=0.10.0",
+    # anndata 0.12.x uses np.dtypes.StringDType; NumPy 2.4+ renamed it to StrDType
+    "numpy>=2.0,<2.4",
+]
 dev = [
     "pre-commit",
     "twine>=6.1.0",
