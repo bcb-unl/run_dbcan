@@ -1,0 +1,9 @@
+# Conda base for Docker: CLI tools only. dbcan is installed via pip from the release source.
+name: run_dbcan
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10
+  - pip
+  - diamond

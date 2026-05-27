@@ -1,7 +1,15 @@
+# Deprecated for Docker builds: use environment.deps.yml (conda tools only).
+# dbcan is installed with `pip install .` from the release source in Dockerfile.
+#
+# Local micromamba create:
+#   micromamba env create -f docker/environment.deps.yml
+#   pip install .
+
 name: run_dbcan
 channels:
   - conda-forge
   - bioconda
-  - defaults
 dependencies:
-  - dbcan=5.2.9
+  - python=3.10
+  - pip
+  - diamond

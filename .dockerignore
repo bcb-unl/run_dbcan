@@ -3,3 +3,11 @@
 db
 docs
 tests
+.github
+.git
+**/__pycache__
+**/*.pyc
+*.egg-info
+.coverage
+htmlcov
+.pytest_cache
