@@ -104,6 +104,42 @@ To customize which analytical methods are used:
 
 Available method combinations: ``hmm``, ``diamond``, ``dbCANsub``, or any combination.
 
+Experimental dbCAN HMM policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Family-specific bit-score/coverage cutoffs and pair-specific overlap
+coexistence are opt-in research interfaces. They do not change the default
+pipeline. A policy is validated against the exact ``dbCAN.hmm`` SHA-256,
+profile count, schema, and HMM/family names before the search starts.
+
+.. code-block:: shell
+
+   run_dbcan CAZyme_annotation \
+     --input_raw_data proteins.faa \
+     --output_dir output \
+     --db_dir db \
+     --mode protein \
+     --methods hmm \
+     --dbcan-family-cutoff-file family_cutoffs.json \
+     --dbcan-overlap-coexistence-file overlap_pairs.json \
+     --allow-experimental-dbcan-cutoffs
+
+An experimental policy cannot run without
+``--allow-experimental-dbcan-cutoffs``. A family cutoff is applied before the
+normal overlap filter; families absent from the policy retain the legacy global
+E-value and coverage rule. Policy files calibrated for one taxon or one HMM
+release must not be reused automatically for another.
+
+Matched-region overlap resolution
+----------------------------------
+
+The post-cutoff overlap filter measures domain overlap on the insertion-free
+matched intervals of each hit (the residues aligned to a model position),
+rather than on the full alignment span. This prevents a long catalytic domain
+from deleting a short accessory domain (for example a CBM) that only sits inside
+the long domain's unmatched insertion. This behaviour is on by default; pass
+``--dbcan-legacy-overlap`` to restore the previous alignment-span behaviour.
+
 .. admonition:: Next Steps
 
    After completing CAZyme annotation, you may want to proceed to :doc:`CGC Information Generation <CGC_information_generation>` to identify CAZyme gene clusters.
@@ -111,4 +147,3 @@ Available method combinations: ``hmm``, ``diamond``, ``dbCANsub``, or any combin
 .. tip::
 
    Optional **signal peptide** and **transmembrane topology** columns (SignalP 6.0 / DeepTMHMM) require separate installation and testing. See :doc:`signalp6_deeptmhmm`.
-

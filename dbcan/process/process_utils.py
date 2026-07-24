@@ -18,13 +18,27 @@ def _to_path(p) -> Path:
     return p if isinstance(p, Path) else Path(p)
 
 
-def process_results(results: Optional[Iterable[List]], output_file, temp_hits_file: Optional[Path] = None) -> None:
+def process_results(
+    results: Optional[Iterable[List]],
+    output_file,
+    temp_hits_file: Optional[Path] = None,
+    coexistence_pairs: Optional[Set[frozenset[str]]] = None,
+    matched_overlap: bool = False,
+) -> None:
     """Write HMMER hits to disk and filter highly-overlapping domains (per target).
 
     Accepts either an in-memory iterable of hit rows or a temporary hits TSV file.
+    When ``matched_overlap`` is True the hit rows carry an extra matched-intervals
+    column that drives insertion-free overlap resolution (opt-in).
     """
     out_path = _to_path(output_file)
-    df = pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES)
+    # The matched-region mode appends one extra column to every emitted hit row.
+    column_names = (
+        PU.HMMER_COLUMN_NAMES + [PU.MATCHED_INTERVALS_COLUMN]
+        if matched_overlap
+        else PU.HMMER_COLUMN_NAMES
+    )
+    df = pd.DataFrame(columns=column_names)
 
     try:
         read_start = time.time()
@@ -40,18 +54,18 @@ def process_results(results: Optional[Iterable[List]], output_file, temp_hits_fi
                     temp_hits_file,
                     sep='\t',
                     header=None,
-                    names=PU.HMMER_COLUMN_NAMES,
+                    names=column_names,
                     chunksize=100000,
                 ):
                     total_rows += len(chunk)
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(temp_hits_file, sep='\t', header=None, names=PU.HMMER_COLUMN_NAMES)
+                df = pd.read_csv(temp_hits_file, sep='\t', header=None, names=column_names)
                 total_rows = len(df)
         elif results:
             # results provided in-memory
-            df = pd.DataFrame(list(results), columns=PU.HMMER_COLUMN_NAMES)
+            df = pd.DataFrame(list(results), columns=column_names)
             total_rows = len(df)
 
         read_elapsed = time.time() - read_start
@@ -78,7 +92,9 @@ def process_results(results: Optional[Iterable[List]], output_file, temp_hits_fi
         df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN], inplace=True)
 
         filter_start = time.time()
-        df_filtered = filter_overlaps(df)
+        df_filtered = filter_overlaps(
+            df, coexistence_pairs=coexistence_pairs, matched_overlap=matched_overlap
+        )
         filter_elapsed = time.time() - filter_start
         logger.info(
             f"process_results: filtered overlaps from {len(df)} to {len(df_filtered)} rows "
@@ -99,8 +115,58 @@ def process_results(results: Optional[Iterable[List]], output_file, temp_hits_fi
                 logger.debug("Failed to remove temp hits file: %s", temp_hits_file)
 
 
-def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLAP_RATIO_THRESHOLD) -> pd.DataFrame:
-    """Within each Target Name, remove strongly-overlapping hits; keep better i-Evalue."""
+def _base_hmm_family(value: str) -> str:
+    name = str(value)
+    if name.endswith(".hmm"):
+        name = name[:-4]
+    return name.split("_", 1)[0]
+
+
+def _parse_matched_intervals(value, ali_from, ali_to):
+    """Parse a "start:end,..." matched-intervals string into 1-based inclusive
+    (start, end) tuples. Falls back to the single ali span when the value is
+    absent/empty, so a domain without matched data behaves exactly like the
+    legacy ali-span rule."""
+    text = "" if value is None else str(value).strip()
+    if not text or text.lower() == "nan":
+        return [(int(ali_from), int(ali_to))]
+    intervals = []
+    for part in text.split(","):
+        if ":" not in part:
+            continue
+        a, b = part.split(":", 1)
+        intervals.append((int(float(a)), int(float(b))))
+    return intervals or [(int(ali_from), int(ali_to))]
+
+
+def _intervals_length(intervals):
+    """Total residues covered by a set of 1-based inclusive intervals."""
+    return sum(b - a + 1 for a, b in intervals)
+
+
+def _intervals_overlap(a_intervals, b_intervals):
+    """Overlapping residues between two sets of 1-based inclusive intervals."""
+    total = 0
+    for a0, a1 in a_intervals:
+        for b0, b1 in b_intervals:
+            total += max(0, min(a1, b1) - max(a0, b0) + 1)
+    return total
+
+
+def filter_overlaps(
+    df: pd.DataFrame,
+    overlap_ratio_threshold: float = PU.OVERLAP_RATIO_THRESHOLD,
+    coexistence_pairs: Optional[Set[frozenset[str]]] = None,
+    matched_overlap: bool = False,
+) -> pd.DataFrame:
+    """Within each Target Name, remove strongly-overlapping hits; keep better i-Evalue.
+
+    When ``matched_overlap`` is True and the optional ``Matched Intervals`` column is
+    present, overlap and domain length are measured on the insertion-free matched
+    target intervals instead of the alignment span. This prevents a long catalytic
+    domain from "covering" a short accessory domain (e.g. a CBM) that only sits
+    inside the long domain's unmatched insertion. Default (False) is unchanged.
+    """
     required = {PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN}
     if not required.issubset(df.columns):
         missing = required - set(df.columns)
@@ -124,6 +190,19 @@ def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLA
         f"(avg {avg_per_target:.1f} hits/target)"
     )
 
+    # Opt-in matched-region mode only activates when the extra column was emitted.
+    use_matched = bool(matched_overlap) and PU.MATCHED_INTERVALS_COLUMN in df.columns
+    if matched_overlap and not use_matched:
+        logger.warning(
+            "filter_overlaps: matched_overlap requested but '%s' column absent; "
+            "falling back to ali-span overlap",
+            PU.MATCHED_INTERVALS_COLUMN,
+        )
+
+    def _matched_iv(row):
+        value = row[PU.MATCHED_INTERVALS_COLUMN] if PU.MATCHED_INTERVALS_COLUMN in row else None
+        return _parse_matched_intervals(value, row[PU.TARGET_FROM_COLUMN], row[PU.TARGET_TO_COLUMN])
+
     kept_rows: List[pd.Series] = []
     start_time = time.time()
 
@@ -137,15 +216,34 @@ def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLA
 
             last = keep[-1]
             cur = group.iloc[i]
-            overlap = min(last[PU.TARGET_TO_COLUMN], cur[PU.TARGET_TO_COLUMN]) - max(
-                last[PU.TARGET_FROM_COLUMN], cur[PU.TARGET_FROM_COLUMN]
-            )
-            if overlap > 0:
+            if use_matched:
+                # Measure overlap on insertion-free matched intervals (inclusive).
+                iv_last = _matched_iv(last)
+                iv_cur = _matched_iv(cur)
+                overlap = _intervals_overlap(iv_last, iv_cur)
+                len_last = max(1, _intervals_length(iv_last))
+                len_cur = max(1, _intervals_length(iv_cur))
+            else:
+                # Legacy ali-span overlap (default; unchanged).
+                overlap = min(last[PU.TARGET_TO_COLUMN], cur[PU.TARGET_TO_COLUMN]) - max(
+                    last[PU.TARGET_FROM_COLUMN], cur[PU.TARGET_FROM_COLUMN]
+                )
                 len_last = max(1, (last[PU.TARGET_TO_COLUMN] - last[PU.TARGET_FROM_COLUMN]))
                 len_cur = max(1, (cur[PU.TARGET_TO_COLUMN] - cur[PU.TARGET_FROM_COLUMN]))
+            if overlap > 0:
                 r_last = overlap / len_last
                 r_cur = overlap / len_cur
                 if r_last > overlap_ratio_threshold or r_cur > overlap_ratio_threshold:
+                    if coexistence_pairs and PU.HMM_NAME_COLUMN in df.columns:
+                        pair = frozenset(
+                            (
+                                _base_hmm_family(last[PU.HMM_NAME_COLUMN]),
+                                _base_hmm_family(cur[PU.HMM_NAME_COLUMN]),
+                            )
+                        )
+                        if pair in coexistence_pairs:
+                            keep.append(cur)
+                            continue
                     last_eval = last[PU.IEVALUE_COLUMN] if PU.IEVALUE_COLUMN in last else float('inf')
                     cur_eval = cur[PU.IEVALUE_COLUMN] if PU.IEVALUE_COLUMN in cur else float('inf')
                     try:

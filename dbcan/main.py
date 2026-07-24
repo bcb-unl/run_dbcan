@@ -230,6 +230,26 @@ def cgc_circle_plot_cmd(ctx, log_level, log_file, verbose, **kwargs):
     run_dbCAN_cgc_circle(config)
 
 
+def _imply_fungi_from_taxon_profile(ctx, merged):
+    """Fold the fungi CAZyme profile and the fungi TF-HMM step under one switch.
+
+    ``--dbcan-taxon-profile fungi`` selects the shipped fungi CAZyme cutoff/overlap
+    policy for step 1 (CAZyme annotation). Here we also turn on the fungi TF-HMM
+    search (step 2, gff_process) so a single flag activates the whole fungi mode,
+    mirroring an antiSMASH-style ``--taxon fungi``. An explicit ``--fungi`` or
+    ``--no-fungi`` on the command line always wins over this implication.
+    """
+    if merged.get("taxon_profile_dbcan") != "fungi":
+        return
+    try:
+        from click.core import ParameterSource
+        explicit = ctx.get_parameter_source("fungi") is not ParameterSource.DEFAULT
+    except Exception:
+        explicit = False
+    if not explicit:
+        merged["fungi"] = True
+
+
 @cli.command('easy_CGC')
 @logging_options
 @general_options
@@ -255,6 +275,7 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
         "log_file": log_file,
         "verbose": verbose,
     }
+    _imply_fungi_from_taxon_profile(ctx, merged)
     try:
         # step 1: CAZyme annotation
         click.echo("step 1/3  CAZyme annotation...")
@@ -297,6 +318,7 @@ def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
         "log_file": log_file,
         "verbose": verbose,
     }
+    _imply_fungi_from_taxon_profile(ctx, merged)
     try:
         # step 1: CAZyme annotation
         click.echo("step 1/4  CAZyme annotation...")
