@@ -56,6 +56,9 @@ class PyHMMERProcessor(ABC):
     def __init__(self, config: PyHMMERConfig):
         self.config = config
         self._hmm_profile_count: Optional[int] = None
+        # Matched-region overlap applies to every pyhmmer library (dbCAN, dbCAN-sub,
+        # TF, STP); on by default, opt out via config.matched_overlap = False.
+        self.matched_overlap = bool(getattr(config, "matched_overlap", True))
         self._validate_basic()
 
     # -------- Properties --------
@@ -624,7 +627,6 @@ class PyHMMERDBCANProcessor(PyHMMERProcessor):
         self.family_cutoff_policy = None
         self.overlap_coexistence_policy = None
         super().__init__(config)
-        self.matched_overlap = bool(getattr(config, "matched_overlap", True))
         if not self.matched_overlap:
             logger.warning(
                 "Using legacy ali-span overlap resolution (--dbcan-legacy-overlap); "
