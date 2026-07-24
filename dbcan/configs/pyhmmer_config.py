@@ -37,6 +37,9 @@ class PyHMMERDBCANConfig(PyHMMERConfig):
     family_cutoff_file: Optional[str] = None
     overlap_coexistence_file: Optional[str] = None
     allow_experimental_dbcan_cutoffs: bool = False
+    # Named taxon profile (e.g. "fungi") that bundles the family-cutoff and overlap
+    # coexistence policies shipped with dbCAN; resolved in PyHMMERDBCANProcessor.
+    taxon_profile: Optional[str] = None
     # Resolve post-cutoff domain overlaps on insertion-free matched intervals
     # instead of the alignment span. On by default (a correctness fix that stops a
     # long catalytic domain from deleting a short accessory domain inside its

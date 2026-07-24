@@ -1,0 +1,210 @@
+{
+ "schema_version": 1,
+ "profile_id": "fungi_dbcan_2025_recal_v3",
+ "deployment_status": "experimental",
+ "dbcan_hmm_sha256": "396c791fb13defab152864d8046687ef03b492937ec6f9bbab008bc77cbaa7a5",
+ "hmm_profile_count": 875,
+ "search_domain_evalue_max": 10.0,
+ "families": {
+  "AA10.hmm": {
+   "min_domain_bitscore": 29.393,
+   "min_hmm_coverage": 0.224,
+   "decision_status": "candidate"
+  },
+  "CBM1.hmm": {
+   "min_domain_bitscore": 22.977,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM13.hmm": {
+   "min_domain_bitscore": 25.692,
+   "min_hmm_coverage": 0.356,
+   "decision_status": "candidate"
+  },
+  "CBM14.hmm": {
+   "min_domain_bitscore": 29.522,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM18.hmm": {
+   "min_domain_bitscore": 13.342,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM21.hmm": {
+   "min_domain_bitscore": 37.895,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM24.hmm": {
+   "min_domain_bitscore": 39.957,
+   "min_hmm_coverage": 0.474,
+   "decision_status": "candidate"
+  },
+  "CBM25.hmm": {
+   "min_domain_bitscore": 26.517,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM26.hmm": {
+   "min_domain_bitscore": 33.463,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM29.hmm": {
+   "min_domain_bitscore": 17.832,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM35.hmm": {
+   "min_domain_bitscore": 13.741,
+   "min_hmm_coverage": 0.454,
+   "decision_status": "candidate"
+  },
+  "CBM43.hmm": {
+   "min_domain_bitscore": 25.934,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM48.hmm": {
+   "min_domain_bitscore": 12.415,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM5.hmm": {
+   "min_domain_bitscore": 20.398,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM50.hmm": {
+   "min_domain_bitscore": 10.926,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM52.hmm": {
+   "min_domain_bitscore": 32.42,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM6.hmm": {
+   "min_domain_bitscore": 33.857,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM63.hmm": {
+   "min_domain_bitscore": 30.521,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "CBM91.hmm": {
+   "min_domain_bitscore": 44.287,
+   "min_hmm_coverage": 0.485,
+   "decision_status": "candidate"
+  },
+  "CBM92.hmm": {
+   "min_domain_bitscore": 32.426,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "GH140.hmm": {
+   "min_domain_bitscore": 36.697,
+   "min_hmm_coverage": 0.245,
+   "decision_status": "candidate"
+  },
+  "GH17.hmm": {
+   "min_domain_bitscore": 14.262,
+   "min_hmm_coverage": 0.222,
+   "decision_status": "candidate"
+  },
+  "GH23.hmm": {
+   "min_domain_bitscore": 24.242,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "GH25.hmm": {
+   "min_domain_bitscore": 34.277,
+   "min_hmm_coverage": 0.339,
+   "decision_status": "candidate"
+  },
+  "GH26.hmm": {
+   "min_domain_bitscore": 34.896,
+   "min_hmm_coverage": 0.201,
+   "decision_status": "candidate"
+  },
+  "GH39.hmm": {
+   "min_domain_bitscore": 35.264,
+   "min_hmm_coverage": 0.193,
+   "decision_status": "candidate"
+  },
+  "GH45.hmm": {
+   "min_domain_bitscore": 36.373,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "GH45_1.hmm": {
+   "min_domain_bitscore": 36.373,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "GH45_2.hmm": {
+   "min_domain_bitscore": 36.373,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "GH45_3.hmm": {
+   "min_domain_bitscore": 36.373,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "GH49.hmm": {
+   "min_domain_bitscore": 70.037,
+   "min_hmm_coverage": 0.11,
+   "decision_status": "candidate"
+  },
+  "GH63.hmm": {
+   "min_domain_bitscore": 59.956,
+   "min_hmm_coverage": 0.193,
+   "decision_status": "candidate"
+  },
+  "GH74.hmm": {
+   "min_domain_bitscore": 44.89,
+   "min_hmm_coverage": 0.318,
+   "decision_status": "candidate"
+  },
+  "GT1.hmm": {
+   "min_domain_bitscore": 16.633,
+   "min_hmm_coverage": 0.107,
+   "decision_status": "candidate"
+  },
+  "GT114.hmm": {
+   "min_domain_bitscore": 44.075,
+   "min_hmm_coverage": 0.463,
+   "decision_status": "candidate"
+  },
+  "GT32.hmm": {
+   "min_domain_bitscore": 32.9,
+   "min_hmm_coverage": 0.5,
+   "decision_status": "candidate"
+  },
+  "GT4.hmm": {
+   "min_domain_bitscore": 32.297,
+   "min_hmm_coverage": 0.388,
+   "decision_status": "candidate"
+  },
+  "GT41.hmm": {
+   "min_domain_bitscore": 123.136,
+   "min_hmm_coverage": 0.108,
+   "decision_status": "candidate"
+  },
+  "GT48.hmm": {
+   "min_domain_bitscore": 97.43,
+   "min_hmm_coverage": 0.1,
+   "decision_status": "candidate"
+  },
+  "GT8.hmm": {
+   "min_domain_bitscore": 37.435,
+   "min_hmm_coverage": 0.412,
+   "decision_status": "candidate"
+  }
+ }
+}

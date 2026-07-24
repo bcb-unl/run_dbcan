@@ -272,6 +272,17 @@ def pyhmmer_dbcan_options(func):
         ),
     )(func)
     func = click.option(
+        '--dbcan-taxon-profile',
+        'taxon_profile_dbcan',
+        type=click.Choice(['fungi'], case_sensitive=False),
+        default=None,
+        help=(
+            'Activate a bundled taxon CAZyme profile (currently: fungi). It loads the '
+            'shipped per-family cutoff and overlap-coexistence policies calibrated for '
+            'that taxon; explicit --dbcan-*-file options override the bundle.'
+        ),
+    )(func)
+    func = click.option(
         '--e_value_threshold_dbcan',
         type=float,
         help='Maximum domain-independent E-value to keep a dbCAN HMM hit (pyhmmer; CAZyme_annotation / easy_* step 1 only).',

@@ -630,6 +630,28 @@ class PyHMMERDBCANProcessor(PyHMMERProcessor):
                 "Using legacy ali-span overlap resolution (--dbcan-legacy-overlap); "
                 "matched-region overlap is disabled"
             )
+        # A named taxon profile (e.g. --dbcan-taxon-profile fungi) bundles the
+        # family-cutoff and coexistence policies shipped in dbcan/data/taxon_profiles.
+        # Explicit --dbcan-*-file arguments still take precedence over the bundle.
+        taxon_profile = getattr(config, "taxon_profile", None)
+        if taxon_profile:
+            from pathlib import Path as _Path
+            profile_dir = _Path(__file__).resolve().parent.parent / "data" / "taxon_profiles"
+            cutoff_path = profile_dir / f"{taxon_profile}.cutoff.json"
+            coexist_path = profile_dir / f"{taxon_profile}.coexistence.json"
+            if not cutoff_path.exists():
+                raise ValueError(
+                    f"unknown dbCAN taxon profile '{taxon_profile}': {cutoff_path} not found"
+                )
+            if not config.family_cutoff_file:
+                config.family_cutoff_file = str(cutoff_path)
+            if not config.overlap_coexistence_file and coexist_path.exists():
+                config.overlap_coexistence_file = str(coexist_path)
+            # Opting into a bundled profile authorizes its experimental status.
+            config.allow_experimental_dbcan_cutoffs = True
+            logger.warning(
+                "Activated dbCAN taxon profile '%s' from %s", taxon_profile, profile_dir
+            )
         if config.family_cutoff_file:
             self.family_cutoff_policy = load_dbcan_family_cutoff_policy(
                 config.family_cutoff_file,
