@@ -17,6 +17,10 @@ from dbcan.configs.pyhmmer_config import (
     PyHMMERTFConfig,
     PyHMMERPfamConfig
 )
+from dbcan.configs.family_cutoff import (
+    load_dbcan_family_cutoff_policy,
+    load_dbcan_overlap_coexistence_policy,
+)
 from dbcan.process.process_utils import process_results
 from dbcan.process.process_dbcan_sub import DBCANSUBProcessor
 from dbcan.utils.memory_monitor import MemoryMonitor, get_memory_monitor
@@ -76,6 +80,16 @@ class PyHMMERProcessor(ABC):
         return float(self.config.coverage_threshold)
 
     @property
+    def search_domain_evalue_threshold(self) -> float:
+        """Permissive HMMER candidate threshold before local hit filtering."""
+        return self.e_value_threshold
+
+    @property
+    def hmmsearch_extra_options(self) -> dict:
+        """Additional HMMER reporting/inclusion options for candidate collection."""
+        return {}
+
+    @property
     def hmmer_cpu(self) -> int:
         return int(self.config.threads)
 
@@ -106,6 +120,71 @@ class PyHMMERProcessor(ABC):
             logger.info("Using fixed HMMER Z=%s for %s", self._hmm_profile_count, self.hmm_file.name)
         return self._hmm_profile_count
 
+    def _passes_domain(
+        self,
+        hmm_name: str,
+        i_evalue: float,
+        coverage: float,
+        bitscore: float,
+    ) -> bool:
+        """Apply the legacy global filter; dbCAN overrides this when a policy is active."""
+        return i_evalue < self.e_value_threshold and coverage > self.coverage_threshold
+
+    @staticmethod
+    def _matched_intervals(aln) -> str:
+        """Return the insertion-free matched target intervals of a domain alignment
+        as a comma-separated "start:end" string (1-based inclusive). A target residue
+        is a match-state residue when its aligned model column is not an insert
+        (hmm consensus char != '.'); insert residues are excluded, so a domain with an
+        internal insertion becomes several disjoint intervals."""
+        hmm_seq = aln.hmm_sequence
+        target_seq = aln.target_sequence
+        tpos = aln.target_from
+        intervals = []
+        for hc, tc in zip(hmm_seq, target_seq):
+            if tc.isalpha():            # a target residue is consumed at this column
+                if hc != '.':           # match state (not an insert)
+                    if intervals and tpos == intervals[-1][1] + 1:
+                        intervals[-1][1] = tpos
+                    else:
+                        intervals.append([tpos, tpos])
+                tpos += 1
+        return ",".join(f"{a}:{b}" for a, b in intervals)
+
+    def _domain_to_row(self, domain, hmm_file_stem: str):
+        """Convert an accepted pyhmmer domain to the legacy output row."""
+        aln = domain.alignment
+        coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
+        exact_hmm_name = _safe_decode(aln.hmm_name)
+        output_hmm_name = exact_hmm_name
+        if P.GT2_PREFIX in output_hmm_name:
+            output_hmm_name = P.GT2_FAMILY_NAME
+        i_evalue = domain.i_evalue
+        bitscore = domain.score
+        if not self._passes_domain(exact_hmm_name, i_evalue, coverage, bitscore):
+            return None
+        row = [
+            output_hmm_name,
+            aln.hmm_length,
+            _safe_decode(aln.target_name),
+            aln.target_length,
+            i_evalue,
+            aln.hmm_from,
+            aln.hmm_to,
+            aln.target_from,
+            aln.target_to,
+            coverage,
+            hmm_file_stem,
+        ]
+        # Opt-in: append the insertion-free matched intervals as one extra column.
+        if getattr(self, "matched_overlap", False):
+            row.append(self._matched_intervals(aln))
+        return row
+
+    def _domains_for_hit(self, hit):
+        """Return legacy included domains; an opt-in policy may inspect the reported tail."""
+        return hit.domains.included
+
     # -------- Core search --------
     def _process_sequence_block(
         self,
@@ -133,35 +212,12 @@ class PyHMMERProcessor(ABC):
         hit_count = 0
         
         try:
-            for hits in pyhmmer.hmmsearch(
-                hmms,
-                seq_block,
-                cpus=cpus,
-                domE=self.e_value_threshold,
-                Z=z_value,
-            ):
+            for hits in self._iter_hmmsearch_hits(hmms, seq_block, cpus=cpus, z_value=z_value):
                 for hit in hits:
-                    for domain in hit.domains.included:
-                        aln = domain.alignment
-                        coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                        hmm_name = _safe_decode(aln.hmm_name)
-                        if P.GT2_PREFIX in hmm_name:
-                            hmm_name = P.GT2_FAMILY_NAME
-                        i_evalue = domain.i_evalue
-                        if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
-                            hit_buffer.append([
-                                hmm_name,
-                                aln.hmm_length,
-                                _safe_decode(aln.target_name),
-                                aln.target_length,
-                                i_evalue,
-                                aln.hmm_from,
-                                aln.hmm_to,
-                                aln.target_from,
-                                aln.target_to,
-                                coverage,
-                                hmm_file_stem
-                            ])
+                    for domain in self._domains_for_hit(hit):
+                        row = self._domain_to_row(domain, hmm_file_stem)
+                        if row is not None:
+                            hit_buffer.append(row)
                             hit_count += 1
         except Exception as e:
             logger.error(f"Error processing sequence block: {e}")
@@ -171,12 +227,16 @@ class PyHMMERProcessor(ABC):
 
     def _iter_hmmsearch_hits(self, hmms_or_hmmfile, targets, cpus: int, z_value: int):
         """Small wrapper so we have exactly one place to tune hmmsearch kwargs."""
+        options = {
+            "cpus": cpus,
+            "domE": self.search_domain_evalue_threshold,
+            "Z": z_value,
+            **self.hmmsearch_extra_options,
+        }
         return pyhmmer.hmmsearch(
             hmms_or_hmmfile,
             targets,
-            cpus=cpus,
-            domE=self.e_value_threshold,
-            Z=z_value,
+            **options,
         )
     
     def _calculate_batch_size(self, input_faa: Path, memory_monitor: MemoryMonitor, retry_count: int = 0) -> int:
@@ -264,6 +324,7 @@ class PyHMMERProcessor(ABC):
         logger.info(
             f"Running HMM search: hmm={self.hmm_file.name} input={self.input_faa.name} "
             f"out={self.output_file.name} evalue={self.e_value_threshold} "
+            f"candidate_domE={self.search_domain_evalue_threshold} "
             f"cov={self.coverage_threshold} cpus={cpus}"
         )
 
@@ -403,27 +464,10 @@ class PyHMMERProcessor(ABC):
                             if hmms is not None:
                                 for hits in self._iter_hmmsearch_hits(hmms, targets, cpus=cpus, z_value=hmm_z):
                                     for hit in hits:
-                                        for domain in hit.domains.included:
-                                            aln = domain.alignment
-                                            coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                                            hmm_name = _safe_decode(aln.hmm_name)
-                                            if P.GT2_PREFIX in hmm_name:
-                                                hmm_name = P.GT2_FAMILY_NAME
-                                            i_evalue = domain.i_evalue
-                                            if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
-                                                hit_buffer.append([
-                                                    hmm_name,
-                                                    aln.hmm_length,
-                                                    _safe_decode(aln.target_name),
-                                                    aln.target_length,
-                                                    i_evalue,
-                                                    aln.hmm_from,
-                                                    aln.hmm_to,
-                                                    aln.target_from,
-                                                    aln.target_to,
-                                                    coverage,
-                                                    hmm_file_stem,
-                                                ])
+                                        for domain in self._domains_for_hit(hit):
+                                            row = self._domain_to_row(domain, hmm_file_stem)
+                                            if row is not None:
+                                                hit_buffer.append(row)
                                                 stats["total_hits"] += 1
                                                 if len(hit_buffer) >= buffer_flush_threshold:
                                                     self._flush_hit_buffer(hit_buffer, writer)
@@ -432,27 +476,10 @@ class PyHMMERProcessor(ABC):
                                 with pyhmmer.plan7.HMMFile(str(self.hmm_file)) as hmm_file_handle:
                                     for hits in self._iter_hmmsearch_hits(hmm_file_handle, targets, cpus=cpus, z_value=hmm_z):
                                         for hit in hits:
-                                            for domain in hit.domains.included:
-                                                aln = domain.alignment
-                                                coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
-                                                hmm_name = _safe_decode(aln.hmm_name)
-                                                if P.GT2_PREFIX in hmm_name:
-                                                    hmm_name = P.GT2_FAMILY_NAME
-                                                i_evalue = domain.i_evalue
-                                                if i_evalue < self.e_value_threshold and coverage > self.coverage_threshold:
-                                                    hit_buffer.append([
-                                                        hmm_name,
-                                                        aln.hmm_length,
-                                                        _safe_decode(aln.target_name),
-                                                        aln.target_length,
-                                                        i_evalue,
-                                                        aln.hmm_from,
-                                                        aln.hmm_to,
-                                                        aln.target_from,
-                                                        aln.target_to,
-                                                        coverage,
-                                                        hmm_file_stem,
-                                                    ])
+                                            for domain in self._domains_for_hit(hit):
+                                                row = self._domain_to_row(domain, hmm_file_stem)
+                                                if row is not None:
+                                                    hit_buffer.append(row)
                                                     stats["total_hits"] += 1
                                                     if len(hit_buffer) >= buffer_flush_threshold:
                                                         self._flush_hit_buffer(hit_buffer, writer)
@@ -574,7 +601,17 @@ class PyHMMERProcessor(ABC):
                 f"final: {stats['batch_size_history'][-1]})"
             )
         
-        process_results(None, str(self.output_file), temp_hits_file=raw_hits_file)
+        process_results(
+            None,
+            str(self.output_file),
+            temp_hits_file=raw_hits_file,
+            coexistence_pairs=self.overlap_coexistence_pairs,
+            matched_overlap=getattr(self, "matched_overlap", False),
+        )
+
+    @property
+    def overlap_coexistence_pairs(self):
+        return None
 
     # -------- Orchestration --------
     def run(self):
@@ -584,7 +621,84 @@ class PyHMMERProcessor(ABC):
 class PyHMMERDBCANProcessor(PyHMMERProcessor):
 
     def __init__(self, config: PyHMMERDBCANConfig):
+        self.family_cutoff_policy = None
+        self.overlap_coexistence_policy = None
         super().__init__(config)
+        self.matched_overlap = bool(getattr(config, "matched_overlap", True))
+        if not self.matched_overlap:
+            logger.warning(
+                "Using legacy ali-span overlap resolution (--dbcan-legacy-overlap); "
+                "matched-region overlap is disabled"
+            )
+        if config.family_cutoff_file:
+            self.family_cutoff_policy = load_dbcan_family_cutoff_policy(
+                config.family_cutoff_file,
+                self.hmm_file,
+                allow_experimental=config.allow_experimental_dbcan_cutoffs,
+            )
+            policy = self.family_cutoff_policy
+            logger.warning(
+                "Activated dbCAN family cutoff policy profile_id=%s status=%s "
+                "families=%s policy_sha256=%s hmm_sha256=%s",
+                policy.profile_id,
+                policy.deployment_status,
+                len(policy.rules),
+                policy.source_sha256,
+                policy.dbcan_hmm_sha256,
+            )
+        if config.overlap_coexistence_file:
+            self.overlap_coexistence_policy = load_dbcan_overlap_coexistence_policy(
+                config.overlap_coexistence_file,
+                self.hmm_file,
+                allow_experimental=config.allow_experimental_dbcan_cutoffs,
+            )
+            policy = self.overlap_coexistence_policy
+            logger.warning(
+                "Activated dbCAN overlap coexistence policy policy_id=%s status=%s "
+                "pairs=%s policy_sha256=%s hmm_sha256=%s",
+                policy.policy_id,
+                policy.deployment_status,
+                len(policy.pairs),
+                policy.source_sha256,
+                policy.dbcan_hmm_sha256,
+            )
+
+    @property
+    def overlap_coexistence_pairs(self):
+        if self.overlap_coexistence_policy is None:
+            return None
+        return set(self.overlap_coexistence_policy.pairs)
+
+    @property
+    def search_domain_evalue_threshold(self) -> float:
+        if self.family_cutoff_policy is None:
+            return super().search_domain_evalue_threshold
+        return self.family_cutoff_policy.search_domain_evalue_max
+
+    @property
+    def hmmsearch_extra_options(self) -> dict:
+        return {}
+
+    def _domains_for_hit(self, hit):
+        if self.family_cutoff_policy is None:
+            return super()._domains_for_hit(hit)
+        return hit.domains
+
+    def _passes_domain(
+        self,
+        hmm_name: str,
+        i_evalue: float,
+        coverage: float,
+        bitscore: float,
+    ) -> bool:
+        if self.family_cutoff_policy is not None:
+            rule = self.family_cutoff_policy.rules.get(hmm_name)
+            if rule is not None:
+                return (
+                    bitscore >= rule.min_domain_bitscore
+                    and coverage >= rule.min_hmm_coverage
+                )
+        return super()._passes_domain(hmm_name, i_evalue, coverage, bitscore)
 
 
 class PyHMMERDBCANSUBProcessor(PyHMMERProcessor):
@@ -640,5 +754,3 @@ class PyHMMERPfamProcessor(PyHMMERProcessor):
     def input_faa(self) -> Path:
         fname = P.NULL_PROTEIN_FILE if self.config.null_from_gff else P.INPUT_PROTEIN_FILE
         return Path(self.config.output_dir) / fname
-
-

@@ -34,6 +34,14 @@ class PyHMMERDBCANConfig(PyHMMERConfig):
     output_file: str = P.DBCAN_HMM_RESULT_FILE
     e_value_threshold: float = P.DBCAN_EVALUE_DEFAULT
     coverage_threshold: float = P.DBCAN_COVERAGE_DEFAULT
+    family_cutoff_file: Optional[str] = None
+    overlap_coexistence_file: Optional[str] = None
+    allow_experimental_dbcan_cutoffs: bool = False
+    # Resolve post-cutoff domain overlaps on insertion-free matched intervals
+    # instead of the alignment span. On by default (a correctness fix that stops a
+    # long catalytic domain from deleting a short accessory domain inside its
+    # insertion); pass --dbcan-legacy-overlap to restore the old ali-span behaviour.
+    matched_overlap: bool = True
 
 # dbCAN-sub
 @dataclass
@@ -70,4 +78,3 @@ class PyHMMERPfamConfig(PyHMMERConfig):
     e_value_threshold: float = P.PFAM_EVALUE_DEFAULT
     coverage_threshold: float = P.PFAM_COVERAGE_DEFAULT
     null_from_gff: bool = False
-

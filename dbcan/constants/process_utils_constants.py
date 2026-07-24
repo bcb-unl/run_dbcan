@@ -19,6 +19,10 @@ TARGET_FROM_COLUMN = "Target From"
 TARGET_TO_COLUMN = "Target To"
 COVERAGE_COLUMN = "Coverage"
 HMM_FILE_COLUMN = "HMM File Name"
+# Optional extra column, emitted only when the opt-in matched-region overlap mode
+# is active. It carries the insertion-free matched target intervals of a domain as
+# a comma-separated "start:end" string (1-based inclusive), e.g. "21:252,340:414".
+MATCHED_INTERVALS_COLUMN = "Matched Intervals"
 ANNOTATE_FROM_COLUMN = "Annotate From"
 ANNOTATE_TO_COLUMN = "Annotate To"
 

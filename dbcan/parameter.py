@@ -234,6 +234,44 @@ def pyhmmer_dbcan_options(func):
         " Applies to pyhmmer TF/STP in gff_process (easy_* step 2) as well—no separate TF/STP memory options."
     )
     func = click.option(
+        '--dbcan-family-cutoff-file',
+        'family_cutoff_file_dbcan',
+        type=click.Path(exists=True, dir_okay=False, path_type=str),
+        default=None,
+        help=(
+            'Opt-in JSON policy with exact-HMM family bit-score/coverage cutoffs. '
+            'The policy is verified against the dbCAN HMM SHA-256 and model count.'
+        ),
+    )(func)
+    func = click.option(
+        '--allow-experimental-dbcan-cutoffs',
+        'allow_experimental_dbcan_cutoffs_dbcan',
+        is_flag=True,
+        default=False,
+        help='Explicitly authorize a policy whose deployment_status is experimental.',
+    )(func)
+    func = click.option(
+        '--dbcan-overlap-coexistence-file',
+        'overlap_coexistence_file_dbcan',
+        type=click.Path(exists=True, dir_okay=False, path_type=str),
+        default=None,
+        help=(
+            'Opt-in JSON allowlist of unordered base-family pairs that may coexist '
+            'despite the normal dbCAN HMM overlap rule.'
+        ),
+    )(func)
+    func = click.option(
+        '--dbcan-matched-overlap/--dbcan-legacy-overlap',
+        'matched_overlap_dbcan',
+        default=True,
+        help=(
+            'Resolve post-cutoff domain overlaps on insertion-free matched intervals '
+            '(default) so a long catalytic domain does not delete a short accessory '
+            'domain inside its insertion. Use --dbcan-legacy-overlap for the old '
+            'alignment-span behaviour.'
+        ),
+    )(func)
+    func = click.option(
         '--e_value_threshold_dbcan',
         type=float,
         help='Maximum domain-independent E-value to keep a dbCAN HMM hit (pyhmmer; CAZyme_annotation / easy_* step 1 only).',
@@ -1094,8 +1132,6 @@ def logging_options(func):
         help='Shortcut for --log-level DEBUG (overrides --log-level if both are passed).',
     )(func)
     return func
-
-
 
 
 
