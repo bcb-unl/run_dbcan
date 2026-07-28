@@ -91,6 +91,9 @@ The annotation process generates several key output files in your specified outp
 * ``dbCAN_hmm_results.tsv`` - Detailed HMMER results
 * ``diamond.out`` - DIAMOND search results
 * ``dbCANsub_hmm_results.tsv`` - dbCAN sub-HMM results including substrate specificity
+* ``dbCAN_hmm_alignment_details.tsv`` - per-domain alignment diagnostics
+  (alignment span, match-state intervals, i-Evalue, coverage); written for each
+  HMM library while match-state overlap resolution is active, see below
 
 Customizing the Analysis
 ----------------------------
@@ -130,15 +133,77 @@ normal overlap filter; families absent from the policy retain the legacy global
 E-value and coverage rule. Policy files calibrated for one taxon or one HMM
 release must not be reused automatically for another.
 
-Matched-region overlap resolution
+Match-state overlap resolution
 ----------------------------------
 
-The post-cutoff overlap filter measures domain overlap on the insertion-free
-matched intervals of each hit (the residues aligned to a model position),
-rather than on the full alignment span. This prevents a long catalytic domain
-from deleting a short accessory domain (for example a CBM) that only sits inside
-the long domain's unmatched insertion. This behaviour is on by default; pass
-``--dbcan-legacy-overlap`` to restore the previous alignment-span behaviour.
+Domain conflicts are resolved using target residues assigned to profile-HMM
+match states rather than the continuous sequence alignment span. Residues
+assigned to HMM insert states do not contribute to match-state overlap.
+
+HMMER reports each domain as a continuous ``Target From``-``Target To`` span,
+but a profile alignment may contain match (M), insert (I) and delete (D) states.
+A target residue aligned to an insert state lies between two consensus match
+positions and still falls inside the continuous span, so a large catalytic
+profile can geometrically span an inserted accessory domain without having any
+match-state evidence over it:
+
+.. code-block:: text
+
+   GH18 alignment span     1 ------------------------------------- 400
+   GH18 match states       1 -------------- 250      340 --------- 400
+   GH18 insert states                    251 ------------ 339
+   CBM18                                        300 --- 334
+
+Under the historical rule the CBM18 span lies almost entirely inside the GH18
+span, so the CBM was removed. Under match-state semantics the two share no
+match-state residues, there is no conflict, and both domains are kept.
+
+.. note::
+
+   An insert state is an HMM alignment concept, not a biological one. A
+   lineage-specific loop or an inserted structural region may still belong to
+   the domain biologically. Match-state occupancy is used here because it is
+   the evidence the profile actually provides for that stretch of sequence, not
+   because inserted residues are "outside" the domain.
+
+Geometric overlap alone does not suppress a hit. The decision is:
+
+* no substantial match-state overlap → keep both;
+* substantial match-state overlap covered by an explicit coexistence policy
+  (``--dbcan-overlap-coexistence-file``) → keep both;
+* substantial match-state overlap between competing models → resolve by
+  evidence (best i-Evalue first).
+
+"Substantial" means strictly more than 50% of the shorter domain's match-state
+length; an overlap of exactly 50% is not a conflict. Resolution runs over a
+per-protein conflict graph, so the outcome does not depend on the order hits
+appear in the input.
+
+This behaviour is on by default for every HMM library in a run (dbCAN,
+dbCAN-sub, TF, STP, Pfam). ``--dbcan-legacy-overlap`` restores the previous
+alignment-span *geometry* and exists for reproducibility only. Note that the
+order-independent conflict-graph resolution applies in both modes: the old
+implementation compared each hit only against the most recently retained one,
+which could keep or drop a hit depending on row order, and that is a bug rather
+than behaviour worth reproducing.
+
+The public result tables keep their historical columns in both modes:
+``Target From`` and ``Target To`` remain the reported alignment location and are
+not replaced by match-state intervals. While match-state resolution is active,
+the intervals used for the decision are additionally written to a companion
+``*_alignment_details.tsv`` file (for example
+``dbCAN_hmm_alignment_details.tsv``) with the HMM name, target, alignment span,
+match-state intervals, i-Evalue and coverage. Downstream steps read that file so
+they consume already-resolved domains instead of re-deriving the architecture
+from the continuous span.
+
+.. note::
+
+   HMM coverage is unchanged: it is still ``(hmm_to - hmm_from + 1) /
+   hmm_length``, i.e. HMM coordinate-span coverage. That is not identical to
+   match-state occupancy when delete states occur, but the ``0.35`` default is
+   tied to historical calibration, so coverage semantics are deliberately left
+   as they are.
 
 .. admonition:: Next Steps
 

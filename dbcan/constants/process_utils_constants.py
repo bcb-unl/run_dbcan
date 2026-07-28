@@ -19,12 +19,31 @@ TARGET_FROM_COLUMN = "Target From"
 TARGET_TO_COLUMN = "Target To"
 COVERAGE_COLUMN = "Coverage"
 HMM_FILE_COLUMN = "HMM File Name"
-# Optional extra column, emitted only when the opt-in matched-region overlap mode
-# is active. It carries the insertion-free matched target intervals of a domain as
-# a comma-separated "start:end" string (1-based inclusive), e.g. "21:252,340:414".
+# Internal-only column, produced when matched-region overlap resolution is active.
+# It carries the match-state target intervals of a domain as a comma-separated
+# "start:end" string (1-based inclusive), e.g. "21:252,340:414". It is used for
+# domain resolution and mirrored into ALIGNMENT_DETAILS_COLUMNS, but is never part
+# of a public result table: HMMER_COLUMN_NAMES is the public schema in every mode.
 MATCHED_INTERVALS_COLUMN = "Matched Intervals"
 ANNOTATE_FROM_COLUMN = "Annotate From"
 ANNOTATE_TO_COLUMN = "Annotate To"
+
+# Optional diagnostics sidecar written next to each HMM result table
+# (e.g. dbCAN_hmm_results.tsv -> dbCAN_hmm_alignment_details.tsv). It keeps the
+# resolved domain identity — alignment span *and* match-state intervals — so
+# downstream steps can consume resolved domains instead of re-inferring the
+# architecture from the continuous span.
+ALIGNMENT_DETAILS_COLUMNS = [
+    HMM_NAME_COLUMN,
+    TARGET_NAME_COLUMN,
+    TARGET_LENGTH_COLUMN,
+    TARGET_FROM_COLUMN,
+    TARGET_TO_COLUMN,
+    MATCHED_INTERVALS_COLUMN,
+    IEVALUE_COLUMN,
+    COVERAGE_COLUMN,
+    HMM_FILE_COLUMN,
+]
 
 
 CGC_SIG_RESULT_COLUMN = [
