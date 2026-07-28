@@ -9,6 +9,7 @@ from Bio import SeqIO
 logger = logging.getLogger(__name__)
 import dbcan.constants.process_utils_constants as PU
 import dbcan.constants.base_constants as B
+from dbcan.process.domain_resolution import hit_from_mapping, resolve_domain_hits
 
 
 def _is_nonempty_file(path: Path) -> bool:
@@ -18,26 +19,80 @@ def _to_path(p) -> Path:
     return p if isinstance(p, Path) else Path(p)
 
 
+def alignment_details_path(output_file) -> Path:
+    """Sidecar path for the optional match-state diagnostics of a result file.
+
+    ``dbCAN_hmm_results.tsv`` -> ``dbCAN_hmm_alignment_details.tsv``.
+    """
+    out_path = _to_path(output_file)
+    stem = out_path.stem
+    for suffix in ("_results", "_raw"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return out_path.with_name(f"{stem}_alignment_details{out_path.suffix}")
+
+
+def _write_public_results(df: pd.DataFrame, out_path: Path) -> None:
+    """Write a HMM result table using the historical public column schema.
+
+    ``Matched Intervals`` is internal resolution metadata, never part of the
+    public schema: the same columns must appear whether the run used matched or
+    legacy overlap and whether the result is empty or not.
+    """
+    public = df.drop(columns=[PU.MATCHED_INTERVALS_COLUMN], errors="ignore")
+    for col in PU.HMMER_COLUMN_NAMES:
+        if col not in public.columns:
+            public[col] = pd.Series(dtype=object)
+    public = public[[c for c in PU.HMMER_COLUMN_NAMES if c in public.columns]]
+    public.to_csv(out_path, index=False, sep='\t')
+
+
+def _write_alignment_details(df: pd.DataFrame, out_path: Path) -> None:
+    """Write the optional match-state diagnostics sidecar.
+
+    It carries the resolved domain identity (alignment span *and* matched
+    intervals) so downstream consumers such as the overview generator do not
+    have to re-infer the architecture from the continuous span alone.  Domain
+    bit scores are not currently carried on the internal hit row, so the
+    sidecar reports i-Evalue and coverage only.
+    """
+    details = pd.DataFrame(columns=PU.ALIGNMENT_DETAILS_COLUMNS)
+    if not df.empty:
+        available = [c for c in PU.ALIGNMENT_DETAILS_COLUMNS if c in df.columns]
+        details = df[available].copy()
+        for col in PU.ALIGNMENT_DETAILS_COLUMNS:
+            if col not in details.columns:
+                details[col] = ""
+        details = details[PU.ALIGNMENT_DETAILS_COLUMNS]
+    details.to_csv(out_path, index=False, sep='\t')
+
+
 def process_results(
     results: Optional[Iterable[List]],
     output_file,
     temp_hits_file: Optional[Path] = None,
     coexistence_pairs: Optional[Set[frozenset[str]]] = None,
     matched_overlap: bool = False,
+    write_alignment_details: bool = True,
 ) -> None:
     """Write HMMER hits to disk and filter highly-overlapping domains (per target).
 
     Accepts either an in-memory iterable of hit rows or a temporary hits TSV file.
     When ``matched_overlap`` is True the hit rows carry an extra matched-intervals
-    column that drives insertion-free overlap resolution (opt-in).
+    column that drives match-state-aware overlap resolution.  That column is
+    internal: it is used for resolution and mirrored into the optional
+    ``*_alignment_details.tsv`` sidecar, but never written to the public result
+    table, whose schema stays ``HMMER_COLUMN_NAMES`` in every mode.
     """
     out_path = _to_path(output_file)
-    # The matched-region mode appends one extra column to every emitted hit row.
+    # The matched-region mode appends one extra internal column to every hit row.
     column_names = (
         PU.HMMER_COLUMN_NAMES + [PU.MATCHED_INTERVALS_COLUMN]
         if matched_overlap
         else PU.HMMER_COLUMN_NAMES
     )
+    details_path = alignment_details_path(out_path) if (matched_overlap and write_alignment_details) else None
     df = pd.DataFrame(columns=column_names)
 
     try:
@@ -76,7 +131,9 @@ def process_results(
         )
 
         if df.empty:
-            df.to_csv(out_path, index=False, sep='\t')
+            _write_public_results(df, out_path)
+            if details_path is not None:
+                _write_alignment_details(df, details_path)
             logger.info(f"process_results: no hits after loading/cleaning, wrote empty file to {out_path}")
             return
 
@@ -101,12 +158,17 @@ def process_results(
             f"in {filter_elapsed:.2f}s"
         )
 
-        df_filtered.to_csv(out_path, index=False, sep='\t')
+        _write_public_results(df_filtered, out_path)
         logger.info(f"process_results: wrote filtered results to {out_path}")
+        if details_path is not None:
+            _write_alignment_details(df_filtered, details_path)
+            logger.info(f"process_results: wrote alignment details to {details_path}")
     except Exception as e:
         logger.error(f"Error in process_results: {e}", exc_info=True)
-        # write empty as fallback
-        pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES).to_csv(out_path, index=False, sep='\t')
+        # write empty as fallback, using the same public schema as a real result
+        _write_public_results(pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES), out_path)
+        if details_path is not None:
+            _write_alignment_details(pd.DataFrame(columns=PU.ALIGNMENT_DETAILS_COLUMNS), details_path)
     finally:
         if temp_hits_file:
             try:
@@ -115,42 +177,18 @@ def process_results(
                 logger.debug("Failed to remove temp hits file: %s", temp_hits_file)
 
 
-def _base_hmm_family(value: str) -> str:
-    name = str(value)
-    if name.endswith(".hmm"):
-        name = name[:-4]
-    return name.split("_", 1)[0]
-
-
-def _parse_matched_intervals(value, ali_from, ali_to):
-    """Parse a "start:end,..." matched-intervals string into 1-based inclusive
-    (start, end) tuples. Falls back to the single ali span when the value is
-    absent/empty, so a domain without matched data behaves exactly like the
-    legacy ali-span rule."""
-    text = "" if value is None else str(value).strip()
-    if not text or text.lower() == "nan":
-        return [(int(ali_from), int(ali_to))]
-    intervals = []
-    for part in text.split(","):
-        if ":" not in part:
-            continue
-        a, b = part.split(":", 1)
-        intervals.append((int(float(a)), int(float(b))))
-    return intervals or [(int(ali_from), int(ali_to))]
-
-
-def _intervals_length(intervals):
-    """Total residues covered by a set of 1-based inclusive intervals."""
-    return sum(b - a + 1 for a, b in intervals)
-
-
-def _intervals_overlap(a_intervals, b_intervals):
-    """Overlapping residues between two sets of 1-based inclusive intervals."""
-    total = 0
-    for a0, a1 in a_intervals:
-        for b0, b1 in b_intervals:
-            total += max(0, min(a1, b1) - max(a0, b0) + 1)
-    return total
+#: Logical DomainHit field -> column name in a HMMER-style result table.
+_HMMER_HIT_COLUMNS = {
+    "hmm_name": PU.HMM_NAME_COLUMN,
+    "target_name": PU.TARGET_NAME_COLUMN,
+    "hmm_from": PU.HMM_FROM_COLUMN,
+    "hmm_to": PU.HMM_TO_COLUMN,
+    "ali_from": PU.TARGET_FROM_COLUMN,
+    "ali_to": PU.TARGET_TO_COLUMN,
+    "matched_intervals": PU.MATCHED_INTERVALS_COLUMN,
+    "i_evalue": PU.IEVALUE_COLUMN,
+    "coverage": PU.COVERAGE_COLUMN,
+}
 
 
 def filter_overlaps(
@@ -159,13 +197,24 @@ def filter_overlaps(
     coexistence_pairs: Optional[Set[frozenset[str]]] = None,
     matched_overlap: bool = False,
 ) -> pd.DataFrame:
-    """Within each Target Name, remove strongly-overlapping hits; keep better i-Evalue.
+    """Within each Target Name, resolve competing HMM domains.
 
-    When ``matched_overlap`` is True and the optional ``Matched Intervals`` column is
-    present, overlap and domain length are measured on the insertion-free matched
-    target intervals instead of the alignment span. This prevents a long catalytic
-    domain from "covering" a short accessory domain (e.g. a CBM) that only sits
-    inside the long domain's unmatched insertion. Default (False) is unchanged.
+    This is a thin DataFrame adapter over
+    :func:`dbcan.process.domain_resolution.resolve_domain_hits`; the actual
+    conflict/coexistence/ranking policy lives there and is shared with every
+    other consumer.
+
+    When ``matched_overlap`` is True and the internal ``Matched Intervals``
+    column is present, overlap and domain length are measured on the
+    match-state intervals rather than on the continuous alignment span.  That
+    stops a long catalytic domain from "covering" a short accessory domain
+    (e.g. a CBM) that only sits inside the long domain's insert-state region.
+    With ``matched_overlap`` False the historical ali-span arithmetic is used
+    verbatim, for reproducibility.
+
+    Resolution is order-independent: hits form a conflict graph and each
+    connected component is resolved best-evidence first, so the outcome no
+    longer depends on which hit happened to be retained most recently.
     """
     required = {PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN}
     if not required.issubset(df.columns):
@@ -173,7 +222,8 @@ def filter_overlaps(
         logger.warning(f"filter_overlaps missing columns: {missing}, return original df")
         return df
 
-    # types
+    # Work on a copy: callers hand us frames they still use afterwards.
+    df = df.copy()
     for col in [PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     if PU.IEVALUE_COLUMN in df.columns:
@@ -190,7 +240,7 @@ def filter_overlaps(
         f"(avg {avg_per_target:.1f} hits/target)"
     )
 
-    # Opt-in matched-region mode only activates when the extra column was emitted.
+    # Matched-region mode only activates when the internal column was emitted.
     use_matched = bool(matched_overlap) and PU.MATCHED_INTERVALS_COLUMN in df.columns
     if matched_overlap and not use_matched:
         logger.warning(
@@ -198,65 +248,29 @@ def filter_overlaps(
             "falling back to ali-span overlap",
             PU.MATCHED_INTERVALS_COLUMN,
         )
-
-    def _matched_iv(row):
-        value = row[PU.MATCHED_INTERVALS_COLUMN] if PU.MATCHED_INTERVALS_COLUMN in row else None
-        return _parse_matched_intervals(value, row[PU.TARGET_FROM_COLUMN], row[PU.TARGET_TO_COLUMN])
+    # The coexistence allowlist is keyed on base HMM families, so it is only
+    # meaningful when the table actually carries model names.
+    pairs = coexistence_pairs if (coexistence_pairs and PU.HMM_NAME_COLUMN in df.columns) else None
 
     kept_rows: List[pd.Series] = []
     start_time = time.time()
 
     for idx, (_, group) in enumerate(df.groupby(PU.TARGET_NAME_COLUMN, sort=False), start=1):
         group = group.reset_index(drop=True)
-        keep: List[pd.Series] = []
-        for i in range(len(group)):
-            if not keep:
-                keep.append(group.iloc[i])
-                continue
-
-            last = keep[-1]
-            cur = group.iloc[i]
-            if use_matched:
-                # Measure overlap on insertion-free matched intervals (inclusive).
-                iv_last = _matched_iv(last)
-                iv_cur = _matched_iv(cur)
-                overlap = _intervals_overlap(iv_last, iv_cur)
-                len_last = max(1, _intervals_length(iv_last))
-                len_cur = max(1, _intervals_length(iv_cur))
-            else:
-                # Legacy ali-span overlap (default; unchanged).
-                overlap = min(last[PU.TARGET_TO_COLUMN], cur[PU.TARGET_TO_COLUMN]) - max(
-                    last[PU.TARGET_FROM_COLUMN], cur[PU.TARGET_FROM_COLUMN]
-                )
-                len_last = max(1, (last[PU.TARGET_TO_COLUMN] - last[PU.TARGET_FROM_COLUMN]))
-                len_cur = max(1, (cur[PU.TARGET_TO_COLUMN] - cur[PU.TARGET_FROM_COLUMN]))
-            if overlap > 0:
-                r_last = overlap / len_last
-                r_cur = overlap / len_cur
-                if r_last > overlap_ratio_threshold or r_cur > overlap_ratio_threshold:
-                    if coexistence_pairs and PU.HMM_NAME_COLUMN in df.columns:
-                        pair = frozenset(
-                            (
-                                _base_hmm_family(last[PU.HMM_NAME_COLUMN]),
-                                _base_hmm_family(cur[PU.HMM_NAME_COLUMN]),
-                            )
-                        )
-                        if pair in coexistence_pairs:
-                            keep.append(cur)
-                            continue
-                    last_eval = last[PU.IEVALUE_COLUMN] if PU.IEVALUE_COLUMN in last else float('inf')
-                    cur_eval = cur[PU.IEVALUE_COLUMN] if PU.IEVALUE_COLUMN in cur else float('inf')
-                    try:
-                        if float(last_eval) > float(cur_eval):
-                            keep[-1] = cur
-                    except Exception:
-                        # keep earlier if not comparable
-                        pass
-                else:
-                    keep.append(cur)
-            else:
-                keep.append(cur)
-        kept_rows.extend(keep)
+        if len(group) < 2:
+            kept_rows.extend(group.iloc[i] for i in range(len(group)))
+            continue
+        hits = [
+            hit_from_mapping(group.iloc[i], index=i, columns=_HMMER_HIT_COLUMNS)
+            for i in range(len(group))
+        ]
+        resolved = resolve_domain_hits(
+            hits,
+            overlap_ratio_threshold=overlap_ratio_threshold,
+            coexistence_pairs=pairs,
+            use_matched=use_matched,
+        )
+        kept_rows.extend(group.iloc[hit.index] for hit in resolved)
 
         if idx % 1000 == 0:
             logger.debug(f"filter_overlaps: processed {idx} target groups so far")
@@ -270,8 +284,24 @@ def filter_overlaps(
     return pd.DataFrame(kept_rows, columns=df.columns)
 
 
+#: CGC signature sources whose domains were already resolved by the tool that
+#: understands the model semantics (pyhmmer + process_results, which applies
+#: match-state-aware resolution). Re-filtering them here with the ali-span rule
+#: would undo that resolution, so they are passed through untouched.
+CGC_SIG_PRERESOLVED_SOURCES = frozenset({"STP", "TF_fungi"})
+
+
 def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, sulfatase_config, peptidase_config) -> None:
-    """Combine TCDB, TF and STP results into one file and filter overlaps."""
+    """Combine TCDB, TF, STP, sulfatase and peptidase results into one file.
+
+    Overlap resolution here is *source-aware*. CGC signature classes (CAZyme,
+    TC, TF, STP, sulfatase, peptidase) are not mutually exclusive — a gene can
+    legitimately carry an STP domain and a TF domain, or a transporter and a
+    peptidase — so a generic HMM family-competition rule must not be applied
+    across them. Each source is therefore resolved on its own (DIAMOND-derived
+    sources only; HMM-derived sources arrive already resolved) and the accepted
+    annotations are simply combined afterwards.
+    """
     try:
         columns = PU.CGC_SIG_RESULT_COLUMN
         # resolve output_dir from any given config
@@ -332,6 +362,19 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
 
                 _TYPE_MAP = {'TF_prok': 'TF', 'TF_fungi': 'TF'}
                 df['Type'] = _TYPE_MAP.get(name, name)
+
+                # Source-aware resolution: within one annotation source only.
+                if name in CGC_SIG_PRERESOLVED_SOURCES:
+                    logger.info(
+                        f"{name} annotations already resolved by their own tool; "
+                        f"skipping the CGC-level overlap filter"
+                    )
+                else:
+                    before = len(df)
+                    df = filter_overlaps(df)
+                    if len(df) != before:
+                        logger.info(f"{name}: resolved {before} -> {len(df)} annotations within source")
+
                 frames.append(df)
                 logger.info(f"Loaded {len(df)} {name} annotations from {fpath}")
             except Exception as e:
@@ -357,16 +400,32 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
             total_df = pd.concat(result_frames, ignore_index=True)
         else:
             total_df = pd.concat(frames, ignore_index=True)
-        
-        filtered_df = filter_overlaps(total_df)
-        filtered_df.to_csv(out_file, index=False, sep='\t')
-        logger.info(f"Saved {len(filtered_df)} CGC annotations to {out_file}")
+
+        # No cross-source overlap filter here: each source has already been
+        # resolved above, and suppressing a TF because it overlaps an STP (or a
+        # peptidase because it overlaps a transporter) is not biologically
+        # justified. Sorting only, so the combined table stays deterministic.
+        total_df = total_df.sort_values(
+            by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN],
+            kind="stable",
+        )
+        total_df.to_csv(out_file, index=False, sep='\t')
+        logger.info(f"Saved {len(total_df)} CGC annotations to {out_file}")
     except Exception as e:
         logger.error(f"Error processing CGC signature results: {e}", exc_info=True)
 
 
 def process_cgc_null_pfam_annotation(Pfam_config) -> None:
-    """Post-process PFAM HMM null annotations for CGC pipeline outputs."""
+    """Post-process PFAM HMM null annotations for CGC pipeline outputs.
+
+    The Pfam table is written by ``PyHMMERPfamProcessor`` through
+    :func:`process_results`, so its domains have already been resolved with the
+    match-state-aware rule. This step only normalises columns and ordering; it
+    deliberately does **not** re-run an overlap filter, which would collapse a
+    valid multidomain architecture again using the continuous alignment span.
+    Pfam clan-aware conflict resolution would need clan metadata the repository
+    does not ship, so no Pfam-specific competition rule is invented here.
+    """
     output_dir = Path(getattr(Pfam_config, 'output_dir', '.'))
     pfam_hmm_output = output_dir / B.PFAM_HMM_RESULT_FILE
 
@@ -403,9 +462,8 @@ def process_cgc_null_pfam_annotation(Pfam_config) -> None:
         df = df.dropna(subset=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN])
         df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN], inplace=True)
 
-        df_filtered = filter_overlaps(df)
-        df_filtered.to_csv(pfam_hmm_output, index=False, sep='\t')
-        logger.info(f"Processed PFAM HMM results saved to: {pfam_hmm_output}")
+        _write_public_results(df, pfam_hmm_output)
+        logger.info(f"Processed PFAM HMM results saved to: {pfam_hmm_output} ({len(df)} rows)")
     except Exception as e:
         logger.error(f"Error processing CGC null PFAM annotation: {e}", exc_info=True)
 

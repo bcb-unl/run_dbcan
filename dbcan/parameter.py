@@ -262,13 +262,14 @@ def pyhmmer_dbcan_options(func):
     )(func)
     func = click.option(
         '--dbcan-matched-overlap/--dbcan-legacy-overlap',
-        'matched_overlap_dbcan',
+        'matched_overlap',
         default=True,
         help=(
-            'Resolve post-cutoff domain overlaps on insertion-free matched intervals '
+            'Resolve post-cutoff domain overlaps on profile match-state intervals '
             '(default) so a long catalytic domain does not delete a short accessory '
-            'domain inside its insertion. Use --dbcan-legacy-overlap for the old '
-            'alignment-span behaviour.'
+            'domain lying inside its insert-state region. Applies to every pyhmmer '
+            'library in the run (dbCAN, dbCAN-sub, TF, STP, Pfam). Use '
+            '--dbcan-legacy-overlap to reproduce the old alignment-span behaviour.'
         ),
     )(func)
     func = click.option(

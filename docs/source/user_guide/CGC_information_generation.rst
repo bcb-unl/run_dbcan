@@ -91,6 +91,22 @@ The CGC finder generates several output files:
 * ``STP_hmm_results.tsv`` - pyHMMER output for Signal Transduction Proteins (STPs) using the STP-HMM database.
 * ``total_cgc_info.tsv`` - Comprehensive table containing all CGC information, including TCs, TFs, and STPs.
 
+.. note::
+
+   ``total_cgc_info.tsv`` combines the signature classes without applying a
+   competition rule across them. CGC signature classes (CAZyme, TC, TF, STP,
+   sulfatase, peptidase) are not mutually exclusive: a gene can legitimately
+   carry, say, an STP domain and a transporter annotation, so one must not
+   suppress the other merely because their alignments overlap. Overlap
+   resolution happens inside each annotation source instead — HMM-derived
+   sources (STP, fungal TF) arrive already resolved by match-state-aware domain
+   resolution, and DIAMOND-derived sources are resolved within their own class.
+
+   Earlier versions applied a single overlap filter to the concatenated table,
+   which deleted signature annotations of one class because a different class
+   covered the same residues. Runs will therefore report more signature
+   annotations per gene than before, and consequently may identify more CGCs.
+
 .. admonition:: Next Steps
 
    After generating the CGC annotation information, proceed to :doc:`CGC identification <CGC_annotation>` to identify and analyze CAZyme gene clusters in your genome.

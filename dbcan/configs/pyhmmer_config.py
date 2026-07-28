@@ -26,6 +26,12 @@ class PyHMMERConfig(BaseConfig):
     # Large input handling
     large_mode: bool = False  # force streaming-safe mode (avoid preloading targets/HMMs aggressively)
     large_input_threshold_mb: int = 5000  # auto-enable large_mode when input fasta exceeds this size (MB)
+    # Resolve domain overlaps on profile match-state intervals instead of the
+    # continuous alignment span. On by default (a correctness fix that stops a long
+    # catalytic domain from deleting a short accessory domain lying inside its
+    # insert-state region); --dbcan-legacy-overlap restores the old ali-span rule
+    # for every pyhmmer library, for reproducibility only.
+    matched_overlap: bool = True
 
 # dbCAN
 @dataclass
@@ -40,11 +46,6 @@ class PyHMMERDBCANConfig(PyHMMERConfig):
     # Named taxon profile (e.g. "fungi") that bundles the family-cutoff and overlap
     # coexistence policies shipped with dbCAN; resolved in PyHMMERDBCANProcessor.
     taxon_profile: Optional[str] = None
-    # Resolve post-cutoff domain overlaps on insertion-free matched intervals
-    # instead of the alignment span. On by default (a correctness fix that stops a
-    # long catalytic domain from deleting a short accessory domain inside its
-    # insertion); pass --dbcan-legacy-overlap to restore the old ali-span behaviour.
-    matched_overlap: bool = True
 
 # dbCAN-sub
 @dataclass
