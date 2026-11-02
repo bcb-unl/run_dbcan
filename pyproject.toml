@@ -48,7 +48,7 @@ dependencies = [
         "pyhmmer==0.11.0",
         "biopython==1.85",
         "bcbio-gff==0.7.1",
-        "pyrodigal==3.6.3",
+        "pyrodigal==v3.6.3-post1",
         "pysam==0.23.0",
         "seaborn==0.13.2",
         "rich-click==1.8.8",
