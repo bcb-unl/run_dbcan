@@ -12,7 +12,7 @@ If you have any questions or suggestions, please feel free to contact us:
 * Dr. Haidong Yi, Software Engineer  (hyi@stjude.org)
 
 All conda environments dependencies can be found at the following link:
-`run_dbCAN Conda Environments <https://github.com/bcb-unl/run_dbcan_new/tree/master/envs>`_
+`run_dbCAN Conda Environments <https://github.com/bcb-unl/run_dbcan/tree/master/envs>`_
 
 
 Key Features and Improvements
@@ -52,15 +52,15 @@ Key Features and Improvements
 
    - Added coverage justifications and location information for dbCAN-sub.
 
-   - Included CAZyme justification in the final results with an extra column called "Best Results."
+   - Included CAZyme justification in the final results with an extra column called "Recommend Results" (filled when at least two tools report a hit).
 
-   - Now follow the rule: `CAZy-sub > dbCAN-sub > dbCAN-fam` for the final results.
+   - Now follow the rule: `CAZy-sub > dbCAN-sub > dbCAN-fam` for the final results (see :ref:`overview-columns`).
 
 6. **Redesigned CGCFinder**
 
    - Now supports JGI, NCBI, and Prodigal gff formats.
 
-   - Directly searches eukaryotic genomes, including fungi (**beta function**).
+   - Supports eukaryotic (e.g. fungal) proteomes together with an NCBI or JGI GFF file (**beta function**). There is no eukaryotic genome (DNA) mode; see :doc:`FAQ/troubleshooting`.
 
    - Added a new function to visualize the CGCs on the genome (**beta function**).
 
@@ -76,7 +76,7 @@ Key Features and Improvements
 
    - **SignalP 6.0**: signal peptide prediction in the `CAZyme_annotation` command via `--run_signalp`. Results are merged into `overview.tsv` in a **SignalP** column. Organism class: `--signalp_org` (`other` / `euk`).
 
-   - **DeepTMHMM**: transmembrane topology via `--run_deeptmhmm` and `--deeptmhmm_dir` (directory containing the user-installed `predict.py`). Results are merged into **DeepTMHMM** in `overview.tsv`.
+   - **DeepTMHMM**: transmembrane topology via `--run_deeptmhmm` and `--deeptmhmm_dir` (directory containing the user-installed `predict.py`). Results are merged into **DeepTMHMM** in `overview.tsv`. In the current release DeepTMHMM only runs when `--run_signalp` is also given.
 
    - Neither tool is bundled with `dbcan`. Install and test them locally, then enable the flags. See :doc:`user_guide/signalp6_deeptmhmm` and the `SignalP 6.0 installation instructions <https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md>`_.
 
@@ -92,8 +92,12 @@ Key Features and Improvements
 
 .. hint::
 
-   If you want to run the pipeline from raw metagenomic reads, please refer to the following part:
-   **metagenomics_pipeline**
+   If you want to run the pipeline from raw metagenomic reads, please refer to the **Metagenomics pipeline** and
+   **Nextflow Pipeline** sections below.
+
+.. tip::
+
+   Problems or unexpected results? See :doc:`FAQ/troubleshooting` for known limitations and common fixes.
 
 
 Otherwise, refer to the instructions below. Please note that some precomputed results may have different names compared to the previous version.
@@ -103,7 +107,7 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
 
 .. toctree::
    :maxdepth: 1
-   :caption: Getting start
+   :caption: Getting started
 
    getting_started/installation
    getting_started/database_description
@@ -122,6 +126,12 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
    user_guide/CGC_annotation
    user_guide/predict_CGC_substrate
    user_guide/CGC_plots
+
+.. toctree::
+   :maxdepth: 1
+   :caption: FAQ
+
+   FAQ/troubleshooting
 
 .. toctree::
    :maxdepth: 1

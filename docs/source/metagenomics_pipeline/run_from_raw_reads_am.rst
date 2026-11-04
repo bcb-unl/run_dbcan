@@ -28,9 +28,18 @@ Software and versions
 - **Samtools** (`Samtools <https://github.com/samtools/samtools>`_, version 1.7)
 - **Kraken2** (`Kraken2 <https://ccb.jhu.edu/software/kraken2/>`_, version 2.1.1)
 - **KrakenTools** (`KrakenTools <https://github.com/jenniferlu717/KrakenTools?tab=readme-ov-file>`_, version 1.2)
-- **run_dbcan** (`run_dbcan <https://github.com/Xinpeng021001/run_dbCAN_new>`_, version 5.0.3)
+- **run_dbcan** (`run_dbcan <https://github.com/bcb-unl/run_dbcan>`_, version 5.0.3)
 - **MMseqs2** (`MMseqs2 <https://github.com/soedinglab/MMseqs2>`_, release 15-6f452)
 - **Pysam** (`Pysam <https://github.com/pysam-developers/pysam>`_, version 0.22.1)
+
+.. note::
+
+   This protocol was originally written for run_dbcan 5.0.3. The ``run_dbcan`` commands below have been
+   updated for the current command-line interface, but some example directory listings and descriptions
+   still show legacy output names: ``overview.txt`` is now ``overview.tsv``, ``cgc_standard.out`` is now
+   ``cgc_standard_out.tsv``, and ``PUL.out`` is now ``PUL_blast.out``. See :doc:`/user_guide/CAZyme_annotation`
+   and :doc:`/FAQ/troubleshooting` for the current outputs.
+
 
 .. code-block:: shell
 
@@ -39,7 +48,11 @@ Software and versions
 
 To install the databases, execute the following commands:
 
-.. include:: prepare_the_database.rst
+Follow :doc:`/user_guide/prepare_the_database`. In short:
+
+.. code-block:: shell
+
+    run_dbcan database --db_dir db
 
 
 
@@ -56,6 +69,9 @@ S1| Download Amelia2024 (Table 2) raw reads (~20min)
 
 
 These raw data were originally downloaded from https://www.ncbi.nlm.nih.gov/sra/?term=SRR24887509 and https://www.ncbi.nlm.nih.gov/sra/?term=SRR24887498 and renamed to indicate their collected samples (Table 2).
+
+P1. Contamination Check
+^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: shell
 
@@ -247,8 +263,8 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC --input_raw_data HTOOS.faa --mode protein  --output_dir HTOOS.PUL --input_format NCBI --gff_type prodigal --input_gff HTOOS.gff --db_dir db
-    run_dbcan easy_CGC --input_raw_data HCZGU.faa --mode protein  --output_dir HCZGU.PUL --input_format NCBI --gff_type prodigal --input_gff HCZGU.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data HTOOS.faa --mode protein  --output_dir HTOOS.PUL --gff_type prodigal --input_gff HTOOS.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data HCZGU.faa --mode protein  --output_dir HCZGU.PUL --gff_type prodigal --input_gff HCZGU.gff --db_dir db
 
 .. warning::
 
@@ -268,8 +284,8 @@ The following commands will re-run run_dbcan to predict CAZymes, CGCs, and their
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data HTOOS.faa --mode protein  --input_format NCBI --input_gff HTOOS.gff --gff_type prodigal   --output_dir HTOOS.dbCAN --db_dir db
-    run_dbcan easy_substrate --input_raw_data HCZGU.faa --mode protein  --input_format NCBI --input_gff HCZGU.gff --gff_type prodigal   --output_dir HCZGU.dbCAN --db_dir db
+    run_dbcan easy_substrate --input_raw_data HTOOS.faa --mode protein --input_gff HTOOS.gff --gff_type prodigal   --output_dir HTOOS.dbCAN --db_dir db
+    run_dbcan easy_substrate --input_raw_data HCZGU.faa --mode protein --input_gff HCZGU.gff --gff_type prodigal   --output_dir HCZGU.dbCAN --db_dir db
 
 
 

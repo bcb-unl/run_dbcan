@@ -54,7 +54,19 @@ S4. Configure databases required by run_dbcan (~2h)
 ```````````````````````````````````````````````````
 To install the databases, execute the following commands:
 
-.. include:: prepare_the_database.rst
+Follow :doc:`/user_guide/prepare_the_database`. In short:
+
+.. code-block:: shell
+
+    run_dbcan database --db_dir db
+
+.. note::
+
+   This protocol was originally written for run_dbcan 5.0.3. The ``run_dbcan`` commands below have been
+   updated for the current command-line interface, but some example directory listings and descriptions
+   still show legacy output names: ``overview.txt`` is now ``overview.tsv``, ``cgc_standard.out`` is now
+   ``cgc_standard_out.tsv``, and ``PUL.out`` is now ``PUL_blast.out``. See :doc:`/user_guide/CAZyme_annotation`
+   and :doc:`/FAQ/troubleshooting` for the current outputs.
 
 
 Download database required by Kraken2 (very slow; can be skipped

@@ -243,5 +243,5 @@ See Also
 - :ref:`shortreads-subsample` - Subsampling mode details
 - :ref:`shortreads-coassembly` - Co-assembly mode details
 - :ref:`nextflow-parameters` - Complete parameter reference
-- :ref:`nextflow-output` - General output documentation
+- :ref:`nextflow-results-examples` - Example results and figures
 - :ref:`nextflow-results-examples` - Example results and visualizations

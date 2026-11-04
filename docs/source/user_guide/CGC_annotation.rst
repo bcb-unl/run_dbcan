@@ -45,19 +45,29 @@ Examples for Different Genome Types
 CGC Prediction Rules
 ------------------------
 
-run_dbCAN supports two complementary rules for predicting CGCs:
+``cgc_finder`` reads ``cgc.gff``. Genes annotated as ``CAZyme`` (proteins with ``#ofTools`` >= 2 in ``overview.tsv``)
+are core signature genes; genes whose annotation contains one of the ``--additional_genes`` types (default: ``TC``)
+are additional signature genes. On each contig, consecutive signature genes are joined into one candidate cluster
+as long as the following rules hold:
 
-1. **Null Gene Search** (Default)
+1. **Null Gene Search** (Default, ``--use_null_genes``)
 
-   Forward and backward search with a defined number of non-significant genes. When a core/additional gene is found, the search extends to the next iteration.
+   At most ``--num_null_gene`` (default: 2) non-signature genes may lie between two consecutive signature genes.
 
-2. **Distance-Based Search** (AntiSMASH-like)
+2. **Distance-Based Search** (AntiSMASH-like, off by default, ``--use_distance``)
 
-   Uses base-pair distance (default: 15kb) to search forward and backward for core/additional genes. The distance is measured between consecutive significant genes.
+   The distance between two consecutive signature genes must not exceed ``--base_pair_distance`` (default: 15000 bp).
+
+A candidate is reported as a CGC only if it has at least ``--min_cluster_genes`` genes (default: 2), at least
+``--min_core_cazyme`` CAZymes (default: 1), and the required additional gene types: with ``--additional_logic all``
+(default) every listed type must be present; with ``any``, at least ``--additional_min_categories`` types.
+With the defaults, a CGC therefore needs at least one CAZyme and one transporter (TC).
 
 .. note::
 
    You can use either rule individually or combine both for stricter CGC prediction criteria.
+   ``--extend_mode bp`` or ``--extend_mode gene`` (with ``--extend_bp`` / ``--extend_gene_count``) adds flanking
+   genes to each reported CGC after detection.
 
 Advanced Usage
 ------------------
@@ -81,16 +91,22 @@ Key Parameters
      - Description
    * - ``--output_dir``
      - Directory containing the ``cgc.gff`` file and for output files. It is generated from the ``CGC_information_generation`` step.
-   * - ``--use_null_genes``
-     - Enable null gene search strategy (true/false)
+   * - ``--use_null_genes`` / ``--no-use_null_genes``
+     - Enable (default) or disable the null gene rule
    * - ``--num_null_gene``
-     - Maximum number of consecutive non-significant genes allowed
+     - Maximum number of consecutive non-signature genes allowed (default: 2)
    * - ``--use_distance``
-     - Enable distance-based search strategy (true/false)
+     - Enable the distance-based rule (flag, off by default)
    * - ``--base_pair_distance``
-     - Maximum distance (bp) between significant genes
+     - Maximum distance (bp) between signature genes (default: 15000; only used with ``--use_distance``)
    * - ``--additional_genes``
-     - Types of additional genes to include (TC: Transporter, TF: Transcription Factor, STP: Signal Transduction Protein)
+     - Types of additional genes required (default: ``TC``). Repeat the option for several types. Types written by
+       ``gff_process``: ``TC`` (transporter), ``TF`` (transcription factor), ``STP`` (signal transduction protein),
+       ``Sulfatase``, ``Peptidase``
+   * - ``--additional_logic`` / ``--additional_min_categories``
+     - ``all`` (default): every listed type is required; ``any``: at least ``--additional_min_categories`` types
+   * - ``--min_core_cazyme`` / ``--min_cluster_genes``
+     - Minimum number of CAZymes (default: 1) and of genes (default: 2) in a CGC
 
 .. hint::
    **CAZyme Gene Pairs**
@@ -103,12 +119,13 @@ Key Parameters
 
    * Using multiple parameters: ``--additional_genes TC --additional_genes TF``
 
-   **Custom Gene Types**
+   **Peptidases, Sulfatases and Custom Gene Types**
 
-   Beyond the standard types (TC, TF, STP), you can include custom gene types such as peptidases or sulfatases. However, this requires:
+   ``gff_process`` also annotates peptidases (MEROPS) and sulfatases (SulfAtlas), so ``--additional_genes Peptidase`` and
+   ``--additional_genes Sulfatase`` work without extra steps. Other gene types require:
 
    1. Annotating these functions in your genome.
-   2. Manually updating the ``cgc.gff`` file to include these annotations.
+   2. Manually updating the ``CGC_annotation`` attribute in ``cgc.gff`` to include these annotations.
 
    **Non-coding Elements**
 
@@ -120,8 +137,30 @@ Output Files
 
 The CGC finder generates several output files:
 
-* ``cgc_standard.tsv`` - Text file listing all identified CGCs and their components.
-* ``cgc.gff`` - GFF-like format annotated with functional genes for CGCFinder and visualization.
+* ``cgc_standard_out.tsv`` - One row per gene in each identified CGC (CGC ID, gene type, contig, protein ID, coordinates, strand, annotation).
+* ``cgc_standard_out_summary.tsv`` - One row per CGC with gene counts per type and the CGC length.
+
+``cgc_finder`` reads ``cgc.gff`` (written by ``gff_process``) and does not modify it.
+
+.. note::
+
+   ``--feature_type`` is accepted but currently has no effect: all lines of ``cgc.gff`` are used (known limitation).
+
+Annotating null genes with Pfam (optional)
+-------------------------------------------
+
+``Pfam_null_cgc`` searches Pfam-A domains with pyHMMER and adds them to genes that have no signature annotation
+(``null``) inside CGCs. It needs ``Pfam-A.hmm`` in ``--db_dir``; this file is **not** downloaded by
+``run_dbcan database`` (see :doc:`prepare_the_database`).
+
+.. code-block:: shell
+
+   run_dbcan Pfam_null_cgc --output_dir output_dir --db_dir db --null_from_gff
+
+With ``--null_from_gff``, the proteins of all ``null`` genes in ``cgc.gff`` are written to ``null_proteins.faa``
+and only these are searched; without it, all proteins in ``uniInput.faa`` are searched, which is slower. The hits
+(``Pfam_hmm_results.tsv``) are then added to the null genes in new copies of the CGC files:
+``cgc_standard_out.pfam_annotated.tsv`` and ``cgc.pfam_annotated.gff``.
 
 .. admonition:: Next Steps
 

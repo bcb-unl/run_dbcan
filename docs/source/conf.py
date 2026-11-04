@@ -37,9 +37,9 @@ needs_sphinx = "4.0"
 html_context = {
     "display_github": True,  # Integrate GitHub
     "github_user": "bcb-unl",  # Username
-    "github_repo": project_name,  # Repo name
-    "github_version": "main",  # Version
-    "conf_py_path": "/docs/",  # Path in the checkout to the docs root
+    "github_repo": "run_dbcan",  # Repo name
+    "github_version": "master",  # Version
+    "conf_py_path": "/docs/source/",  # Path in the checkout to the docs root
 }
 
 
@@ -64,7 +64,7 @@ extensions = ['sphinx_click',
     "sphinxarg.ext",]
 
 
-issues_github_path = "bcb-unl/run_dbcan_new"
+issues_github_path = "bcb-unl/run_dbcan"
 
 autosummary_generate = True
 autodoc_member_order = "groupwise"
@@ -117,7 +117,7 @@ html_logo = "_static/img/run_dbcan_v5_logo.png"  # Path to your logo file
 html_theme_options = {
     "repository_url": repository_url,
     "use_repository_button": True,
-    "path_to_docs": "docs/",
+    "path_to_docs": "docs/source/",
     "navigation_with_keys": False,
 }
 

@@ -13,14 +13,15 @@ After identifying CAZyme Gene Clusters (CGCs), visualizing their genomic distrib
 The ``cgc_circle_plot`` module generates circular genome plots that display currently:
 
 * Position of CGCs around the genome
-* Distribution of CAZyme
+* Distribution of CAZymes
 
 These visualizations help researchers identify patterns in CGC distribution and understand their genomic context.
 
 Basic Usage
 ------------
 
-The basic command to generate CGC circular plots is:
+The basic command to generate CGC circular plots is (run it after ``cgc_finder``; it reads ``cgc.gff`` and
+``cgc_standard_out.tsv`` from the output directory, and adds substrate labels if ``substrate_prediction.tsv`` exists):
 
 .. code-block:: shell
 
@@ -57,9 +58,9 @@ Output Files
 
 The visualization module generates several output files:
 
-* ``cgc_circos/`` The output of the CGC circle plot, including the SVG files. It will be generated in the output directory.For each contig/scaffold in the genome, a separate SVG file is created, and there's a whole genome overview SVG file.
+* ``cgc_circos/`` The output of the CGC circle plot, including the SVG files. It will be generated in the output directory. For each contig/scaffold in the genome, a separate SVG file (``cgc_circos_<contig>.svg``) is created, and there's a whole genome overview SVG file (``cgc_circos_plot.svg``).
 
 
 .. tip::
-   The SVG format allows for editing in vector graphics programs like `Inkscape`` or `Adobe Illustrator`,
+   The SVG format allows for editing in vector graphics programs like ``Inkscape`` or ``Adobe Illustrator``,
    which is useful for preparing publication-quality figures.
