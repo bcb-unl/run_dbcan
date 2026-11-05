@@ -154,7 +154,7 @@ Columns of ``overview.tsv``
      - Protein ID from ``uniInput.faa``.
    * - ``EC#``
      - EC numbers attached to the matched dbCAN-sub subfamilies, as ``EC:count`` tokens (``count`` = number of
-       characterized proteins with that EC in the subfamily). Tokens of one subfamily are separated by ``;``,
+       characterized proteins with that EC in the subfamily; some tokens have no count). Tokens of one subfamily are separated by ``;``,
        subfamilies by ``|``. ``-`` when there is no dbCAN-sub hit or no EC.
    * - ``dbCAN_hmm``
      - dbCAN HMM families with protein coordinates, e.g. ``GH23(101-244)``; several domains joined with ``+``.
@@ -170,12 +170,11 @@ Columns of ``overview.tsv``
        domain, preferring a subfamily from dbCAN HMM (name containing ``_``, e.g. ``GH5_4``), then the dbCAN-sub
        subfamily, then the dbCAN HMM family. Otherwise the dbCAN HMM families are used, then dbCAN-sub, then DIAMOND.
    * - ``Substrate``
-     - Substrates predicted from the dbCAN-sub hits: each subfamily's family and EC numbers are looked up in
-       ``fam-substrate-mapping.tsv``. Multiple substrates are joined with ``;``. ``-`` when unknown.
-       Note: in the current release, when a subfamily has no EC number (or its EC is not in the mapping file), the
-       substrate falls back to the family-level entry of the mapping file, or to the family's only substrate if the
-       family has exactly one. Such family-level substrates can differ from the dbCAN-sub web server, which reports
-       none in this case (GitHub issue #85).
+     - Substrates predicted from the dbCAN-sub hits. For every EC number of a matched subfamily, the pair
+       (family, EC) is looked up in ``fam-substrate-mapping.tsv``; only exact matches are used. Subfamilies without
+       an EC number, or whose EC is not in the mapping file, give no substrate (there is no family-level
+       fallback, consistent with the dbCAN-sub web server; GitHub issue #85). Unique substrates of all hits are
+       joined with ``;``. ``-`` when unknown.
    * - ``SignalP`` / ``DeepTMHMM``
      - Only present with ``--run_signalp`` / ``--run_deeptmhmm``; see :doc:`signalp6_deeptmhmm`.
 

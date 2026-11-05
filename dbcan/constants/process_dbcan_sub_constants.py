@@ -1,3 +1,4 @@
+import re
 import dbcan.constants.base_constants as base_constants
 import dbcan.constants.process_utils_constants as process_utils_constants
 
@@ -67,3 +68,6 @@ DBCAN_SUB_CBM_PREFIX = "CBM"
 DBCAN_SUB_HMM_SUFFIX = ".hmm"
 DBCAN_SUB_SEPARATOR = "|"
 
+
+# EC number core inside dbCAN-sub eHMM names: a.b.c.d where b/c/d may be '-' and d may be 'nX'
+EC_CORE_PATTERN = re.compile(r"^\d+\.(?:\d+|-)\.(?:\d+|-)\.(?:n?\d+|-)$")

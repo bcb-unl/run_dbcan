@@ -141,20 +141,6 @@ class DBCANSUBProcessor:
                 df[subfamily_ec_col] = df[hmm_name_col].apply(self._extract_subfamily_ecs)
                 df[substrate_col] = df[hmm_name_col].apply(lambda x: self.get_substrates(str(x), subs_dict))
 
-                # Sanity check: lengths must match per row; pad substrates if needed (no reordering)
-                def _pad_match_len(ec_s: str, sub_s: str) -> str:
-                    ecs = [t for t in (ec_s.split(';') if isinstance(ec_s, str) else []) if t != '']
-                    subs = [t for t in (sub_s.split(';') if isinstance(sub_s, str) else [])]
-                    if len(subs) < len(ecs):
-                        subs = subs + ['-'] * (len(ecs) - len(subs))
-                    elif len(subs) > len(ecs):
-                        subs = subs[:len(ecs)]
-                    return ';'.join(subs)
-                df[substrate_col] = [
-                    _pad_match_len(e, s) for e, s in zip(df[subfamily_ec_col].tolist(),
-                                                         df[substrate_col].tolist())
-                ]
-
                 # Drop original HMM Name
                 df.drop(columns=[hmm_name_col], inplace=True, errors='ignore')
 
@@ -224,19 +210,22 @@ class DBCANSUBProcessor:
     @staticmethod
     def _parse_sorted_ec_tokens(hmm_name: str) -> List[str]:
         """
-        Extract all EC tokens (format 'a.b.c.d:count') from HMM name and sort them deterministically:
-        - Sort by EC core numerically (a, b, c, d), with '-' in d treated as infinity (placed after numbers).
+        Extract all EC tokens from an eHMM name and sort them deterministically.
+
+        A token is ``a.b.c.d`` optionally followed by ``:count`` (e.g. ``3.2.1.4:18`` or
+        ``1.10.3.2``); each of b, c, d may be ``-`` and d may be a preliminary ``nX`` number.
+        - Sort by EC core numerically (a, b, c, d), with '-' treated as infinity (placed after numbers).
         - Stable within equal keys (preserves original order when keys tie).
-        Returns the sorted list of original tokens (including ':count').
+        Returns the sorted list of original tokens (including ':count' when present).
         """
         parts = str(hmm_name).split('|')
         indexed = []
         for idx, p in enumerate(parts):
-            if ':' not in p:
+            p = p.strip()
+            if p.endswith('.hmm'):
                 continue
-            ec_core = p.split(':')[0]
-            segs = ec_core.split('.')
-            if len(segs) != 4:
+            ec_core = p.split(':', 1)[0]
+            if not P.EC_CORE_PATTERN.match(ec_core):
                 continue
             indexed.append((idx, ec_core, p))
 
@@ -246,7 +235,7 @@ class DBCANSUBProcessor:
             try:
                 return int(s)
             except Exception:
-                return s
+                return 10**8  # e.g. preliminary 'n1' numbers: after numbers, before '-'
 
         def _key(item):
             _, core, _ = item
@@ -258,20 +247,20 @@ class DBCANSUBProcessor:
 
     def get_substrates(self, profile_info: str, subs_dict: Dict[Tuple[str, str], List[str]]) -> str:
         """
-        Map each EC token to a substrate individually.
+        Map each EC token of an eHMM to a substrate (strict mode, GitHub issue #85).
 
-        Rules (change applies to INCOMPLETE EC only):
-        - Token format: a.b.c.d:count (we use a.b.c.d as EC core).
-        - COMPLETE EC (d != '-'):
-            1) pick from subs_dict[(family, EC)] — if multiple, choose the last one alphabetically
-            2) fallback to subs_dict[(family, '-')] — same picking rule
-            3) if the family has exactly one unique substrate overall -> use it; otherwise '-'
-        - INCOMPLETE EC (d == '-'):
-            Only look at subs_dict[(family, a.b.c.-)]; if multiple, choose the last one alphabetically.
-            If not found, return '-' (NO fallback to subs_dict[(family, '-')]).
-        - No EC tokens:
-            1) subs_dict[(family, '-')]
-            2) if the family has exactly one unique substrate overall -> use it; otherwise '-'
+        - The family is taken from the eHMM name (``GH71_e32.hmm`` -> ``GH71``).
+        - For every EC token (``a.b.c.d`` or ``a.b.c.-``, with or without ``:count``) the
+          substrate is looked up under the exact key ``(family, EC)`` of
+          fam-substrate-mapping.tsv; if several substrates share that key the last one
+          alphabetically is used. Without an exact match the token maps to ``-``.
+        - eHMMs without EC tokens get ``-``. There is no family-level fallback, so the
+          result matches the dbCAN-sub web server.
+
+        Returns one entry per EC token, joined with ';' in the same order as the
+        ``Subfam EC`` column. A mapping value that itself lists several substrates
+        (``beta-glucan;beta-mannan``) is written with ',' inside its entry so that the
+        entries stay aligned with the EC tokens.
         """
         def _pick(v) -> str | None:
             """Pick a deterministic substrate from a list-like or single value."""
@@ -297,51 +286,14 @@ class DBCANSUBProcessor:
         except (IndexError, AttributeError):
             return '-'
 
-        # Family-level unique substrate set (used only for COMPLETE EC step-3 fallback)
-        family_all_subs = {s for (fam, _ec), vals in subs_dict.items() if fam == family
-                           for s in (vals if isinstance(vals, (list, set, tuple)) else [vals])}
-        family_all_subs_clean = {s for s in family_all_subs if s and s != '-'}
-
-        # Extract EC tokens in a deterministic order identical to _extract_subfamily_ecs
         ec_tokens = self._parse_sorted_ec_tokens(profile_info)
-
-        # No EC tokens: family-level fallback
         if not ec_tokens:
-            v = _pick(subs_dict.get((family, '-')))
-            if v:
-                return v
-            if len(family_all_subs_clean) == 1:
-                return next(iter(family_all_subs_clean))
             return '-'
 
         substrates_mapped = []
         for token in ec_tokens:
-            ec_core = token.split(':')[0]
-            segs = ec_core.split('.')
-            is_incomplete = (segs[-1] == '-')
-
-            if is_incomplete:
-                # Only consider candidates under the exact key (family, a.b.c.-); pick last alphabetically if multiple
-                v = _pick(subs_dict.get((family, ec_core)))
-                if v:
-                    substrates_mapped.append(v)
-                    continue
-                # No fallback to (family, '-'); strictly return '-'
-                substrates_mapped.append('-')
-                continue
-
-            # COMPLETE EC handling (same logic, supports multi-candidate by picking last alphabetically)
+            ec_core = token.split(':', 1)[0]
             v = _pick(subs_dict.get((family, ec_core)))
-            if v:
-                substrates_mapped.append(v)
-                continue
-            v = _pick(subs_dict.get((family, '-')))
-            if v:
-                substrates_mapped.append(v)
-                continue
-            if len(family_all_subs_clean) == 1:
-                substrates_mapped.append(next(iter(family_all_subs_clean)))
-            else:
-                substrates_mapped.append('-')
+            substrates_mapped.append(v.replace(';', ',') if v else '-')
 
-        return ';'.join(substrates_mapped) if substrates_mapped else '-'
+        return ';'.join(substrates_mapped)
