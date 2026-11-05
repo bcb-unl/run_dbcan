@@ -457,3 +457,4 @@ class OverviewGenerator:
 
         except Exception as e:
             logger.error(f"Error generating overview: {e}", exc_info=True)
+            raise

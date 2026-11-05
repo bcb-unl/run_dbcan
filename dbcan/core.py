@@ -5,10 +5,21 @@ def run_dbCAN_database(config):
     downloader = DBDownloader(config)
     downloader.download_file()
 
+class DbcanStepError(RuntimeError):
+    """A pipeline step failed; raised so that the command exits with a non-zero status."""
+
+
 def run_dbCAN_input_process(config):
     from dbcan.IO.fasta import get_processor
     processor = get_processor(config)
-    processor.process_input()
+    result = processor.process_input()
+    failed = result is None or (isinstance(result, tuple) and any(r is None for r in result))
+    if failed:
+        raise DbcanStepError(
+            f"Input processing failed for {getattr(config, 'input_raw_data', '?')} "
+            f"(mode={getattr(config, 'mode', '?')}); see the log above for details."
+        )
+    return result
 
 def run_dbCAN_cazy_diamond(config):
     from dbcan.annotation.diamond import CAZYDiamondProcessor
@@ -223,12 +234,17 @@ def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfdiamondconfig, tfconfig, stpcon
     )
     from dbcan.IO.gff import get_gff_processor
     processor = get_gff_processor(cgcgffconfig)
-    processor.process_gff()
+    if not processor.process_gff():
+        raise DbcanStepError(
+            f"GFF processing failed for {getattr(cgcgffconfig, 'input_gff', '?')} "
+            f"(gff_type={getattr(cgcgffconfig, 'gff_type', '?')}); cgc.gff was not written. See the log above."
+        )
 
 def run_dbCAN_CGCFinder(config):
     from dbcan.annotation.CGCFinder import CGCFinder
     cgc_finder = CGCFinder(config)
-    cgc_finder.run()
+    if not cgc_finder.run():
+        raise DbcanStepError("CGC identification failed; see the log above for details.")
 
 def run_dbCAN_Pfam_null_cgc(config):
     from dbcan.process.process_utils import (

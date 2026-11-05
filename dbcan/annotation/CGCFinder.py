@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+from pathlib import Path
 import pandas as pd
 from dbcan.configs.cgcfinder_config import CGCFinderConfig
 import dbcan.constants.cgcfinder_constants as C
@@ -417,7 +418,7 @@ class CGCFinder:
             logger.info(f"CGC summary has been written to {summary_path}")
         except Exception as e:
             logger.error(f"Error outputting CGC clusters: {str(e)}")
-            import traceback; traceback.print_exc()
+            raise
 
     def run(self):
         if not self.read_gff():

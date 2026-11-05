@@ -31,6 +31,12 @@ def setup_logging(log_level: str, log_file: Optional[str] = None, verbose: bool 
         force=True  # Override any existing configuration
     )
 
+def _require_gff_for_protein_mode(kwargs):
+    """easy_* commands: protein input has no pyrodigal GFF, so --input_gff is needed for steps 2-3."""
+    if kwargs.get('mode') == 'protein' and not kwargs.get('input_gff'):
+        raise click.UsageError("--input_gff (and --gff_type) is required when --mode=protein")
+
+
 def _invoke_subset(ctx, cmd, all_kwargs):
     """
     Invoke a click command with a subset of parameters from all_kwargs.
@@ -152,6 +158,15 @@ def gff_process_cmd(ctx, log_level, log_file, verbose, **kwargs):
         kwargs['gff_type'] = 'prodigal'
         logging.info(f"[gff_process] Defaulting gff_type=prodigal")
 
+    # Fail before the TC/TF/STP/sulfatase/peptidase searches if there is no GFF to annotate.
+    # gff_process has no --mode option, so a missing <output_dir>/uniInput.gff usually means
+    # protein input without --input_gff.
+    if not Path(kwargs['input_gff']).is_file():
+        raise click.UsageError(
+            f"GFF file not found: {kwargs['input_gff']}. For protein input (--mode protein) pass "
+            "--input_gff and --gff_type; for prok/meta input run CAZyme_annotation first."
+        )
+
     diamond_tc_config = create_config(DiamondTCConfig, namespace="tc", **kwargs)
     diamond_tf_config = create_config(DiamondTFConfig, namespace="tf_diamond", **kwargs)
     pyhmmer_tf_config = create_config(PyHMMERTFConfig, namespace="tf", **kwargs)
@@ -257,6 +272,7 @@ def cgc_circle_plot_cmd(ctx, log_level, log_file, verbose, **kwargs):
 def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, and CGC identification in one step."""
     setup_logging(log_level, log_file, verbose)
+    _require_gff_for_protein_mode(kwargs)
     merged = {
         **kwargs,
         "log_level": log_level,
@@ -300,6 +316,7 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, CGC identification, and substrate prediction in one step."""
     setup_logging(log_level, log_file, verbose)
+    _require_gff_for_protein_mode(kwargs)
     merged = {
         **kwargs,
         "log_level": log_level,
