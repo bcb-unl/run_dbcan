@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import psutil
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 import time
 
@@ -131,11 +132,11 @@ class SignalPTMHMMProcessor:
         if file_size_mb > 100:
             logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
             chunks = []
-            for chunk in pd.read_csv(path, sep="\t", chunksize=100000):
+            for chunk in read_tsv(path, chunksize=100000):
                 chunks.append(chunk)
             return pd.concat(chunks, ignore_index=True)
         else:
-            return pd.read_csv(path, sep="\t")
+            return read_tsv(path)
 
     def collect_all_gene_ids(self, df: pd.DataFrame) -> set:
         if C.GENE_ID_COL not in df.columns:
@@ -152,11 +153,11 @@ class SignalPTMHMMProcessor:
             if file_size_mb > 100:
                 logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
                 chunks = []
-                for chunk in pd.read_csv(overview_path, sep="\t", chunksize=100000):
+                for chunk in read_tsv(overview_path, chunksize=100000):
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(overview_path, sep="\t")
+                df = read_tsv(overview_path)
         except Exception as e:
             raise RuntimeError(f"failed to read overview.tsv: {e}")
         if C.GENE_ID_COL not in df.columns:
@@ -328,11 +329,11 @@ class SignalPTMHMMProcessor:
             if file_size_mb > 100:
                 logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
                 chunks = []
-                for chunk in pd.read_csv(overview_path, sep="\t", chunksize=100000):
+                for chunk in read_tsv(overview_path, chunksize=100000):
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(overview_path, sep="\t")
+                df = read_tsv(overview_path)
             if signalp_results:
                 df[C.SIGNALP_COL] = df[C.GENE_ID_COL].astype(str).map(lambda x: signalp_results.get(x, C.DEFAULT_EMPTY))
             elif self.run_signalp:

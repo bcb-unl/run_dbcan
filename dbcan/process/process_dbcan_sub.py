@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, Tuple, List
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from dbcan.configs.pyhmmer_config import DBCANSUBConfig
 import dbcan.constants.process_dbcan_sub_constants as P
 
@@ -106,7 +107,7 @@ class DBCANSUBProcessor:
             logger.warning("No substrate mapping data loaded. Substrate annotation will be '-'.")
 
         try:            
-            df = pd.read_csv(self.input_file_path, sep='\t')
+            df = read_tsv(self.input_file_path)
             if df.empty:
                 logger.warning("No dbCAN-sub results to process (DataFrame is empty)")
                 # Create empty file with headers when DataFrame is empty

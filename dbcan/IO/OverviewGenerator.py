@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Iterable, Tuple, Any
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 
 from dbcan.configs.base_config import OverviewGeneratorConfig
@@ -110,11 +111,11 @@ class OverviewGenerator:
                 if file_size_mb > 100:
                     logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {key}")
                     chunks = []
-                    for chunk in pd.read_csv(path, sep='\t', chunksize=100000):
+                    for chunk in read_tsv(path, chunksize=100000):
                         chunks.append(chunk)
                     df = pd.concat(chunks, ignore_index=True)
                 else:
-                    df = pd.read_csv(path, sep='\t')
+                    df = read_tsv(path)
                 
                 required = list(self.column_names_map[key])
                 missing = [c for c in required if c not in df.columns]
@@ -440,12 +441,14 @@ class OverviewGenerator:
                 else:
                     id_col = O.GENE_ID_FIELD
                 if id_col in df.columns:
-                    unique_ids = df[id_col].unique()
-                    gene_ids.update(unique_ids)
+                    # IDs are opaque strings (issue #82): the same str() key is used for
+                    # the gene list and for the per-gene index.
+                    df = df.assign(**{id_col: df[id_col].astype(str)})
+                    gene_ids.update(df[id_col].unique())
                     # Build per-gene index to avoid repeated full-table scans
                     groups: Dict[str, pd.DataFrame] = {}
                     for gid, sub_df in df.groupby(id_col, sort=False):
-                        groups[str(gid)] = sub_df
+                        groups[gid] = sub_df
                     indexed[key] = groups
 
             aggregated_df = self.aggregate_data(gene_ids, indexed)

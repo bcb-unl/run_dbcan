@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 from BCBio import GFF
 from tqdm import tqdm
@@ -32,9 +33,9 @@ def read_gff_to_df(path: str, columns=None, drop_comments: bool = True) -> pd.Da
 
     # Never treat '#' as inline comment; some protein_id contain '#'
     # Use the python engine for robust parsing of mixed content.
-    df = pd.read_csv(
+    df = read_tsv(
         p,
-        sep='\t',
+        id_columns=[columns[0], columns[-1]],
         header=None,
         names=columns,
         comment=None,      # critical: keep inline '#'
@@ -205,7 +206,7 @@ class GFFProcessor:
                 return {}
 
             logger.info(f"Loading CAZyme data from {self.cazyme_overview_path}")
-            df = pd.read_csv(self.cazyme_overview_path, sep='\t')
+            df = read_tsv(self.cazyme_overview_path)
 
             required_cols = [G.GFF_GENE_ID_COL, G.GFF_TOOLS_COUNT_COL, G.GFF_RECOMMEND_RESULTS_COL]
             if not all(col in df.columns for col in required_cols):
@@ -224,9 +225,9 @@ class GFFProcessor:
 
             logger.info(f"Loading CGC signature data from {self.cgc_sig_path}")
             try:
-                cgc_sig_chunks = pd.read_csv(
+                cgc_sig_chunks = read_tsv(
                     self.cgc_sig_path,
-                    sep='\t',
+                    id_columns=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
                     usecols=G.GFF_CGC_SIG_COLUMNS,
                     header=None,
                     skiprows=1,

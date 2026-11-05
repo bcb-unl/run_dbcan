@@ -2,6 +2,7 @@ from pathlib import Path
 from pycirclize import Circos, config as circos_config
 from pycirclize.parser import Gff
 import pandas as pd
+from dbcan.IO.table import read_tsv
 import matplotlib.pyplot as plt
 import matplotlib.patches as Patch
 import csv
@@ -66,7 +67,7 @@ class CGCCircosPlot:
 
         # Load TSV
         try:
-            self.tsv_data = pd.read_csv(self.tsv_file, sep='\t')
+            self.tsv_data = read_tsv(self.tsv_file)
             required_columns = [
                 CGC_ID_COLUMN, CONTIG_ID_COLUMN, CGC_PROTEIN_ID_FIELD,
                 GENE_START_COLUMN, GENE_STOP_COLUMN
@@ -81,7 +82,7 @@ class CGCCircosPlot:
         # Load DEG (optional)
         if self.deg_tsv_file.exists():
             try:
-                deg_df = pd.read_csv(self.deg_tsv_file, sep="\t", header=None, names=["protein_id", "log2FC"])
+                deg_df = read_tsv(self.deg_tsv_file, header=None, names=["protein_id", "log2FC"])
                 self.deg_data = deg_df[deg_df["log2FC"].notnull()]
                 self.deg_data["log2FC"] = pd.to_numeric(self.deg_data["log2FC"], errors='coerce')
             except Exception as e:

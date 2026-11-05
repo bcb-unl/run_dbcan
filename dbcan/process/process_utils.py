@@ -4,6 +4,7 @@ from typing import Dict, Iterable, Set, List, Optional
 import time
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 
 logger = logging.getLogger(__name__)
@@ -36,9 +37,8 @@ def process_results(results: Optional[Iterable[List]], output_file, temp_hits_fi
             if file_size_mb > 100:
                 logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading from {temp_hits_file}")
                 chunks = []
-                for chunk in pd.read_csv(
+                for chunk in read_tsv(
                     temp_hits_file,
-                    sep='\t',
                     header=None,
                     names=PU.HMMER_COLUMN_NAMES,
                     chunksize=100000,
@@ -47,7 +47,7 @@ def process_results(results: Optional[Iterable[List]], output_file, temp_hits_fi
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(temp_hits_file, sep='\t', header=None, names=PU.HMMER_COLUMN_NAMES)
+                df = read_tsv(temp_hits_file, header=None, names=PU.HMMER_COLUMN_NAMES)
                 total_rows = len(df)
         elif results:
             # results provided in-memory
@@ -205,11 +205,11 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 if file_size_mb > 100:
                     logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {name}")
                     chunks = []
-                    for chunk in pd.read_csv(fpath, sep='\t', header=0, chunksize=100000):
+                    for chunk in read_tsv(fpath, header=0, chunksize=100000):
                         chunks.append(chunk)
                     df = pd.concat(chunks, ignore_index=True)
                 else:
-                    df = pd.read_csv(fpath, sep='\t', header=0)
+                    df = read_tsv(fpath, header=0)
                 
                 # align columns
                 missing = [c for c in columns if c not in df.columns]
@@ -283,11 +283,11 @@ def process_cgc_null_pfam_annotation(Pfam_config) -> None:
         if file_size_mb > 100:
             logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading")
             chunks = []
-            for chunk in pd.read_csv(pfam_hmm_output, sep='\t', header=0, chunksize=100000):
+            for chunk in read_tsv(pfam_hmm_output, header=0, chunksize=100000):
                 chunks.append(chunk)
             df = pd.concat(chunks, ignore_index=True)
         else:
-            df = pd.read_csv(pfam_hmm_output, sep='\t', header=0)
+            df = read_tsv(pfam_hmm_output, header=0)
         
         # align to HMMER_COLUMN_NAMES
         missing = [c for c in PU.HMMER_COLUMN_NAMES if c not in df.columns]
@@ -383,7 +383,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
     file_size_mb = pfam_path.stat().st_size / (1024 * 1024)
     if file_size_mb > 100:
         logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for mapping")
-        for chunk in pd.read_csv(pfam_path, sep='\t', header=0, chunksize=100000):
+        for chunk in read_tsv(pfam_path, header=0, chunksize=100000):
             if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(chunk.columns):
                 logger.warning(f"PFAM result missing required columns in {pfam_path}")
                 return
@@ -392,7 +392,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
                 annot = str(row[PU.HMM_NAME_COLUMN])
                 pfam_map[protein_id] = annot
     else:
-        df = pd.read_csv(pfam_path, sep='\t', header=0)
+        df = read_tsv(pfam_path, header=0)
         if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(df.columns):
             logger.warning(f"PFAM result missing required columns in {pfam_path}")
             return

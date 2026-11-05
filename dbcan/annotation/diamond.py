@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess
 import logging
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from abc import ABC
 import time
 
@@ -100,7 +101,7 @@ class DiamondProcessor(ABC):
             logger.info(f"No DIAMOND hits. Wrote header-only file: {self.output_file}")
             return
         try:
-            df = pd.read_csv(of, sep='\t', header=None, names=self.config.column_names)
+            df = read_tsv(of, header=None, names=self.config.column_names)
             if self.config.id_column:
                 self._postprocess_ids(df, self.config.id_column)
             if self.config.label:
