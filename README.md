@@ -40,11 +40,11 @@ This command will download and organize the database files automatically.
 
 Please note that `wget` cannot directly download an entire folder from an S3 bucket. It can only fetch individual files. To download all files, you will need to list the files and download them one by one or use AWS CLI. If you still want to download using `wget`, you must specify each file’s URL directly, for example:
 ```bash
-wget https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_5-5-2026/some_file
+wget https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_11-3-2026/some_file
 ```
 If you want to download the entire folder, please use the AWS CLI as follows:
 ```bash
-aws s3 cp s3://dbcan/db_v5-2-9_5-5-2026/ ./db --recursive
+aws s3 cp s3://dbcan/db_v5-2-9_11-3-2026/ ./db --recursive
 ```
 For more details on database downloads, please refer to our [documentation](https://run-dbcan.readthedocs.io/en/latest/).
 
