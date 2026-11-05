@@ -87,21 +87,38 @@ methods_option = click.option(
 
 
 # Define group options
-def general_options(func):
+INPUT_RAW_DATA_HELP = 'Path to input sequences (FASTA/FASTA.gz): nucleotide for prok/meta modes, proteins when --mode=protein.'
+MODE_HELP = 'Input type: prok (prokaryote DNA), meta (metagenome DNA), protein (amino-acid FASTA).'
+
+
+def input_options(func):
+    """--input_raw_data and --mode, for commands that read the raw input sequences."""
     func = click.option(
         '--input_raw_data',
         required=True,
-        help='Path to input sequences (FASTA/FASTA.gz): nucleotide for prok/meta modes, proteins when --mode=protein.',
+        help=INPUT_RAW_DATA_HELP,
     )(func)
-    func = output_dir_option(func)
     func = click.option(
         '--mode',
         default='prok',
         required=True,
         show_default=True,
-        help='Input type: prok (prokaryote DNA), meta (metagenome DNA), protein (amino-acid FASTA).',
+        help=MODE_HELP,
     )(func)
+    return func
 
+
+def deprecated_input_options(func):
+    """Hidden, ignored --input_raw_data/--mode, kept so that existing substrate_prediction
+    command lines that pass them (the workaround for GitHub issue #81) keep working."""
+    func = click.option('--input_raw_data', required=False, default=None, hidden=True)(func)
+    func = click.option('--mode', required=False, default=None, hidden=True)(func)
+    return func
+
+
+def general_options(func):
+    func = input_options(func)
+    func = output_dir_option(func)
     return func
 
 def database_options(func):
@@ -638,8 +655,12 @@ def cgc_options(func):
     return func
 
 def cgc_substrate_base_options(func):
-    """Options shared by substrate_prediction and easy_substrate (step 4)."""
-    func = general_options(func)
+    """Options shared by substrate_prediction and easy_substrate (step 4).
+
+    substrate_prediction only reads intermediate files from --output_dir, so it does not
+    take --input_raw_data/--mode (GitHub issue #81); easy_substrate adds them itself.
+    """
+    func = output_dir_option(func)
     func = click.option(
         '--pul',
         required=False,

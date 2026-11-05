@@ -86,14 +86,12 @@ Substrate prediction
 --------------------
 
 **substrate_prediction asks for --mode and --input_raw_data.**
-   Known limitation (GitHub issue #81): ``substrate_prediction`` shares its option definitions with the annotation
-   commands, so both options are required even though only ``--output_dir`` and ``--db_dir`` are used. Pass the same
-   values as in the annotation step:
+   Fixed after 5.2.9 (GitHub issue #81): ``substrate_prediction`` only needs ``--output_dir`` and ``--db_dir``.
+   With 5.2.9 and earlier, pass the same ``--mode``/``--input_raw_data`` values as in the annotation step.
 
    .. code-block:: shell
 
-      run_dbcan substrate_prediction --mode protein --input_raw_data proteins.faa \
-        --output_dir output_dir --db_dir db
+      run_dbcan substrate_prediction --output_dir output_dir --db_dir db
 
    See :doc:`../user_guide/predict_CGC_substrate` for the files that must exist in ``--output_dir``.
 

@@ -1,6 +1,6 @@
 import rich_click as click
 from dbcan.parameter import (
-    create_config, general_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,diamond_tf_options,
+    create_config, general_options, input_options, deprecated_input_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,diamond_tf_options,
     pyhmmer_dbcan_options, dbcansub_options ,pyhmmer_tf, pyhmmer_stp, cgc_gff_option, cgc_options, cgc_sub_options, syn_plot_options,
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam,
     topology_annotation_options   # <--- added
@@ -36,7 +36,8 @@ def _invoke_subset(ctx, cmd, all_kwargs):
     Invoke a click command with a subset of parameters from all_kwargs.
     This allows reusing commands with only the relevant parameters.
     """
-    names = {p.name for p in cmd.params}
+    # Hidden parameters are deprecated compatibility shims; never forward to them.
+    names = {p.name for p in cmd.params if not getattr(p, "hidden", False)}
     sub_kwargs = {k: v for k, v in all_kwargs.items() if k in names}
     return ctx.invoke(cmd, **sub_kwargs)
 
@@ -204,12 +205,19 @@ def pfam_null_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 @cgc_substrate_base_options
 @cgc_substrate_homology_params_options
 @cgc_substrate_dbcan_sub_param_options
+@deprecated_input_options
 @click.pass_context
 def substrate_prediction_cmd(ctx, log_level, log_file, verbose, **kwargs):
+    """predict substrate specificities of CAZyme Gene Clusters(CGCs)."""
     setup_logging(log_level, log_file, verbose)
     from dbcan.configs.cgc_substrate_config import CGCSubstrateConfig, SynPlotConfig
     from dbcan.core import run_dbCAN_CGCFinder_substrate, run_dbcan_syn_plot
-    """predict substrate specificities of CAZyme Gene Clusters(CGCs)."""
+    ignored = [f"--{k}" for k in ("input_raw_data", "mode") if kwargs.pop(k, None) is not None]
+    if ignored and ctx.command.name == 'substrate_prediction':
+        logging.getLogger(__name__).warning(
+            "%s %s not used by substrate_prediction (it reads the files in --output_dir) and will be "
+            "removed in a future release.", " and ".join(ignored), "is" if len(ignored) == 1 else "are"
+        )
     cgcsubconfig = create_config(CGCSubstrateConfig, **kwargs)
     run_dbCAN_CGCFinder_substrate(cgcsubconfig)
     synplotconfig = create_config(SynPlotConfig, **kwargs)
@@ -275,6 +283,7 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 
 @cli.command('easy_substrate')
 @logging_options
+@input_options
 @cgc_sub_options
 @methods_option
 @threads_option
