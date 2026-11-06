@@ -172,8 +172,37 @@ def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLA
     return pd.DataFrame(kept_rows, columns=df.columns)
 
 
+def _best_hit_per_protein(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep one DIAMOND hit per protein: lowest E-value, then highest query coverage.
+
+    DIAMOND signature databases (TCDB, PRODORIC TF, SulfAtlas, MEROPS) hold full-length
+    proteins, so a hit is a protein-level label, not a domain; its query interval is an
+    alignment span and is never compared with other annotations by coordinates.
+    """
+    if df.empty:
+        return df
+    ranked = df.assign(
+        _ev=pd.to_numeric(df[PU.IEVALUE_COLUMN], errors='coerce').fillna(float('inf')),
+        _cov=pd.to_numeric(df[PU.COVERAGE_COLUMN], errors='coerce').fillna(0.0),
+    ).sort_values([PU.TARGET_NAME_COLUMN, '_ev', '_cov'], ascending=[True, True, False], kind='mergesort')
+    return ranked.drop_duplicates(subset=[PU.TARGET_NAME_COLUMN], keep='first').drop(columns=['_ev', '_cov'])
+
+
 def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, sulfatase_config, peptidase_config) -> None:
-    """Combine TCDB, TF and STP results into one file and filter overlaps."""
+    """Combine TC, TF, STP, sulfatase and peptidase results into total_cgc_info.tsv.
+
+    Signature classes are not mutually exclusive: one protein can carry a transporter
+    label and STP domains, or a TF label and STP domains. Annotations from different
+    sources are therefore never filtered against each other (this used to compare
+    DIAMOND alignment spans with Pfam domain coordinates, and DIAMOND E-values with
+    HMMER i-Evalues, and dropped e.g. STP SBP_bac_1/TOBE domains of ABC transporter
+    proteins).
+
+    - DIAMOND sources (TC, TF_prok, Sulfatase, Peptidase) are protein-level labels: one
+      best hit per protein, no coordinate-based overlap handling.
+    - HMM sources (STP, TF_fungi) are domain-level and were already overlap-resolved
+      within their own library by the pyHMMER step.
+    """
     try:
         columns = PU.CGC_SIG_RESULT_COLUMN
         # resolve output_dir from any given config
@@ -234,6 +263,11 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
 
                 _TYPE_MAP = {'TF_prok': 'TF', 'TF_fungi': 'TF'}
                 df['Type'] = _TYPE_MAP.get(name, name)
+                if name in PU.DIAMOND_SIGNATURE_SOURCES:
+                    before = len(df)
+                    df = _best_hit_per_protein(df)
+                    if len(df) != before:
+                        logger.info(f"{name}: kept best hit per protein ({before} -> {len(df)} rows)")
                 frames.append(df)
                 logger.info(f"Loaded {len(df)} {name} annotations from {fpath}")
             except Exception as e:
@@ -260,9 +294,12 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         else:
             total_df = pd.concat(frames, ignore_index=True)
         
-        filtered_df = filter_overlaps(total_df)
-        filtered_df.to_csv(out_file, index=False, sep='\t')
-        logger.info(f"Saved {len(filtered_df)} CGC annotations to {out_file}")
+        # No cross-source overlap filtering (see docstring); stable order for the GFF step.
+        total_df = total_df.sort_values(
+            by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN, 'Type'], kind='mergesort'
+        )
+        total_df.to_csv(out_file, index=False, sep='\t')
+        logger.info(f"Saved {len(total_df)} CGC annotations to {out_file}")
     except Exception as e:
         logger.error(f"Error processing CGC signature results: {e}", exc_info=True)
 

@@ -28,3 +28,7 @@ CGC_SIG_RESULT_COLUMN = [
             'i-Evalue', 'Annotate From', 'Annotate To', 'Target From', 'Target To',
             'Coverage', 'Annotate File Name'
         ]
+# CGC signature sources (process_cgc_sig_results). DIAMOND sources search full-length
+# protein databases and give protein-level labels; HMM sources give Pfam-style domains.
+DIAMOND_SIGNATURE_SOURCES = frozenset({'TC', 'TF_prok', 'Sulfatase', 'Peptidase'})
+HMM_SIGNATURE_SOURCES = frozenset({'STP', 'TF_fungi'})
