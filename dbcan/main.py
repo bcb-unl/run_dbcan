@@ -31,6 +31,23 @@ def setup_logging(log_level: str, log_file: Optional[str] = None, verbose: bool 
         force=True  # Override any existing configuration
     )
 
+def _resolve_tf_route(kwargs):
+    """TF annotation: prokaryotes -> TF DIAMOND, fungi (--fungi) -> TF HMM.
+
+    --prokaryotic defaults to "not --fungi"; an explicit --prokaryotic/--no-prokaryotic wins.
+    """
+    fungi = bool(kwargs.get('fungi'))
+    if kwargs.get('prokaryotic') is None:
+        kwargs['prokaryotic'] = not fungi
+    if not kwargs['prokaryotic'] and not fungi:
+        logging.warning("--no-prokaryotic without --fungi: no TF annotation will be produced.")
+    logging.info(
+        "[gff_process] TF annotation: %s",
+        " + ".join(n for n, on in (("TF DIAMOND (prokaryotic)", kwargs['prokaryotic']), ("TF HMM (fungi)", fungi)) if on)
+        or "none",
+    )
+
+
 def _require_gff_for_protein_mode(kwargs):
     """easy_* commands: protein input has no pyrodigal GFF, so --input_gff is needed for steps 2-3."""
     if kwargs.get('mode') == 'protein' and not kwargs.get('input_gff'):
@@ -166,6 +183,8 @@ def gff_process_cmd(ctx, log_level, log_file, verbose, **kwargs):
             f"GFF file not found: {kwargs['input_gff']}. For protein input (--mode protein) pass "
             "--input_gff and --gff_type; for prok/meta input run CAZyme_annotation first."
         )
+
+    _resolve_tf_route(kwargs)
 
     diamond_tc_config = create_config(DiamondTCConfig, namespace="tc", **kwargs)
     diamond_tf_config = create_config(DiamondTFConfig, namespace="tf_diamond", **kwargs)

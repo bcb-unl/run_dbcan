@@ -13,9 +13,20 @@ Generating CGC Information
 
 To identify and analyze CGCs, users must first prepare annotation information by converting their GFF file into a specialized CGC-ready format. The ``gff_process`` command must be run in the output directory of a finished ``CAZyme_annotation`` run (it reads ``uniInput.faa`` and ``overview.tsv``) and performs these steps:
 
-1. Uses DIAMOND to annotate transporters (TC, against TCDB), prokaryotic transcription factors (TF, against ``TF.dmnd``; disable with ``--no-prokaryotic``), sulfatases and peptidases
-2. Uses pyHMMER to identify signal transduction proteins (STP) and, only with ``--fungi``, fungal transcription factors (``TF.hmm``)
-3. Combines and filters all results based on coverage and E-value thresholds into ``total_cgc_info.tsv``
+1. Uses DIAMOND to annotate transporters (TC, against TCDB), sulfatases (SulfAtlas), peptidases (MEROPS) and, for
+   prokaryotes, transcription factors (TF, against ``TF.dmnd``)
+2. Uses pyHMMER to identify signal transduction proteins (STP) and, with ``--fungi``, fungal transcription factors
+   (``TF.hmm``; the prokaryotic TF DIAMOND search is then skipped)
+3. Combines all hits that pass their E-value and coverage thresholds into ``total_cgc_info.tsv``
+
+.. note::
+
+   The DIAMOND databases contain full-length proteins, so a TC, TF (DIAMOND), sulfatase or peptidase hit is a
+   protein-level label; its query interval is an alignment span, not a domain. Annotations from different sources
+   are therefore never filtered against each other: one protein can be, for example, ``TC`` and ``STP`` at the same
+   time. Each DIAMOND search keeps one best hit per protein; STP and TF HMM domains are resolved within their own
+   HMM library. In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of
+   ``cgc_standard_out.tsv`` shows the first of CAZyme > TC > TF > STP > Sulfatase > Peptidase.
 4. Marks CAZymes using ``overview.tsv``: only proteins with ``#ofTools`` >= 2 count as CAZymes, annotated with their ``Recommend Results``
 5. Integrates these annotations into the user-submitted GFF file to generate a ``cgc.gff`` file
 
@@ -74,7 +85,7 @@ There is no eukaryotic genome mode. For fungi and other eukaryotes:
 1. Predict genes with a eukaryotic gene finder (e.g. funannotate or BRAKER), or use an NCBI/JGI annotation.
 2. Run ``CAZyme_annotation`` (or ``easy_CGC``) with ``--mode protein`` on the predicted proteins.
 3. Provide the matching GFF with ``--input_gff`` and ``--gff_type NCBI_euk`` (or ``JGI`` for MycoCosm files).
-   Add ``--fungi`` to search fungal transcription factors with ``TF.hmm``.
+   Add ``--fungi`` to search fungal transcription factors with ``TF.hmm`` (instead of the prokaryotic TF DIAMOND search).
 
 GFF3 files from funannotate, BRAKER and similar pipelines usually have ``gene`` → ``mRNA`` → ``CDS`` features, but
 their ``CDS`` rows have no ``protein_id`` attribute, so every gene becomes ``protein_id=unknown``. Their protein
@@ -147,9 +158,10 @@ Key Parameters
    * - ``--gff_type``
      - Format of the GFF file: ``NCBI_prok``, ``prodigal``, ``JGI``, or ``NCBI_euk`` (default: ``prodigal``)
    * - ``--fungi`` / ``--no-fungi``
-     - Run the fungal TF HMM search (default: off)
+     - Fungal input: annotate TFs with the TF HMM search (default: off)
    * - ``--prokaryotic`` / ``--no-prokaryotic``
-     - Run the prokaryotic TF DIAMOND search (default: on)
+     - Run the prokaryotic TF DIAMOND search (default: on without ``--fungi``, off with ``--fungi``;
+       pass ``--prokaryotic --fungi`` to run both)
 
 E-value and coverage thresholds for each search (``--e_value_threshold_tc``, ``--coverage_threshold_tc``, ...)
 are listed by ``run_dbcan gff_process --help``. DIAMOND coverage options are percentages of the query length (0-100);

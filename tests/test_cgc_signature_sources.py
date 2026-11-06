@@ -89,3 +89,29 @@ def test_gff_annotation_lists_all_sources(tmp_path):
     assert set(ann["p20"].split("+")) == {"TF|CCPA_BACSU", "STP|LacI", "STP|Peripla_BP_3"}
     assert CGCFinder.get_gene_type(ann["p20"]) == "TF"
     assert CGCFinder.get_gene_type("CAZyme|GH13_31+TC|8.A.9.1.1") == "CAZyme"
+
+
+def test_tf_route_bacteria_diamond_fungi_hmm(tmp_path):
+    """Default: TF DIAMOND only. --fungi: TF HMM only. Explicit --prokaryotic --fungi: both."""
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from dbcan.main import cli
+
+    gff = tmp_path / "in.gff"
+    gff.write_text("c1\tx\tCDS\t1\t90\t.\t+\t0\tID=p1\n")
+    base = ["gff_process", "--output_dir", str(tmp_path), "--db_dir", str(tmp_path),
+            "--input_gff", str(gff), "--gff_type", "prodigal"]
+    expected = {(): (True, False), ("--fungi",): (False, True),
+                ("--fungi", "--prokaryotic"): (True, True), ("--no-prokaryotic",): (False, False)}
+    for extra, (tf_diamond, tf_hmm) in expected.items():
+        seen = {}
+
+        def fake(tc, tfd, tf, stp, sul, pep, gffcfg):
+            seen.update(diamond=tfd.prokaryotic, hmm=tf.fungi)
+
+        with patch("dbcan.core.run_dbCAN_CGCFinder_preprocess", side_effect=fake):
+            result = CliRunner().invoke(cli, base + list(extra))
+        assert result.exit_code == 0, result.output
+        assert (seen["diamond"], seen["hmm"]) == (tf_diamond, tf_hmm), extra

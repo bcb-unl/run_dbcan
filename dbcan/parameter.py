@@ -237,10 +237,10 @@ def diamond_tf_options(func):
     )(func)
     func = click.option(
         '--prokaryotic/--no-prokaryotic',
-        is_flag=True,
-        default=True,
-        show_default=True,
-        help='Run prokaryotic TF DIAMOND step (--no-prokaryotic: skip it; use fungi TF HMM with --fungi).',
+        default=None,
+        help=('TF annotation for prokaryotes: DIAMOND against the prokaryotic TF database. '
+              'Default: on, unless --fungi is given (fungi use the TF HMM search instead). '
+              'Pass --prokaryotic together with --fungi to run both.'),
     )(func)
     return func
 
@@ -433,7 +433,8 @@ def pyhmmer_tf(func):
         is_flag=True,
         default=False,
         show_default=True,
-        help='Run TF HMM search (--fungi); default skips TF pyhmmer (prokaryotes use TF DIAMOND instead).',
+        help=('Fungal input: annotate TFs with the TF HMM search instead of the prokaryotic TF DIAMOND '
+              'search (which is then skipped unless --prokaryotic is also given).'),
     )(func)
     return func
 
