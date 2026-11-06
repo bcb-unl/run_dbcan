@@ -53,8 +53,10 @@ Thresholds
    (``i-Evalue``). A domain is kept when ``i-Evalue < threshold`` and ``coverage > threshold``.
 
 **DIAMOND coverage options use percent, HMM options use fractions.**
-   ``--coverage_threshold_tc``, ``--coverage_threshold_tf_diamond``, ``--coverage_threshold_sulfatase`` and
-   ``--coverage_threshold_peptidase`` are passed to DIAMOND ``--query-cover`` and use 0-100 (default 35).
+   ``--coverage_threshold_tc``, ``--coverage_threshold_tf_diamond`` and ``--coverage_threshold_sulfatase`` are
+   passed to DIAMOND ``--query-cover`` (full-length protein databases) and use 0-100 (default 35).
+   ``--coverage_threshold_peptidase`` is passed to ``--subject-cover``: the peptidase database holds MEROPS
+   peptidase units (domains), so the coverage is measured on the unit (0-100, default 35).
    The pyHMMER coverage options use 0-1 (default 0.35).
 
 **Which unit does substrate_prediction -iden use?**

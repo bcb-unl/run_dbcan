@@ -68,7 +68,11 @@ class DiamondProcessor(ABC):
             D.DIAMOND_CMD_VERBOSE if self.verbose_option else D.DIAMOND_CMD_QUIET
         ]
         if self.config.coverage_threshold is not None:
-            cmd.extend([D.DIAMOND_CMD_QUERY_COVER, str(self.config.coverage_threshold)])
+            mode = getattr(self.config, "coverage_mode", "query")
+            if mode not in ("query", "subject"):
+                raise ValueError(f"coverage_mode must be 'query' or 'subject', got {mode!r}")
+            flag = D.DIAMOND_CMD_SUBJECT_COVER if mode == "subject" else D.DIAMOND_CMD_QUERY_COVER
+            cmd.extend([flag, str(self.config.coverage_threshold)])
 
         logger.info("Running DIAMOND BLASTp: %s", " ".join(cmd))
         start = time.time()

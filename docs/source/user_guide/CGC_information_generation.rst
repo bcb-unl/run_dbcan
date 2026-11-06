@@ -164,7 +164,8 @@ Key Parameters
        pass ``--prokaryotic --fungi`` to run both)
 
 E-value and coverage thresholds for each search (``--e_value_threshold_tc``, ``--coverage_threshold_tc``, ...)
-are listed by ``run_dbcan gff_process --help``. DIAMOND coverage options are percentages of the query length (0-100);
+are listed by ``run_dbcan gff_process --help``. DIAMOND coverage options are percentages (0-100) of the query
+length, except for peptidases, where the coverage is measured on the matched MEROPS peptidase unit (subject);
 pyHMMER coverage options are fractions of the HMM length (0-1).
 
 Output Files

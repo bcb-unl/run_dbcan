@@ -33,6 +33,7 @@ DIAMOND_CMD_THREADS = "--threads"
 DIAMOND_CMD_VERBOSE = "--verbose"
 DIAMOND_CMD_QUIET = "--quiet"
 DIAMOND_CMD_QUERY_COVER = "--query-cover"
+DIAMOND_CMD_SUBJECT_COVER = "--subject-cover"
 
 # TCDB output format
 TCDB_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
@@ -100,7 +101,9 @@ DIAMOND_SULFATLAS_COVERAGE_DEFAULT = 35
 PEPTIDASE = base_constants.PEPTIDASE
 PEPTIDASE_DIAMOND_DB = "peptidase_db.dmnd"
 PEPTIDASE_DIAMOND_OUTPUT = base_constants.PEPTIDASE_DIAMOND_OUTPUT
-PEPTIDASE_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+# peptidase_db.dmnd holds MEROPS peptidase units (domains), so coverage is reported and
+# filtered on the subject (the unit), not on the query protein.
+PEPTIDASE_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'scovhsp']
 PEPTIDASE_ID_COLUMN = 'Peptidase ID'
 
 PEPTIDASE_COLUMN_NAMES = [

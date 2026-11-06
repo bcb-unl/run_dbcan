@@ -14,6 +14,9 @@ class DiamondConfig(BaseConfig):
     input_faa: str = D.INPUT_PROTEIN_NAME
     e_value_threshold: float = 1e-5
     coverage_threshold: Optional[float] = None
+    # 'query': --query-cover (full-length protein databases: CAZy, TCDB, TF, SulfAtlas)
+    # 'subject': --subject-cover (domain-level databases: MEROPS peptidase units)
+    coverage_mode: str = "query"
 
 
 @dataclass
@@ -59,6 +62,7 @@ class DiamondPeptidaseConfig(DiamondConfig):
     label: Optional[str] = D.PEPTIDASE
     e_value_threshold: float = D.DIAMOND_PEPTIDASE_EVALUE_DEFAULT
     coverage_threshold: float = D.DIAMOND_PEPTIDASE_COVERAGE_DEFAULT
+    coverage_mode: str = "subject"
 
 @dataclass
 class DiamondTFConfig(DiamondConfig):

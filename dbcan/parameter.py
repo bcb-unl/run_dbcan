@@ -483,7 +483,9 @@ def diamond_peptidase_options(func):
     func = click.option(
         '--coverage_threshold_peptidase',
         type=float,
-        help='DIAMOND --query-cover for Peptidase: minimum query coverage in percent (0–100).',
+        help=('Minimum coverage of the MEROPS peptidase unit (DIAMOND --subject-cover, percent 0–100). '
+              'The peptidase database holds peptidase units (domains), so coverage is measured on the unit, '
+              'not on the query protein.'),
         default=35,
         show_default=True,
     )(func)
