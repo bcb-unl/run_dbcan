@@ -47,23 +47,49 @@ class DBCANSUBProcessor:
         """
         Load mapping: (family, EC) -> list of substrates (unique, case-insensitively sorted).
         Keep all candidates so that for INCOMPLETE EC (a.b.c.-) we can deterministically choose one.
+
+        Supports both layouts of fam-substrate-mapping.tsv:
+        - 5 columns: Substrate_high_level, Substrate_curated, Family, Name, EC_Number;
+        - the curated web release (e.g. fam-substrate-mapping-08262025.tsv): leading '#' comment
+          line(s) and two extra columns, new_Substrate_high_level (the current substrate) and
+          type (NEW / CHANGED / REMOVED). REMOVED rows are dropped and new_Substrate_high_level
+          is used when it is filled.
+        Rows without a substrate are ignored. A file that exists but cannot be parsed raises.
         """
-        try:
-            df = pd.read_csv(self.mapping_file_path, sep='\t', header=None, skiprows=1, usecols=[2, 4, 0])
-            df[2] = df[2].astype(str).str.strip()                      # family
-            df[4] = df[4].astype(str).str.strip().replace({'NA': '-', 'nan': '-'}).fillna('-')  # EC
-            df[0] = df[0].astype(str).str.strip()                      # substrate
-            # Group to unique, sorted list per (family, EC)
-            grp = df.groupby([2, 4])[0].apply(
-                lambda s: sorted({v for v in s if v and v != '-'}, key=str.lower)
-            )
-            return {k: v for k, v in grp.items()}
-        except FileNotFoundError:
+        if not self.mapping_file_path.exists():
             logger.warning(f"Can't find substrate mapping file: {self.mapping_file_path}")
             return {}
-        except Exception as e:
-            logger.error(f"Error loading substrate mapping: {e}", exc_info=True)
-            return {}
+        df = read_tsv(self.mapping_file_path, id_columns=(), comment=None, dtype=str, quoting=0)
+        # drop leading comment lines that pandas took as the header
+        while len(df.columns) and str(df.columns[0]).startswith('#'):
+            df.columns = [str(c).strip() for c in df.iloc[0]]
+            df = df.iloc[1:].reset_index(drop=True)
+        df.columns = [str(c).strip() for c in df.columns]
+        required = {P.MAPPING_SUBSTRATE_COLUMN, P.MAPPING_FAMILY_COLUMN, P.MAPPING_EC_COLUMN}
+        if not required.issubset(df.columns):
+            raise ValueError(
+                f"{self.mapping_file_path} lacks columns {sorted(required - set(df.columns))}; "
+                f"found {list(df.columns)}"
+            )
+        df = df.fillna('')
+        if P.MAPPING_TYPE_COLUMN in df.columns:
+            df = df[df[P.MAPPING_TYPE_COLUMN].str.strip().str.upper() != 'REMOVED']
+        substrate = df[P.MAPPING_SUBSTRATE_COLUMN].str.strip()
+        if P.MAPPING_NEW_SUBSTRATE_COLUMN in df.columns:
+            new_sub = df[P.MAPPING_NEW_SUBSTRATE_COLUMN].str.strip()
+            substrate = new_sub.where(new_sub != '', substrate)
+        family = df[P.MAPPING_FAMILY_COLUMN].str.strip()
+        ec = df[P.MAPPING_EC_COLUMN].str.strip().replace({'': '-', 'NA': '-', 'nan': '-'})
+        out: Dict[Tuple[str, str], List[str]] = {}
+        for fam, e, sub in zip(family, ec, substrate):
+            if not fam or not sub or sub == '-':
+                continue
+            out.setdefault((fam, e), [])
+            if sub not in out[(fam, e)]:
+                out[(fam, e)].append(sub)
+        for k in out:
+            out[k] = sorted(out[k], key=str.lower)
+        return out
 
     def process_dbcan_sub(self) -> None:
         logger.info(f"Starting dbCAN-sub processing. Input: {self.input_file_path}, Output: {self.output_file_path}")
@@ -103,6 +129,7 @@ class DBCANSUBProcessor:
             return
 
         subs_dict = self.load_substrate_mapping()
+        subfam_table = self.load_subfamily_substrate_table()
         if not subs_dict:
             logger.warning("No substrate mapping data loaded. Substrate annotation will be '-'.")
 
@@ -139,7 +166,7 @@ class DBCANSUBProcessor:
                 df[subfamily_name_col] = df[hmm_name_col].apply(self._extract_subfamily_names)
                 df[subfamily_comp_col] = df[hmm_name_col].apply(self._extract_subfamily_components)
                 df[subfamily_ec_col] = df[hmm_name_col].apply(self._extract_subfamily_ecs)
-                df[substrate_col] = df[hmm_name_col].apply(lambda x: self.get_substrates(str(x), subs_dict))
+                df[substrate_col] = df[hmm_name_col].apply(lambda x: self.get_substrates(str(x), subs_dict, subfam_table))
 
                 # Drop original HMM Name
                 df.drop(columns=[hmm_name_col], inplace=True, errors='ignore')
@@ -203,9 +230,15 @@ class DBCANSUBProcessor:
 
     @staticmethod
     def _extract_subfamily_ecs(hmm_name: str) -> str:
-        # Use the same sorted EC token list as substrate mapping to keep consistent order
+        """EC tokens as 'EC:count', in the same order as the Substrate column.
+
+        eHMM names omit the count when only one characterized protein has the EC
+        (e.g. 'AA1_e1.hmm|AA1:57|AA1_3:52|1.10.3.2'); the dbCAN-sub web server lists such
+        an EC with count 1, so it is written as '1.10.3.2:1'.
+        """
         ecs_sorted = DBCANSUBProcessor._parse_sorted_ec_tokens(hmm_name)
-        return ';'.join(ecs_sorted) if ecs_sorted else '-'
+        ecs = [t if ':' in t else f"{t}:1" for t in ecs_sorted]
+        return ';'.join(ecs) if ecs else '-'
 
     @staticmethod
     def _parse_sorted_ec_tokens(hmm_name: str) -> List[str]:
@@ -245,7 +278,8 @@ class DBCANSUBProcessor:
         indexed_sorted = sorted(indexed, key=lambda it: (_key(it), it[0]))
         return [t for _, __, t in indexed_sorted]
 
-    def get_substrates(self, profile_info: str, subs_dict: Dict[Tuple[str, str], List[str]]) -> str:
+    def get_substrates(self, profile_info: str, subs_dict: Dict[Tuple[str, str], List[str]],
+                       subfam_table: Dict[Tuple[str, str], str] | None = None) -> str:
         """
         Map each EC token of an eHMM to a substrate.
 
@@ -259,6 +293,13 @@ class DBCANSUBProcessor:
             otherwise '-'
         - INCOMPLETE EC (d == '-'): only subs_dict[(family, a.b.c.-)], otherwise '-'.
         - No EC token: subs_dict[(family, '-')], else the family's only substrate, else '-'.
+
+        An EC number is looked up under every family of the eHMM composition (first the
+        eHMM's own family, then the other families by member count): the EC of a CBM or
+        multi-domain eHMM usually belongs to its catalytic family (e.g. CBM1_e3 with
+        GH45:49 and 3.2.1.4). If ``subfam_table`` (the dbCAN-sub web server's per-subfamily
+        substrate table, see DBCANSUB_SUBSTRATE_TABLE_FILE) has an entry for
+        (subfamily, EC), that entry is used as is, so results match the web server.
 
         Returns one entry per EC token, joined with ';' in the same order as the
         ``Subfam EC`` column. A mapping value that itself lists several substrates
@@ -309,12 +350,54 @@ class DBCANSUBProcessor:
         if not ec_tokens:
             return _entry(_family_fallback())
 
+        subfamily = parts[0].split('.hmm')[0]
+        lookup_families = [family] + [f for f in self._composition_families(profile_info) if f != family]
+
         substrates_mapped = []
         for token in ec_tokens:
             ec_core = token.split(':', 1)[0]
-            v = _pick(subs_dict.get((family, ec_core)))
+            if subfam_table is not None and (subfamily, ec_core) in subfam_table:
+                substrates_mapped.append(_entry(subfam_table[(subfamily, ec_core)]))
+                continue
+            v = None
+            for fam in lookup_families:
+                v = _pick(subs_dict.get((fam, ec_core)))
+                if v:
+                    break
             if not v and ec_core.split('.')[-1] != '-':
                 v = _family_fallback()
             substrates_mapped.append(_entry(v))
 
         return ';'.join(substrates_mapped)
+
+    @staticmethod
+    def _composition_families(hmm_name: str) -> List[str]:
+        """CAZy families of an eHMM composition ('GH7:184', 'GH5_5:4' -> GH5), most members first."""
+        counts: Dict[str, int] = {}
+        for p in str(hmm_name).split('|')[1:]:
+            key, _, cnt = p.partition(':')
+            m = P.FAMILY_TOKEN_PATTERN.match(key.strip())
+            if not m:
+                continue
+            fam = m.group(1)
+            counts[fam] = counts.get(fam, 0) + (int(cnt) if cnt.isdigit() else 0)
+        return [f for f, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+    def load_subfamily_substrate_table(self) -> Dict[Tuple[str, str], str] | None:
+        """Optional per-subfamily table exported from the dbCAN-sub web server.
+
+        Columns: Subfamily, EC, Count, Substrate (one row per subfamily and EC; Substrate may be
+        empty or '-'). Returns None when the file is not in db_dir.
+        """
+        path = Path(self.config.db_dir) / P.DBCANSUB_SUBSTRATE_TABLE_FILE
+        if not path.exists():
+            return None
+        df = read_tsv(path, id_columns=(), dtype=str).fillna('')
+        missing = {"Subfamily", "EC", "Substrate"} - set(df.columns)
+        if missing:
+            raise ValueError(f"{path} lacks columns {sorted(missing)}")
+        table = {}
+        for sub, ec, substrate in zip(df["Subfamily"].str.strip(), df["EC"].str.strip(), df["Substrate"].str.strip()):
+            table[(sub, ec)] = substrate if substrate and substrate != '-' else ''
+        logger.info(f"Loaded per-subfamily substrate table: {len(table)} (subfamily, EC) entries from {path.name}")
+        return table

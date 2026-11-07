@@ -154,7 +154,7 @@ Columns of ``overview.tsv``
      - Protein ID from ``uniInput.faa``.
    * - ``EC#``
      - EC numbers attached to the matched dbCAN-sub subfamilies, as ``EC:count`` tokens (``count`` = number of
-       characterized proteins with that EC in the subfamily; some tokens have no count). Tokens of one subfamily are separated by ``;``,
+       characterized proteins with that EC in the subfamily; the eHMM name omits a count of 1, which is written as ``:1``). Tokens of one subfamily are separated by ``;``,
        subfamilies by ``|``. ``-`` when there is no dbCAN-sub hit or no EC.
    * - ``dbCAN_hmm``
      - dbCAN HMM families with protein coordinates, e.g. ``GH23(101-244)``; several domains joined with ``+``.
@@ -170,13 +170,20 @@ Columns of ``overview.tsv``
        domain, preferring a subfamily from dbCAN HMM (name containing ``_``, e.g. ``GH5_4``), then the dbCAN-sub
        subfamily, then the dbCAN HMM family. Otherwise the dbCAN HMM families are used, then dbCAN-sub, then DIAMOND.
    * - ``Substrate``
-     - Substrates predicted from the dbCAN-sub hits, using ``fam-substrate-mapping.tsv``. For every EC number of a
-       matched subfamily the pair (family, EC) is looked up. A complete EC number without an exact entry, or a
-       subfamily without any EC number, falls back to the family-level entry of the mapping file, or to the
-       family's only substrate when the family has exactly one (for example GH71 -> ``alpha-glucan``); an incomplete
-       EC number (``a.b.c.-``) is only matched exactly. Unique substrates of all hits are joined with ``;``.
-       ``-`` when unknown. Because of the family-level rule, a subfamily can get a substrate even when the dbCAN-sub
-       web server shows none for it.
+     - Substrates predicted from the dbCAN-sub hits. For every EC number of a matched subfamily:
+
+       1. if the database directory contains ``dbCAN-sub-substrate.tsv`` (the per-subfamily substrate table of the
+          dbCAN-sub web server), its entry for (subfamily, EC) is used, so the result matches the web server;
+       2. otherwise (family, EC) is looked up in ``fam-substrate-mapping.tsv`` for the subfamily's own family and
+          then for the other families of its composition (the EC of a CBM or multi-domain subfamily usually belongs
+          to its catalytic family, e.g. ``CBM1_e3`` with GH45 and 3.2.1.4);
+       3. a complete EC number without an entry falls back to the family-level entry of the mapping file, or to
+          the family's only substrate when the family has exactly one; an incomplete EC (``a.b.c.-``) has no
+          fallback.
+
+       Subfamilies without any EC number get the family-level substrate (step 3), for example GH71 ->
+       ``alpha-glucan``; the web server shows no substrate for them. Unique substrates of all hits are joined with
+       ``;``; ``-`` when unknown.
    * - ``SignalP`` / ``DeepTMHMM``
      - Only present with ``--run_signalp`` / ``--run_deeptmhmm``; see :doc:`signalp6_deeptmhmm`.
 

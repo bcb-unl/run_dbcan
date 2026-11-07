@@ -115,7 +115,12 @@ Plan for roughly **8 GB** of disk space for a full download (about 7.4 GB with `
      - ``CAZyme_annotation`` (dbCAN HMM)
    * - ``fam-substrate-mapping.tsv``
      - <1 MB
-     - ``CAZyme_annotation`` (``Substrate`` column)
+     - ``CAZyme_annotation`` (``Substrate`` column). Both the 5-column file and the curated web release format
+       (comment line, ``new_Substrate_high_level`` and ``type`` columns; ``REMOVED`` rows are ignored) are accepted.
+   * - ``dbCAN-sub-substrate.tsv`` (optional)
+     - <1 MB
+     - ``CAZyme_annotation``: per-subfamily (Subfamily, EC, Count, Substrate) table of the dbCAN-sub web server;
+       when present, substrates of subfamilies with EC numbers match the web server exactly
    * - ``peptidase_db.dmnd``
      - ~330 MB
      - ``gff_process`` (CGC)

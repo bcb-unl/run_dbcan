@@ -82,6 +82,12 @@ Substrate Prediction Databases
     ``Substrate`` column of ``overview.tsv`` and ``dbCANsub_hmm_results.tsv``.
   - Filename: ``fam-substrate-mapping.tsv``
 
+- dbCAN-sub per-subfamily substrate table (optional)
+
+  - Description: (Subfamily, EC, Count, Substrate) rows exported from the dbCAN-sub web server. When the file is
+    present, it is used before ``fam-substrate-mapping.tsv`` so that substrates match the web server.
+  - Filename: ``dbCAN-sub-substrate.tsv``
+
 - dbCAN-PUL substrate table
 
   - Description: Substrate mapping associated with PULs from the dbCAN-PUL database.
