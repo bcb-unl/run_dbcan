@@ -188,6 +188,29 @@ def _best_hit_per_protein(df: pd.DataFrame) -> pd.DataFrame:
     return ranked.drop_duplicates(subset=[PU.TARGET_NAME_COLUMN], keep='first').drop(columns=['_ev', '_cov'])
 
 
+def _drop_non_peptidase_units(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only MEROPS peptidase units in the Peptidase signature.
+
+    peptidase_db.dmnd is built from MEROPS pepunit.lib, which also contains peptidase
+    *inhibitor* units (families I01..I99, e.g. I04 serpins, I39 alpha-2-macroglobulins)
+    and a few entries whose family field is malformed (an organism name). Neither is a
+    peptidase, so they are not reported as ``Peptidase|...``; they remain visible in the
+    raw diamond.out.peptidase file.
+    """
+    if df.empty:
+        return df
+    ids = df[PU.ANNOTATE_NAME_COLUMN].astype(str)
+    keep = ids.str.match(PU.MEROPS_PEPTIDASE_ID_PATTERN)
+    dropped = df.loc[~keep, PU.ANNOTATE_NAME_COLUMN]
+    if not dropped.empty:
+        n_inh = int(dropped.astype(str).str.match(PU.MEROPS_INHIBITOR_ID_PATTERN).sum())
+        logger.info(
+            f"Peptidase: excluded {len(dropped)} hits that are not peptidase units "
+            f"({n_inh} MEROPS inhibitor units, {len(dropped) - n_inh} unclassified entries)"
+        )
+    return df.loc[keep]
+
+
 def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, sulfatase_config, peptidase_config) -> None:
     """Combine TC, TF, STP, sulfatase and peptidase results into total_cgc_info.tsv.
 
@@ -263,6 +286,8 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
 
                 _TYPE_MAP = {'TF_prok': 'TF', 'TF_fungi': 'TF'}
                 df['Type'] = _TYPE_MAP.get(name, name)
+                if name == 'Peptidase':
+                    df = _drop_non_peptidase_units(df)
                 if name in PU.DIAMOND_SIGNATURE_SOURCES:
                     before = len(df)
                     df = _best_hit_per_protein(df)

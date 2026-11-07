@@ -19,6 +19,7 @@ TARGET_FROM_COLUMN = "Target From"
 TARGET_TO_COLUMN = "Target To"
 COVERAGE_COLUMN = "Coverage"
 HMM_FILE_COLUMN = "HMM File Name"
+ANNOTATE_NAME_COLUMN = "Annotate Name"
 ANNOTATE_FROM_COLUMN = "Annotate From"
 ANNOTATE_TO_COLUMN = "Annotate To"
 
@@ -32,3 +33,8 @@ CGC_SIG_RESULT_COLUMN = [
 # protein databases and give protein-level labels; HMM sources give Pfam-style domains.
 DIAMOND_SIGNATURE_SOURCES = frozenset({'TC', 'TF_prok', 'Sulfatase', 'Peptidase'})
 HMM_SIGNATURE_SOURCES = frozenset({'STP', 'TF_fungi'})
+
+# MEROPS identifiers in peptidase_db.dmnd (pepunit.lib): '<family>.<id>', e.g. S09.940,
+# C56.UNW. Families I* are peptidase inhibitors, not peptidases.
+MEROPS_PEPTIDASE_ID_PATTERN = r"^[A-HJ-Z]\d+[A-Z]?\.[A-Za-z0-9]+$"
+MEROPS_INHIBITOR_ID_PATTERN = r"^I\d+[A-Z]?\.[A-Za-z0-9]+$"

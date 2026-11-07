@@ -115,3 +115,20 @@ def test_tf_route_bacteria_diamond_fungi_hmm(tmp_path):
             result = CliRunner().invoke(cli, base + list(extra))
         assert result.exit_code == 0, result.output
         assert (seen["diamond"], seen["hmm"]) == (tf_diamond, tf_hmm), extra
+
+
+def test_peptidase_signature_excludes_inhibitor_units(tmp_path):
+    """MEROPS pepunit.lib also holds inhibitor units (I families) and a few malformed IDs."""
+    _write_inputs(tmp_path)
+    (tmp_path / "diamond.out.peptidase").write_text(
+        "Peptidase ID\tPeptidase Length\tTarget ID\tTarget Length\tEVALUE\tPeptidase START\tPeptidase END\t"
+        "QSTART\tQEND\tCOVERAGE\tDatabase\n"
+        "S09.940\t270\tpA\t277\t4.7e-205\t1\t270\t4\t274\t100\tPeptidase\n"
+        "I39.UPW\t161\tpB\t1037\t1.4e-60\t1\t161\t73\t228\t98.8\tPeptidase\n"
+        "I04.UPW\t160\tpC\t674\t2.6e-21\t1\t160\t388\t544\t94.0\tPeptidase\n"
+        "Bacteroides\t300\tpD\t500\t1e-30\t1\t300\t10\t300\t95.0\tPeptidase\n"
+        "C56.UNW\t180\tpE\t200\t1e-40\t1\t180\t5\t185\t99.0\tPeptidase\n"
+    )
+    df = _run(tmp_path)
+    pep = df[df["Type"] == "Peptidase"]
+    assert sorted(zip(pep["Target Name"], pep["Annotate Name"])) == [("pA", "S09.940"), ("pE", "C56.UNW")]

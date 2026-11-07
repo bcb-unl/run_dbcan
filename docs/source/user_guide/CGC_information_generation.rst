@@ -25,7 +25,9 @@ To identify and analyze CGCs, users must first prepare annotation information by
    protein-level label; its query interval is an alignment span, not a domain. Annotations from different sources
    are therefore never filtered against each other: one protein can be, for example, ``TC`` and ``STP`` at the same
    time. Each DIAMOND search keeps one best hit per protein; STP and TF HMM domains are resolved within their own
-   HMM library. In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of
+   HMM library. The peptidase database is built from MEROPS ``pepunit.lib`` (peptidase units); hits to MEROPS
+   peptidase *inhibitor* units (families ``I*``) are not reported as ``Peptidase`` (they stay in the raw
+   ``diamond.out.peptidase`` file). In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of
    ``cgc_standard_out.tsv`` shows the first of CAZyme > TC > TF > STP > Sulfatase > Peptidase.
 4. Marks CAZymes using ``overview.tsv``: only proteins with ``#ofTools`` >= 2 count as CAZymes, annotated with their ``Recommend Results``
 5. Integrates these annotations into the user-submitted GFF file to generate a ``cgc.gff`` file
