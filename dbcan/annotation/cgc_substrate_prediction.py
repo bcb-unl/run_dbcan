@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import math
 import json
+import re
 import time
 from dbcan.configs.cgc_substrate_config import CGCSubstrateConfig
 import dbcan.constants.cgc_substrate_prediction_constants as CSP  
@@ -139,12 +140,30 @@ class CGC_hub(object):
     def CGCID2CGC(self) -> Dict[str, CGC]:
         return {cgc.ID: cgc for cgc in self}
 
+def split_dbsub_substrates(field: str) -> List[str]:
+    """Unique substrates of one dbCAN-sub hit, in order of appearance.
+
+    The Substrate column of dbCANsub_hmm_results.tsv holds one entry per EC token, joined
+    with ';' in the order of Subfam EC; an entry that lists several substrates uses ','
+    (``chitin,peptidoglycan``) and ``-`` marks an EC without a substrate. The scoring below
+    splits on ',' only, so the column is normalised here to the comma-separated list of
+    real substrates (as in run_dbcan 4 / the web server, where the column was
+    ``substrate, substrate``). ``-;-`` becomes '' (no substrate).
+    """
+    out: List[str] = []
+    for piece in re.split(r"[;,]", field or ""):
+        piece = piece.strip()
+        if piece and piece != "-" and piece not in out:
+            out.append(piece)
+    return out
+
+
 class dbSub_record(object):
     def __init__(self, lines):
         self.dbcan_sub_subfam = lines[0]
         self.Subfam_Composition = lines[1]
         self.Subfam_EC = lines[2]
-        self.Substrate = lines[3] if lines[3] != "-" else ""
+        self.Substrate = ",".join(split_dbsub_substrates(lines[3]))
         self.hmm_Length = lines[4]
         self.GeneID = lines[5]
         self.GeneLen = lines[6]

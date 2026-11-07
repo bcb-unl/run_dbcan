@@ -274,8 +274,9 @@ class OverviewGenerator:
                     flat: List[str] = []
                     for s in subs_raw:
                         flat.extend([p for p in re.split(r'[;,]', s) if p])
+                    # one entry per EC token; '-' marks an EC without a substrate
                     uniq = sorted(
-                        {p.strip() for p in flat if p and p.strip()}
+                        {p.strip() for p in flat if p.strip() and p.strip() != O.EMPTY_RESULT_PLACEHOLDER}
                     )
                     if uniq:
                         results[O.SUBSTRATE_FIELD] = O.SUB_SEPARATOR.join(uniq)
