@@ -46,8 +46,8 @@ CGC Prediction Rules
 ------------------------
 
 ``cgc_finder`` reads ``cgc.gff``. Genes annotated as ``CAZyme`` (proteins with ``#ofTools`` >= 2 in ``overview.tsv``)
-are core signature genes; genes whose annotation contains one of the ``--additional_genes`` types (default: ``TC``)
-are additional signature genes. On each contig, consecutive signature genes are joined into one candidate cluster
+are core signature genes; genes annotated with one of the ``--additional_genes`` types (default: ``TC``; the type is
+the part before ``|`` of each ``+``-separated label, matched exactly) are additional signature genes. On each contig, consecutive signature genes are joined into one candidate cluster
 as long as the following rules hold:
 
 1. **Null Gene Search** (Default, ``--use_null_genes``)
@@ -62,6 +62,18 @@ A candidate is reported as a CGC only if it has at least ``--min_cluster_genes``
 ``--min_core_cazyme`` CAZymes (default: 1), and the required additional gene types: with ``--additional_logic all``
 (default) every listed type must be present; with ``any``, at least ``--additional_min_categories`` types.
 With the defaults, a CGC therefore needs at least one CAZyme and one transporter (TC).
+
+Genes with several labels (for example ``CAZyme|GH13_31+TC|8.A.9.1.1``) are handled as follows:
+
+* **One gene, one role.** The core CAZyme(s) and each required additional type must come from *different* genes.
+  A single CAZyme+TC gene cannot be both the CAZyme and the transporter of a CGC; it can be the transporter next to
+  another CAZyme, or the CAZyme next to another transporter.
+* **Same region.** A domain-level label (MEROPS peptidase unit, STP or fungal TF HMM domain) that overlaps a CAZyme
+  domain of the same protein by more than 50% of the shorter interval is treated as the same domain classified by
+  two databases (for example CE1 and peptidase family S09 on an alpha/beta-hydrolase) and does not count as an
+  additional signature; the protein counts as a CAZyme only. The label stays in ``cgc.gff`` and
+  ``cgc_standard_out.tsv``. TC, TF (DIAMOND) and sulfatase labels come from full-length protein databases and are
+  never compared by coordinates. E-values of different databases are not compared.
 
 .. note::
 

@@ -286,6 +286,8 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
 
                 _TYPE_MAP = {'TF_prok': 'TF', 'TF_fungi': 'TF'}
                 df['Type'] = _TYPE_MAP.get(name, name)
+                # Source keeps TF DIAMOND (TF_prok) and TF HMM (TF_fungi) apart for the CGC step.
+                df['Source'] = name
                 if name == 'Peptidase':
                     df = _drop_non_peptidase_units(df)
                 if name in PU.DIAMOND_SIGNATURE_SOURCES:
@@ -301,7 +303,7 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         out_file = out_dir_path / B.GFF_CGC_SIG_FILE
         if not frames:
             logger.warning("No valid CGC annotation data found")
-            pd.DataFrame(columns=columns + ['Type']).to_csv(out_file, index=False, sep='\t')
+            pd.DataFrame(columns=columns + ['Type', 'Source']).to_csv(out_file, index=False, sep='\t')
             return
 
         # Optimize DataFrame concatenation for large datasets

@@ -38,3 +38,10 @@ HMM_SIGNATURE_SOURCES = frozenset({'STP', 'TF_fungi'})
 # C56.UNW. Families I* are peptidase inhibitors, not peptidases.
 MEROPS_PEPTIDASE_ID_PATTERN = r"^[A-HJ-Z]\d+[A-Z]?\.[A-Za-z0-9]+$"
 MEROPS_INHIBITOR_ID_PATTERN = r"^I\d+[A-Z]?\.[A-Za-z0-9]+$"
+
+# Signature sources whose hits are domains (coordinates comparable with dbCAN domains):
+# STP / TF HMM domains and MEROPS peptidase units (pepunit.lib).
+DOMAIN_LEVEL_SIGNATURE_SOURCES = frozenset({'STP', 'TF_fungi', 'Peptidase'})
+# A domain-level signature on a CAZyme domain (overlap > this fraction of the shorter
+# interval) describes the same region and is not an extra CGC signature.
+SAME_REGION_OVERLAP_THRESHOLD = 0.5
