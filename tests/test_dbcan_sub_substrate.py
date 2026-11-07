@@ -1,4 +1,4 @@
-"""dbCAN-sub EC / substrate parsing (GitHub issue #85, strict substrate mode)."""
+"""dbCAN-sub EC / substrate parsing and the (family, EC) -> substrate rules."""
 from types import SimpleNamespace
 
 import pytest
@@ -27,24 +27,27 @@ def proc(tmp_path):
 @pytest.mark.parametrize(
     "name, expected_ec, expected_sub",
     [
-        # #85: no EC in the eHMM -> no substrate, even though GH71 has a single substrate
-        ("GH71_e0.hmm|GH71:56", "-", "-"),
-        ("GH71_e35.hmm|CBM0:2|GH71:29", "-", "-"),
+        # no EC: the family's only substrate is assigned (GH71 -> alpha-glucan only)
+        ("GH71_e0.hmm|GH71:56", "-", "alpha-glucan"),
+        ("GH71_e35.hmm|CBM0:2|GH71:29", "-", "alpha-glucan"),
         # exact (family, EC) match
         ("GH71_e11.hmm|CBM24:30|GH71:83|3.2.1.59:2", "3.2.1.59:2", "alpha-glucan"),
         # EC token without ':count' is still an EC
         ("AA1_e1.hmm|AA1:57|AA1_3:52|1.10.3.2", "1.10.3.2", "lignin"),
-        # complete EC not in the mapping -> '-', no family fallback
-        ("AA1_e9.hmm|AA1:5|1.10.3.3:2", "1.10.3.3:2", "-"),
-        # family-level mapping rows (empty / NA EC) are not used in strict mode
-        ("CBM5_e1.hmm|CBM5:10", "-", "-"),
-        ("AA8_e0.hmm|AA8:22", "-", "-"),
+        # complete EC not in the mapping -> family fallback (AA1 has a single substrate)
+        ("AA1_e9.hmm|AA1:5|1.10.3.3:2", "1.10.3.3:2", "lignin"),
+        # family-level mapping rows (empty / NA EC)
+        ("CBM5_e1.hmm|CBM5:10", "-", "chitin"),
+        ("AA8_e0.hmm|AA8:22", "-", "lignin"),
         # incomplete EC matches only its exact key
         ("AA7_e1.hmm|AA7:42|1.1.3.-:3", "1.1.3.-:3", "xylan"),
         # several ECs: one substrate entry per EC, same order as Subfam EC
-        ("AA1_e2.hmm|AA1:9|1.10.3.3:1|1.10.3.2", "1.10.3.2;1.10.3.3:1", "lignin;-"),
+        ("AA1_e2.hmm|AA1:9|1.10.3.3:1|1.10.3.2", "1.10.3.2;1.10.3.3:1", "lignin;lignin"),
+        # incomplete EC without an exact key -> '-' (no family fallback for a.b.c.-)
+        ("AA1_e3.hmm|AA1:9|1.10.3.-:1", "1.10.3.-:1", "-"),
         # a mapping value listing several substrates stays inside its own entry
-        ("GH5_e3.hmm|GH5:4|3.2.1.4:3|3.2.1.8:1", "3.2.1.4:3;3.2.1.8:1", "beta-glucan,beta-mannan;-"),
+        ("GH5_e3.hmm|GH5:4|3.2.1.4:3|3.2.1.8:1", "3.2.1.4:3;3.2.1.8:1",
+         "beta-glucan,beta-mannan;beta-glucan,beta-mannan"),
     ],
 )
 def test_strict_substrate_mapping(proc, name, expected_ec, expected_sub):

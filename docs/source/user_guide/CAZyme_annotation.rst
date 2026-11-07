@@ -170,11 +170,13 @@ Columns of ``overview.tsv``
        domain, preferring a subfamily from dbCAN HMM (name containing ``_``, e.g. ``GH5_4``), then the dbCAN-sub
        subfamily, then the dbCAN HMM family. Otherwise the dbCAN HMM families are used, then dbCAN-sub, then DIAMOND.
    * - ``Substrate``
-     - Substrates predicted from the dbCAN-sub hits. For every EC number of a matched subfamily, the pair
-       (family, EC) is looked up in ``fam-substrate-mapping.tsv``; only exact matches are used. Subfamilies without
-       an EC number, or whose EC is not in the mapping file, give no substrate (there is no family-level
-       fallback, consistent with the dbCAN-sub web server; GitHub issue #85). Unique substrates of all hits are
-       joined with ``;``. ``-`` when unknown.
+     - Substrates predicted from the dbCAN-sub hits, using ``fam-substrate-mapping.tsv``. For every EC number of a
+       matched subfamily the pair (family, EC) is looked up. A complete EC number without an exact entry, or a
+       subfamily without any EC number, falls back to the family-level entry of the mapping file, or to the
+       family's only substrate when the family has exactly one (for example GH71 -> ``alpha-glucan``); an incomplete
+       EC number (``a.b.c.-``) is only matched exactly. Unique substrates of all hits are joined with ``;``.
+       ``-`` when unknown. Because of the family-level rule, a subfamily can get a substrate even when the dbCAN-sub
+       web server shows none for it.
    * - ``SignalP`` / ``DeepTMHMM``
      - Only present with ``--run_signalp`` / ``--run_deeptmhmm``; see :doc:`signalp6_deeptmhmm`.
 

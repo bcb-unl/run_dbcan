@@ -247,15 +247,18 @@ class DBCANSUBProcessor:
 
     def get_substrates(self, profile_info: str, subs_dict: Dict[Tuple[str, str], List[str]]) -> str:
         """
-        Map each EC token of an eHMM to a substrate (strict mode, GitHub issue #85).
+        Map each EC token of an eHMM to a substrate.
 
-        - The family is taken from the eHMM name (``GH71_e32.hmm`` -> ``GH71``).
-        - For every EC token (``a.b.c.d`` or ``a.b.c.-``, with or without ``:count``) the
-          substrate is looked up under the exact key ``(family, EC)`` of
-          fam-substrate-mapping.tsv; if several substrates share that key the last one
-          alphabetically is used. Without an exact match the token maps to ``-``.
-        - eHMMs without EC tokens get ``-``. There is no family-level fallback, so the
-          result matches the dbCAN-sub web server.
+        The family is taken from the eHMM name (``GH71_e32.hmm`` -> ``GH71``). EC tokens are
+        ``a.b.c.d`` or ``a.b.c.-``, with or without ``:count``.
+
+        - COMPLETE EC (d != '-'):
+            1) subs_dict[(family, EC)]; if several substrates, the last one alphabetically
+            2) fallback: subs_dict[(family, '-')] (family-level row of the mapping file)
+            3) fallback: the family's only substrate, if the family has exactly one
+            otherwise '-'
+        - INCOMPLETE EC (d == '-'): only subs_dict[(family, a.b.c.-)], otherwise '-'.
+        - No EC token: subs_dict[(family, '-')], else the family's only substrate, else '-'.
 
         Returns one entry per EC token, joined with ';' in the same order as the
         ``Subfam EC`` column. A mapping value that itself lists several substrates
@@ -286,14 +289,32 @@ class DBCANSUBProcessor:
         except (IndexError, AttributeError):
             return '-'
 
+        # Family-level unique substrate set (used by the fallbacks below)
+        family_all_subs = {s for (fam, _ec), vals in subs_dict.items() if fam == family
+                           for s in (vals if isinstance(vals, (list, set, tuple)) else [vals])}
+        family_all_subs_clean = {s for s in family_all_subs if s and s != '-'}
+
+        def _family_fallback() -> str | None:
+            v = _pick(subs_dict.get((family, '-')))
+            if v:
+                return v
+            if len(family_all_subs_clean) == 1:
+                return next(iter(family_all_subs_clean))
+            return None
+
+        def _entry(v) -> str:
+            return v.replace(';', ',') if v else '-'
+
         ec_tokens = self._parse_sorted_ec_tokens(profile_info)
         if not ec_tokens:
-            return '-'
+            return _entry(_family_fallback())
 
         substrates_mapped = []
         for token in ec_tokens:
             ec_core = token.split(':', 1)[0]
             v = _pick(subs_dict.get((family, ec_core)))
-            substrates_mapped.append(v.replace(';', ',') if v else '-')
+            if not v and ec_core.split('.')[-1] != '-':
+                v = _family_fallback()
+            substrates_mapped.append(_entry(v))
 
         return ';'.join(substrates_mapped)
