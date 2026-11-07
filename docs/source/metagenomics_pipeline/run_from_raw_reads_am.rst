@@ -376,6 +376,12 @@ We developed a set of Python scripts as ``dbcan_utils`` (included in the ``run_d
 - **RPM** is the number of mapped reads to a gene G divided by (total number of mapped reads to all genes / 10^6).
 - **TPM** is calculated as [number of mapped reads to a gene G / (gene G length / 1000)] divided by the sum of [number of mapped reads to each gene / (the gene length / 1000)].
 
+.. note::
+   ``cal_coverage`` counts each read pair once by default (``--count-mode fragments``), ignores
+   secondary, supplementary, QC-fail and duplicate alignments, and accepts NCBI GFFs and run_dbcan's
+   ``cgc.gff`` as well as Prodigal GFFs. ``-a`` accepts RPM, TPM, FPKM and RPKM (the same formula as FPKM),
+   and ``-o`` sets the output directory of the ``*_abund`` functions. See :doc:`/user_guide/abundance`.
+
 
 Box 7. Example output of dbcan_utils
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
