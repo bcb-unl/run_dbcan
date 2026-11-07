@@ -100,6 +100,9 @@ Parameters
        hits used by the domain composition method
    * - ``-ndsc``, ``-npsc``, ``-subs``
      - Minimum counts and score for a dbCAN-sub based substrate call (defaults: 2, 2, 2.0)
+   * - ``--synteny_revcomp`` / ``--no-synteny_revcomp``
+     - Synteny PDFs: draw the dbCAN-PUL reverse-complemented when most of its homologous genes lie on the opposite
+       strand of the CGC (default: on). See :ref:`cgc_visualization`.
 
 ``--pul``, ``-o/--out``, ``-w/--workdir``, ``-rerun`` and ``-env`` are accepted for backward compatibility but are not
 used. The number of DIAMOND threads is chosen automatically (all CPUs) for this command; ``easy_substrate`` uses
@@ -114,7 +117,9 @@ Substrate prediction generates the following output files:
   ``dbCAN-PUL substrate``, ``bitscore``, ``signature pairs``, ``dbCAN-sub substrate``, ``dbCAN-sub substrate score``
 * ``CGC.faa`` - Protein sequences of all CGC genes used as DIAMOND queries
 * ``PUL_blast.out`` - Raw DIAMOND search results
-* ``synteny_pdf/`` - Synteny plots directory. It shows the gene cluster mappings between PULs and CGCs
+* ``synteny_pdf/`` - One synteny plot per CGC with a dbCAN-PUL hit (``<contig>_<CGC>_<PUL>-syntenic.pdf``): the CGC
+  above its best dbCAN-PUL match, homologous genes linked by grey ribbons (darker = higher identity; only the DIAMOND
+  hits that pass ``-evalue``/``-iden``/``-cov`` are drawn). See :ref:`cgc_visualization`.
 
 The per-protein ``Substrate`` column of ``overview.tsv`` is a different result: it is produced during
 ``CAZyme_annotation`` from dbCAN-sub hits and ``fam-substrate-mapping.tsv``, independently of CGCs

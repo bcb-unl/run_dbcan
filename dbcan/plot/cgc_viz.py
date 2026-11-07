@@ -506,3 +506,7 @@ def fmt_axis_tick(v: float, step: float, total: float) -> str:
     if total >= 2e6:
         return "0" if v == 0 else f"{v / 1e6:.{0 if step % 1e6 == 0 else 1}f} Mb"
     return "0" if v == 0 else fmt_kb_tick(v, step)
+
+
+def plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"

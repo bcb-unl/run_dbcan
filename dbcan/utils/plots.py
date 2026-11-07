@@ -314,7 +314,7 @@ click.rich_click.MAX_WIDTH = 100
 @click.option("--evalue-cutoff", "--evalue_cutoff", default=CSP.DEFAULT_EVALUE_CUTOFF, show_default=True, type=float,
               help="Synteny links: maximum DIAMOND E-value (as in substrate_prediction).")
 @click.option("--identity-cutoff", "--identity_cutoff", default=CSP.DEFAULT_IDENTITY_CUTOFF, show_default=True,
-              type=float, help="Synteny links: minimum DIAMOND identity (as in substrate_prediction).")
+              type=float, help="Synteny links: minimum DIAMOND percent identity, 0-100 (as in substrate_prediction).")
 @click.option("--coverage-cutoff", "--coverage_cutoff", default=CSP.DEFAULT_COVERAGE_CUTOFF, show_default=True,
               type=float, help="Synteny links: minimum query coverage 0-1 (as in substrate_prediction).")
 @click.option("--top", "top", default=20, show_default=True, type=int, help="Maximum number of categories to display.")

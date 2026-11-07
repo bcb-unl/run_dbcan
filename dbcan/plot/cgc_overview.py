@@ -130,15 +130,20 @@ def plot_overview(cgcs: Dict[str, List[V.Gene]], sizes: Dict[str, int], calls: D
     n_contigs = len(by_contig)
     fig.text(0.35 / FIG_W, 1 - 0.18 / H, "CGC overview", ha="left", va="top", fontsize=P.PLOT_TITLE_FONT_SIZE,
              fontweight="bold", color=P.PLOT_INK)
-    sub = (f"{len(cgcs)} CGC{'s' if len(cgcs) != 1 else ''} on {n_contigs} contig{'s' if n_contigs != 1 else ''}"
+    sub = (f"{V.plural(len(cgcs), 'CGC')} on {V.plural(n_contigs, 'contig')}"
            f" · {n_pred} with substrate prediction")
     if hidden:
         sub += f" · {len(hidden)} shorter contig{'s' if len(hidden) != 1 else ''} with CGCs not shown"
     fig.text(0.35 / FIG_W, 1 - 0.42 / H, sub, ha="left", va="top", fontsize=P.PLOT_SUBTITLE_FONT_SIZE,
              color=P.PLOT_INK_MUTED)
 
-    hs = [Patch(facecolor=V.gene_color("CAZyme")), Patch(facecolor=C.OVERVIEW_CGC_COLOR)]
-    ls = ["CGC with substrate prediction", "CGC"]
+    hs, ls = [], []
+    if n_pred:
+        hs.append(Patch(facecolor=V.gene_color("CAZyme")))
+        ls.append("CGC with substrate prediction")
+    if n_pred < len(cgcs):
+        hs.append(Patch(facecolor=C.OVERVIEW_CGC_COLOR))
+        ls.append("CGC")
     fig.legend(hs, ls, loc="lower left", bbox_to_anchor=(L_IN / FIG_W, 0.04 / H), ncol=2, frameon=False,
                fontsize=fs, handlelength=1.4, columnspacing=1.6)
     bar = V.nice_step(wmax, 5)

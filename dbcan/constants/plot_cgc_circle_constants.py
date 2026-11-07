@@ -42,3 +42,4 @@ OVERVIEW_CGC_COLOR = base_constants.CGC_FEATURE_COLORS["Other"]
 # Feature colours: the shared palette
 CGC_FEATURE_LEGEND = base_constants.CGC_FEATURE_LEGEND
 CGC_FEATURE_COLORS = base_constants.CGC_FEATURE_COLORS
+CGC_CIRCOS_MAX_ID_LABELS = 60   # more CGCs than this: only CGCs with a substrate are labelled

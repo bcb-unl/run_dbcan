@@ -195,7 +195,7 @@ def plot_synteny(cgc_genes: Sequence[V.Gene], cgcid: str, pul_genes: Sequence[V.
     lay_p = V.layout_labels([g.label for g in pul_genes], p_x, xlo, xhi, W, ax_w / W, fs)
     tier_h = (fs * 1.25 / 72) / U + 0.08
     y_top = Y_CGC + GENE_H / 2 + 0.3 + max(1, lay_c.ntiers) * tier_h + 0.1
-    y_scale = -GENE_H / 2 - 0.3 - max(1, lay_p.ntiers) * tier_h - 0.55
+    y_scale = -GENE_H / 2 - 0.3 - max(1, lay_p.ntiers) * tier_h - 0.75
     y_bot = y_scale - 0.75
     ax_h = (y_top - y_bot) * U
 
@@ -233,12 +233,13 @@ def plot_synteny(cgc_genes: Sequence[V.Gene], cgcid: str, pul_genes: Sequence[V.
 
     V.draw_scale_bar(ax, xmax, y_scale, span)
     cb_w_in = 1.4
-    cax = fig.add_axes([L_IN / W, (LEGEND_IN + (y_scale - y_bot) * U + 0.06) / H, cb_w_in / W, 0.08 / H])
+    cax = fig.add_axes([L_IN / W, (LEGEND_IN + (y_scale - y_bot) * U - 0.04) / H, cb_w_in / W, 0.08 / H])
     sm = plt.cm.ScalarMappable(cmap=IDENTITY_CMAP, norm=norm)
     cb = fig.colorbar(sm, cax=cax, orientation="horizontal", ticks=[20, 60, 100])
     cb.outline.set_visible(False)
     cb.ax.tick_params(labelsize=P.PLOT_SMALL_FONT_SIZE - 0.5, length=2, colors=P.PLOT_INK_MUTED, pad=1)
-    cax.set_title("identity (%)", fontsize=P.PLOT_SMALL_FONT_SIZE, color=P.PLOT_INK_MUTED, pad=2)
+    cax.text(1.04, 0.5, "identity (%)", transform=cax.transAxes, ha="left", va="center",
+             fontsize=P.PLOT_SMALL_FONT_SIZE, color=P.PLOT_INK_MUTED)
 
     if tracks:
         draw_depth_panels(fig, tracks, cgc_genes, xlo, xhi, W, H, LEGEND_IN + ax_h + PANEL_GAP_IN,

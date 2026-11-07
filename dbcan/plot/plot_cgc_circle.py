@@ -110,17 +110,21 @@ class CGCCircosPlot:
         space = 0 if len(sizes) == 1 else min(2, max(0, int(360 // len(sizes)) - 1))
         circos = Circos(sectors=sizes, space=space)
         cgc_genes = []
+        total = sum(sizes.values())
+        major = V.nice_step(total, 10 if len(sizes) == 1 else 24)    # one tick interval for all contigs
+        label_all = len(self.cgcs) <= C.CGC_CIRCOS_MAX_ID_LABELS
         for sector in circos.sectors:
             genes = self.genes_by_contig.get(sector.name, [])
             size = sizes[sector.name]
 
             axis = sector.add_track(C.CGC_AXIS_TRACK_RANGE)
             axis.axis(fc="black", ec="none")
-            major = V.nice_step(size, 10)
             if size > major:
+                multi = len(sizes) > 1            # several contigs: no '0' at every sector start
                 axis.xticks_by_interval(major, outer=False, tick_length=1.5, label_size=C.CGC_TICK_LABEL_SIZE,
                                         label_orientation="horizontal",
-                                        label_formatter=lambda v, s=major: V.fmt_axis_tick(v, s, size))
+                                        label_formatter=lambda v, s=major, m=multi: (
+                                            "" if (m and v == 0) else V.fmt_axis_tick(v, s, total)))
 
             rng = sector.add_track(C.CGC_RANGE_TRACK_RANGE)
             rng.axis(fc=C.CGC_TRACK_BG_COLOR, ec="none")
@@ -151,6 +155,8 @@ class CGCCircosPlot:
                 hi = min(hi, size)
                 predicted = bool(self.calls.get(cid) and self.calls[cid].names())
                 rng.rect(lo, hi, fc=C.CGC_RANGE_PREDICTED_COLOR if predicted else C.CGC_RANGE_COLOR, ec="none")
+                if not (predicted or label_all):
+                    continue                      # many CGCs: only those with a substrate are labelled
                 rng.annotate((lo + hi) / 2, self._cgc_label(cid), min_r=C.CGC_LABEL_MIN_R,
                              max_r=C.CGC_LABEL_MAX_R, label_size=C.CGC_LABEL_SIZE, shorten=None,
                              text_kws={"color": P.PLOT_INK if predicted else P.PLOT_INK_MUTED})
@@ -169,7 +175,7 @@ class CGCCircosPlot:
         fig.text(0.04, 0.985, f"CGCs of {name}", ha="left", va="top", fontsize=P.PLOT_TITLE_FONT_SIZE + 1,
                  fontweight="bold", color=P.PLOT_INK)
         n_pred = sum(1 for cid in self.cgcs if self.calls.get(cid) and self.calls[cid].names())
-        fig.text(0.04, 0.958, f"{len(self.cgcs)} CGCs · {n_pred} with substrate prediction · "
+        fig.text(0.04, 0.958, f"{V.plural(len(self.cgcs), 'CGC')} · {n_pred} with substrate prediction · "
                  f"{V.fmt_bp(sum(sizes.values()))}", ha="left", va="top", fontsize=P.PLOT_SUBTITLE_FONT_SIZE,
                  color=P.PLOT_INK_MUTED)
         self._legend(fig, cgc_genes)
@@ -198,8 +204,12 @@ class CGCCircosPlot:
 
     def _legend(self, fig, cgc_genes):
         hs, ls = V.type_legend_handles(V.types_present(cgc_genes))
-        hs = [Patch(facecolor=C.CGC_RANGE_PREDICTED_COLOR), Patch(facecolor=C.CGC_RANGE_COLOR)] + hs
-        ls = ["CGC with substrate prediction", "CGC"] + [f"{t} gene" for t in ls]
+        ls = [f"{t} gene" for t in ls]
+        predicted = [bool(self.calls.get(cid) and self.calls[cid].names()) for cid in self.cgcs]
+        if any(not p for p in predicted):
+            hs, ls = [Patch(facecolor=C.CGC_RANGE_COLOR)] + hs, ["CGC"] + ls
+        if any(predicted):
+            hs, ls = [Patch(facecolor=C.CGC_RANGE_PREDICTED_COLOR)] + hs, ["CGC with substrate prediction"] + ls
         if self.deg is not None:
             hs += [Patch(facecolor=C.DEG_UP_COLOR), Patch(facecolor=C.DEG_DOWN_COLOR)]
             ls += ["up-regulated", "down-regulated"]
