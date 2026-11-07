@@ -3,21 +3,68 @@ import dbcan.constants.base_constants as base_constants
 
 CGC_RESULT_FILE = base_constants.CGC_RESULT_FILE
 CGC_SUB_PREDICTION_FILE = base_constants.CGC_SUB_PREDICTION_FILE
-
-
-CGC_FEATURE_LEGEND = base_constants.CGC_FEATURE_LEGEND
-CGC_FEATURE_COLORS = base_constants.CGC_FEATURE_COLORS
-
-GENE_LABEL_COLOR=base_constants.GENE_LABEL_COLOR
-GENE_LABELS=base_constants.GENE_LABELS
-CGC_SUB_PREDICTION_FILE = base_constants.CGC_SUB_PREDICTION_FILE
+CGC_GFF_FILE = base_constants.CGC_GFF_FILE
 PUL_DIAMOND_FILE = base_constants.PUL_DIAMOND_FILE
-CGC_RESULT_FILE = base_constants.CGC_RESULT_FILE
-
-
 
 GFF_PROTEIN_ID_COL = base_constants.GFF_PROTEIN_ID_COL
 GFF_CGC_ANNOTATION_COL = base_constants.GFF_CGC_ANNOTATION_COL
+CGC_ID_FIELD = base_constants.CGC_ID_FIELD
 
+# ---------------------------------------------------------------------------
+# Gene-type colours: single source in base_constants (see CGC_FEATURE_COLORS there).
+# ---------------------------------------------------------------------------
+CGC_FEATURE_LEGEND = base_constants.CGC_FEATURE_LEGEND
+CGC_FEATURE_COLORS = base_constants.CGC_FEATURE_COLORS
+CGC_GENE_TYPE_PRIORITY = base_constants.CGC_GENE_TYPE_PRIORITY
+CGC_GENE_TYPE_ALIASES = base_constants.CGC_GENE_TYPE_ALIASES
+OTHER_GENE_TYPE = "Other"   # palette key for genes without a signature hit (null) and RNAs
 
-CGC_ID_FIELD= base_constants.CGC_ID_FIELD
+# ---------------------------------------------------------------------------
+# Shared look of the linear figures (CGC map, coverage, synteny, overview)
+# ---------------------------------------------------------------------------
+PLOT_FONT_FAMILY = "DejaVu Sans"
+PLOT_BASE_FONT_SIZE = 8
+PLOT_TITLE_FONT_SIZE = 10.5
+PLOT_SUBTITLE_FONT_SIZE = 8.5
+PLOT_LABEL_FONT_SIZE = 7.5
+PLOT_SMALL_FONT_SIZE = 6.8
+PLOT_INK = "#1F1F1F"            # main text
+PLOT_INK_MUTED = "#555555"      # secondary text
+PLOT_BACKBONE_COLOR = "#9A9A9A"  # line joining the genes of a track
+PLOT_LEADER_COLOR = "#B5B5B5"   # leader line from a lifted label to its gene
+PLOT_GENE_GAP_COLOR = "white"   # thin outline that separates abutting arrows
+PLOT_DEFAULT_DPI = 200
+PLOT_DEFAULT_FORMATS = ("pdf",)
+PLOT_SUPPORTED_FORMATS = ("pdf", "png", "svg")
+
+# read-depth panels (dbcan_plot CGC_coverage_plot / CGC_synteny_coverage_plot);
+# the original dbCAN coverage colours (red line over a light red fill)
+COVERAGE_LINE_COLOR = "red"
+COVERAGE_LINE_ALPHA = 0.6
+COVERAGE_FILL_COLOR = "red"
+COVERAGE_FILL_ALPHA = 0.3
+COVERAGE_GENE_SPAN_COLOR = "#F2F2F2"
+COVERAGE_YLABEL = "read depth"
+
+# synteny links: % identity on a single-hue grey ramp
+SYNTENY_IDENTITY_RAMP = ("#E6E6E6", "#BDBDBD", "#6E6E6E")
+SYNTENY_IDENTITY_MIN = 20.0
+SYNTENY_IDENTITY_MAX = 100.0
+SYNTENY_PDF_DIR = "synteny_pdf"
+SYNTENY_FILE_TEMPLATE = "{cgc}_{pul}-syntenic.{ext}"
+DBCAN_PUL_DIR = "dbCAN-PUL"
+DBCAN_PUL_GFF = "cgc.gff"
+
+# dbcan_plot output names
+CGC_MAP_FILE_TEMPLATE = "{cgc}.cgc.{ext}"
+CGC_COVERAGE_FILE_TEMPLATE = "{cgc}.cgc-coverage.{ext}"
+CGC_SYNTENY_COVERAGE_FILE_TEMPLATE = "{cgc}-syntenic-cov.{ext}"
+HEATMAP_FILE = "heatmap.pdf"
+HEATMAP_CLUSTER_FILE = "heatmap_cluster.pdf"
+BAR_PLOT_FILE = "bar_plot.pdf"
+
+# matplotlib >= 3.6 renamed the seaborn styles; old names are mapped to the new ones
+PLOT_STYLE_CHOICES = ("ggplot", "seaborn-v0_8", "seaborn-v0_8-poster", "seaborn-v0_8-whitegrid",
+                      "default", "classic", "bmh", "fivethirtyeight")
+PLOT_STYLE_ALIASES = {"seaborn": "seaborn-v0_8", "seaborn-poster": "seaborn-v0_8-poster",
+                      "seaborn-whitegrid": "seaborn-v0_8-whitegrid"}

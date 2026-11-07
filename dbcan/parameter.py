@@ -665,6 +665,14 @@ def cgc_substrate_base_options(func):
     """
     func = output_dir_option(func)
     func = click.option(
+        '--synteny_revcomp/--no-synteny_revcomp',
+        '--synteny-revcomp/--no-synteny-revcomp',
+        'synteny_revcomp',
+        default=True,
+        show_default=True,
+        help='Synteny PDFs: draw the dbCAN-PUL reverse-complemented when most homologous genes lie on the opposite strand of the CGC.',
+    )(func)
+    func = click.option(
         '--pul',
         required=False,
         default=None,
@@ -872,6 +880,13 @@ def syn_plot_options(func):
 
 def cgc_circle_plot_options(func):
     func = output_dir_option(func)
+    func = click.option(
+        '--layout',
+        type=click.Choice(['auto', 'circos', 'overview'], case_sensitive=False),
+        default='auto',
+        show_default=True,
+        help='auto: circos plot when cgc.gff has one contig (complete genome), overview ideogram otherwise.',
+    )(func)
     return func
 
 def topology_annotation_options(func):

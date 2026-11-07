@@ -42,6 +42,7 @@ class GFFConfig(BaseConfig):
 @dataclass
 class CGCPlotConfig(BaseConfig):
     output_dir: str
+    layout: str = "auto"   # auto | circos | overview (see plot_cgc_circle_constants)
 
 
 @dataclass
