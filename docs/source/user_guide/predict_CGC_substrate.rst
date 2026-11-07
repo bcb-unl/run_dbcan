@@ -41,7 +41,7 @@ If a required file is missing, an error is logged and an empty ``substrate_predi
 .. note::
 
    ``substrate_prediction`` does not take ``--mode`` or ``--input_raw_data``. Releases up to 5.2.9 required them
-   (GitHub issue #81); command lines that still pass them keep working, the values are ignored with a warning.
+   (GitHub issue #81); command lines that still pass them keep working, the values are ignored.
    ``easy_substrate`` runs all four steps and still needs ``--mode`` and ``--input_raw_data`` for step 1.
 
 Examples

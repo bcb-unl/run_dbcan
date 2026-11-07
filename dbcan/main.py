@@ -246,12 +246,9 @@ def substrate_prediction_cmd(ctx, log_level, log_file, verbose, **kwargs):
     setup_logging(log_level, log_file, verbose)
     from dbcan.configs.cgc_substrate_config import CGCSubstrateConfig, SynPlotConfig
     from dbcan.core import run_dbCAN_CGCFinder_substrate, run_dbcan_syn_plot
-    ignored = [f"--{k}" for k in ("input_raw_data", "mode") if kwargs.pop(k, None) is not None]
-    if ignored and ctx.command.name == 'substrate_prediction':
-        logging.getLogger(__name__).warning(
-            "%s %s not used by substrate_prediction (it reads the files in --output_dir) and will be "
-            "removed in a future release.", " and ".join(ignored), "is" if len(ignored) == 1 else "are"
-        )
+    # Accepted for compatibility with older command lines; substrate_prediction only reads --output_dir.
+    kwargs.pop("input_raw_data", None)
+    kwargs.pop("mode", None)
     cgcsubconfig = create_config(CGCSubstrateConfig, **kwargs)
     run_dbCAN_CGCFinder_substrate(cgcsubconfig)
     synplotconfig = create_config(SynPlotConfig, **kwargs)

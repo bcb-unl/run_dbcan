@@ -32,8 +32,7 @@ def test_substrate_prediction_still_accepts_legacy_input_options(tmp_path, calls
     )
     assert result.exit_code == 0, result.output
     assert "sub" in calls
-    # setup_logging() replaces the root handlers, so the warning is read from the captured stderr
-    assert "not used by substrate_prediction" in (result.output + (result.stderr if result.stderr_bytes else ""))
+    assert not hasattr(calls["sub"], "mode")
 
 
 def test_substrate_prediction_help_hides_input_options():

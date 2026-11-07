@@ -109,7 +109,7 @@ def input_options(func):
 
 
 def deprecated_input_options(func):
-    """Hidden, ignored --input_raw_data/--mode, kept so that existing substrate_prediction
+    """Hidden, silently ignored --input_raw_data/--mode, so that existing substrate_prediction
     command lines that pass them (the workaround for GitHub issue #81) keep working."""
     func = click.option('--input_raw_data', required=False, default=None, hidden=True)(func)
     func = click.option('--mode', required=False, default=None, hidden=True)(func)
