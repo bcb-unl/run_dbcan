@@ -44,7 +44,7 @@ The two download sources are not equivalent:
        ``db_current`` is a **moving snapshot**: it is replaced when the dbCAN team publishes a database update,
        so two downloads made months apart may differ.
    * - AWS S3 (``--aws_s3``)
-     - ``https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_11-3-2026/<filename>``.
+     - ``https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_5-5-2026/<filename>``.
        A **pinned release** whose folder name is fixed in the installed ``dbcan`` package
        (``S3_DATABASE_RELEASE`` in ``dbcan/constants/databases_constants.py``). The same ``dbcan`` version always
        downloads the same files.
@@ -94,9 +94,8 @@ For unreliable networks:
 Files and approximate sizes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Sizes below are those of the pinned S3 release ``db_v5-2-9_11-3-2026`` (dbCAN HMM database V15,
-CAZy DIAMOND database built from ``CAZyDB.08052026``); the HTTP snapshot may differ slightly.
-Plan for roughly **8.5 GB** of disk space for a full download (about 7.8 GB with ``--no-cgc``).
+Sizes below are those of the pinned S3 release ``db_v5-2-9_5-5-2026``; the HTTP snapshot may differ slightly.
+Plan for roughly **8 GB** of disk space for a full download (about 7.4 GB with ``--no-cgc``).
 
 .. list-table::
    :widths: 30 15 55
@@ -109,10 +108,10 @@ Plan for roughly **8.5 GB** of disk space for a full download (about 7.8 GB with
      - ~5.1 GB
      - ``CAZyme_annotation`` (dbCAN-sub)
    * - ``CAZy.dmnd``
-     - ~2.6 GB
+     - ~2.2 GB
      - ``CAZyme_annotation`` (DIAMOND)
    * - ``dbCAN.hmm``
-     - ~120 MB
+     - ~130 MB
      - ``CAZyme_annotation`` (dbCAN HMM)
    * - ``fam-substrate-mapping.tsv``
      - <1 MB
@@ -149,7 +148,7 @@ For reproducible results, record which databases you used together with the soft
    ls -l db/              # file sizes and modification dates
    md5sum db/*.dmnd db/*.hmm > db/checksums.md5
 
-If you used ``--aws_s3``, report the S3 release name (``db_v5-2-9_11-3-2026`` for the current package).
+If you used ``--aws_s3``, report the S3 release name (``db_v5-2-9_5-5-2026`` for the current package).
 If you used the HTTP source, report the download date, because ``db_current`` changes over time.
 
 Manual Database Installation
@@ -166,7 +165,7 @@ The pinned S3 source is:
 
 .. code-block:: text
 
-   https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_11-3-2026/<filename>
+   https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_5-5-2026/<filename>
 
 Step-by-Step Instructions:
 
@@ -200,13 +199,13 @@ Step-by-Step Instructions:
       tar -xzf dbCAN-PUL.tar.gz
 
       # Optional: Pfam-A HMMs, only needed for Pfam_null_cgc
-      wget -O Pfam-A.hmm "https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_11-3-2026/Pfam-A.hmm"
+      wget -O Pfam-A.hmm "https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_5-5-2026/Pfam-A.hmm"
 
    To download the whole pinned release with the AWS CLI instead:
 
    .. code-block:: shell
 
-      aws s3 cp s3://dbcan/db_v5-2-9_11-3-2026/ ./db --recursive --no-sign-request
+      aws s3 cp s3://dbcan/db_v5-2-9_5-5-2026/ ./db --recursive --no-sign-request
       mv db/dbCAN_sub.hmm db/dbCAN-sub.hmm
 
    The S3 folder also contains files that the downloader skips (``Pfam-A.hmm`` and the CAZy FASTA

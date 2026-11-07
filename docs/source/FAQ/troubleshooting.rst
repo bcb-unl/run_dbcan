@@ -102,11 +102,11 @@ Databases
 
 **HTTP or --aws_s3?**
    The default HTTP source is the moving ``db_current`` snapshot; ``--aws_s3`` downloads the release pinned in the
-   installed package (currently ``db_v5-2-9_11-3-2026``). Use ``--aws_s3`` for reproducible results and record the
+   installed package (currently ``db_v5-2-9_5-5-2026``). Use ``--aws_s3`` for reproducible results and record the
    release name, the ``run_dbcan version`` output and the file checksums (see :doc:`../user_guide/prepare_the_database`).
 
 **How much disk space do I need?**
-   About 8.5 GB for all files (``dbCAN-sub.hmm`` ~5.1 GB, ``CAZy.dmnd`` ~2.6 GB, ``dbCAN.hmm`` ~120 MB, CGC databases
+   About 8 GB for all files (``dbCAN-sub.hmm`` ~5.1 GB, ``CAZy.dmnd`` ~2.2 GB, ``dbCAN.hmm`` ~130 MB, CGC databases
    ~0.5 GB). ``Pfam-A.hmm`` (~1.6 GB) is only needed for ``Pfam_null_cgc`` and must be downloaded manually.
 
 **A download was interrupted.**
