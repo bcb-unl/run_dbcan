@@ -947,3 +947,62 @@ def logging_options(func):
 
 
 
+
+
+def dbcan_utils_options(func):
+    """Options of the ``dbcan_utils`` command (cal_coverage / *_abund / gff_fix)."""
+    import dbcan.constants.utils_constants as U
+
+    options = [
+        click.option("-i", "--input", "input_path", required=True, type=click.Path(exists=False),
+                     help="cal_coverage: sorted, indexed BAM. *_abund: run_dbcan output directory. "
+                          "gff_fix: protein FASTA."),
+        click.option("-bt", "--bedtools", "bedtools_file", type=click.Path(exists=False),
+                     help="Gene read-count table written by cal_coverage (required by the *_abund functions)."),
+        click.option("-g", "--gff", "gff_file", type=click.Path(exists=False),
+                     help="Gene annotation GFF (cal_coverage, gff_fix). The cgc.gff in the run_dbcan output "
+                          "directory uses exactly the protein IDs of the annotation tables."),
+        click.option("-o", "--output", "output_path", default=None,
+                     help="*_abund: output directory (created; default: current directory). "
+                          "cal_coverage: read-count table to write (required). "
+                          "gff_fix: fixed GFF to write (default: <gff>.fix.gff)."),
+        click.option("-a", "--abundance", "abundance", default=U.DEFAULT_ABUNDANCE_METHOD, show_default=True,
+                     type=click.Choice(list(U.ABUNDANCE_METHODS), case_sensitive=False),
+                     help="Normalisation of the gene counts (RPKM is the same as FPKM)."),
+        click.option("--overlap-base-ratio", "--overlap_base_ratio", "overlap_base_ratio",
+                     default=U.DEFAULT_OVERLAP_BASE_RATIO, type=float, show_default=True,
+                     help="cal_coverage: minimum fraction of the read length (with --hifi: of min(read, gene) length) that lies inside the gene."),
+        click.option("--mapping-quality", "--mapping_quality", "mapping_quality",
+                     default=U.DEFAULT_MAPPING_QUALITY, type=int, show_default=True,
+                     help="cal_coverage: minimum MAPQ. Reads of multi-copy genes have MAPQ 0-1 with most "
+                          "aligners, so those genes get 0 at the default; lower it (e.g. 0) to keep them."),
+        click.option("-c", "--identity", "identity", default=U.DEFAULT_IDENTITY, type=float, show_default=True,
+                     help="cal_coverage: minimum alignment identity (from NM, MD or =/X CIGAR); 0 disables it."),
+        click.option("-t", "--threads", "threads", default=1, type=int, show_default=True,
+                     help="cal_coverage: worker processes."),
+        click.option("--hifi", "hifi", is_flag=True,
+                     help="cal_coverage: long reads; the overlap ratio is relative to min(gene, read) length."),
+        click.option("--count-mode", "--count_mode", "count_mode", default=U.DEFAULT_COUNT_MODE, show_default=True,
+                     type=click.Choice(list(U.COUNT_MODES)),
+                     help="cal_coverage: 'fragments' counts the two mates of a pair once per gene; "
+                          "'reads' counts every read (old behaviour). Single-end reads are the same in both."),
+        click.option("--strandedness", "strandedness", default=U.DEFAULT_STRANDEDNESS, show_default=True,
+                     type=click.Choice(list(U.STRANDEDNESS_CHOICES)),
+                     help="cal_coverage: 'none' counts reads on both strands; 'forward': read 1 on the gene "
+                          "strand; 'reverse': read 1 antisense (dUTP / TruSeq stranded RNA-seq)."),
+        click.option("--include-duplicates", "--include_duplicates", "include_duplicates", is_flag=True,
+                     help="cal_coverage: also count alignments flagged as PCR/optical duplicates."),
+        click.option("--id-attr", "--id_attr", "id_attr", default=U.GFF_ID_ATTR_AUTO, show_default=True,
+                     help="cal_coverage: GFF attribute holding the protein ID. 'auto' uses protein_id "
+                          "(NCBI, run_dbcan cgc.gff), proteinId (JGI), else ID / Name / locus_tag."),
+        click.option("--feature-type", "--feature_type", "feature_type", default=None,
+                     help="cal_coverage: comma-separated GFF feature types to count (default: CDS rows when "
+                          "present, else every gene row)."),
+        # deprecated, accepted so that old command lines keep working
+        click.option("-1", "--r1", "r1", default=None, hidden=True),
+        click.option("-2", "--r2", "r2", default=None, hidden=True),
+        click.option("--db-dir", "db_dir", default=None, hidden=True),
+    ]
+    for opt in reversed(options):
+        func = opt(func)
+    return func
