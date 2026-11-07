@@ -1,0 +1,11 @@
+ctgA	.	gene	1000	2000	.	+	.	protein_id=a1;CGC_annotation=CAZyme|GH13_31+TC|8.A.9.1.1
+ctgA	.	gene	2100	2900	.	+	.	protein_id=a2;CGC_annotation=TC|2.A.1.5.1
+ctgA	.	gene	3000	3600	.	-	.	protein_id=a3;CGC_annotation=TF|LacI+STP|Peripla_BP_3
+ctgA	.	gene	3700	3800	.	+	.	protein_id=NA;CGC_annotation=null
+ctgA	.	gene	4000	5200	.	-	.	protein_id=a5;CGC_annotation=CAZyme|GH10_e12
+ctgA	.	gene	8000	8500	.	+	.	protein_id=NA;CGC_annotation=null
+ctgA	.	gene	9000	9900	.	+	.	protein_id=a7;CGC_annotation=CAZyme|GT2
+ctgB|x	.	gene	100	900	.	+	.	protein_id=b1;CGC_annotation=Sulfatase|S1_19
+ctgB|x	.	gene	1000	2500	.	+	.	protein_id=b2;CGC_annotation=CAZyme|GH5_2
+ctgB|x	.	gene	2600	3000	.	-	.	protein_id=b3;CGC_annotation=Peptidase|M38
+ctgB|x	.	gene	3500	4200	.	+	.	protein_id=b4;CGC_annotation=null

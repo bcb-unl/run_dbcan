@@ -1,0 +1,9 @@
+CGC#	Gene Type	Contig ID	Protein ID	Gene Start	Gene Stop	Gene Strand	Gene Annotation
+CGC1	CAZyme	ctgA	a1	1000	2000	+	CAZyme|GH13_31+TC|8.A.9.1.1
+CGC1	TC	ctgA	a2	2100	2900	+	TC|2.A.1.5.1
+CGC1	TF	ctgA	a3	3000	3600	-	TF|LacI+STP|Peripla_BP_3
+CGC1	null	ctgA	NA	3700	3800	+	null
+CGC1	CAZyme	ctgA	a5	4000	5200	-	CAZyme|GH10_e12
+CGC2	Sulfatase	ctgB|x	b1	100	900	+	Sulfatase|S1_19
+CGC2	CAZyme	ctgB|x	b2	1000	2500	+	CAZyme|GH5_2
+CGC2	Peptidase	ctgB|x	b3	2600	3000	-	Peptidase|M38

@@ -86,6 +86,15 @@ class CGCCircosPlot:
         """(contig, start, end) of every gene listed in cgc_standard_out.tsv."""
         return {(g.contig, g.start, g.end) for genes in self.cgcs.values() for g in genes}
 
+    def cgc_ring_genes(self, contig: str) -> List[V.Gene]:
+        """GFF genes of ``contig`` that belong to a CGC row (matched by contig, start, end).
+
+        Matching by protein_id painted every RNA (protein_id=NA) onto the CGC ring as soon
+        as one CGC contained an RNA.
+        """
+        members = self._cgc_member_keys()
+        return [g for g in self.genes_by_contig.get(contig, []) if (g.contig, g.start, g.end) in members]
+
     def _cgc_label(self, cid: str) -> str:
         parts = V.split_cgc_id(cid)
         name = parts[1] if parts else cid
@@ -100,7 +109,6 @@ class CGCCircosPlot:
         sizes = {c: max(1, s) for c, s in self.sizes.items()}
         space = 0 if len(sizes) == 1 else min(2, max(0, int(360 // len(sizes)) - 1))
         circos = Circos(sectors=sizes, space=space)
-        members = self._cgc_member_keys()
         cgc_genes = []
         for sector in circos.sectors:
             genes = self.genes_by_contig.get(sector.name, [])
@@ -127,7 +135,9 @@ class CGCCircosPlot:
                     continue
                 if g.gtype == "CAZyme":
                     caz.rect(lo, hi, fc=V.gene_color("CAZyme"), ec="none")
-                if (g.contig, g.start, g.end) in members:
+            for g in self.cgc_ring_genes(sector.name):
+                lo, hi = max(0, g.start - 1), min(size, g.end)
+                if hi > lo:
                     feat.rect(lo, hi, fc=V.gene_color(g.gtype), ec="none")
                     cgc_genes.append(g)
 

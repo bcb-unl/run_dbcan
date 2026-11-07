@@ -113,8 +113,7 @@ def short_label(gtype: str, detail: str) -> str:
         return "+".join(fams) if fams else "CAZyme"
     first = detail.split(";")[0].strip()
     if gtype == "TC":
-        parts = first.split(".")
-        return "TC " + ".".join(parts[:4]) if first else "TC"
+        return f"TC {first}" if first else "TC"
     if gtype == "Peptidase":
         return first.split(".")[0] or "Peptidase"
     if gtype == "TF":
