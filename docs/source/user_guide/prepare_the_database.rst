@@ -228,6 +228,50 @@ Step-by-Step Instructions:
    For a complete list of required database files and their descriptions,
    see :doc:`../getting_started/database_description` and the `dbCAN2 download page <https://bcb.unl.edu/dbCAN2/download/>`_.
 
+.. _rebuild-peptidase-db:
+
+Rebuilding ``peptidase_db.dmnd`` (maintainers)
+----------------------------------------------
+
+``peptidase_db.dmnd`` is a DIAMOND database of the MEROPS peptidase units in ``pepunit.lib``. Users download the
+finished file; the dbCAN team rebuilds it for a new MEROPS release with
+``python -m dbcan.utils.build_peptidase_db`` (DIAMOND must be on ``PATH``, e.g. in the run_dbcan container):
+
+.. code-block:: shell
+
+   mkdir merops && cd merops
+   wget https://ftp.ebi.ac.uk/pub/databases/merops/current_release/pepunit.lib     # ~440 MB
+   python -m dbcan.utils.build_peptidase_db \
+       --input pepunit.lib --output peptidase_db.dmnd \
+       --report peptidase_db.dropped.tsv --threads 4
+
+The script
+
+* reads the MEROPS identifier from the bracket right before ``#<family>#{... unit: ...}``, for example
+  ``>MER0003996 - ubiquitin-specific endopeptidase 39 [misleading] (Mus musculus) [C19.972]#C19#{peptidase unit:
+  187-549}~source EDK98966~`` gives ``C19.972``. Names and organisms can contain brackets (``[misleading]``,
+  ``[Ser->Ala replacement]``, ``([Clostridium] irregulare)``); the currently distributed database took the first
+  bracket and has 322 such entries (``misleading``, ``Clostridium``, ...), which run_dbcan never reports;
+* writes records as ``>MER0003996|C19.972``. DIAMOND reports this as ``sseqid`` and run_dbcan keeps the part after
+  ``|`` as ``Peptidase ID``;
+* leaves out inhibitor units (``{inhibitor unit: ...}``, families ``I*``), identifiers that do not match
+  ``<catalytic type><family>.<id>`` (e.g. the lower-case ``a01.UNa``), records without a ``MER`` accession or
+  sequence, and exact duplicates (same identifier and same sequence; the first accession is kept);
+* logs the counts per reason, writes every left-out record to ``--report`` (optional), keeps the cleaned FASTA
+  (``--fasta``, default ``peptidase_db.faa``) and runs ``diamond makedb``. ``--no-makedb`` writes the FASTA only.
+  It exits with a non-zero status when the input has no peptidase unit or ``diamond makedb`` fails.
+
+``pepunit.lib`` of the current MEROPS release (dated 2023-02-22, 1,227,939 records): 984,975 peptidase units
+kept (287 families), 176,943 inhibitor units, 1 malformed identifier and 66,020 duplicates left out; the database
+is about 290 MB.
+
+``--keep-inhibitors`` keeps the inhibitor units (147,401 after removing duplicates) as decoys. run_dbcan never
+reports a hit to them as ``Peptidase``, but because each protein keeps only its best DIAMOND hit
+(``--max-target-seqs 1``), they stop a protein whose best match is an inhibitor from taking a weaker peptidase hit
+instead. On *Xylona heveae* one protein whose best hit is ``I51.001`` (carboxypeptidase Y inhibitor) is labelled
+``C18.UPW`` (a viral peptidase family) when the inhibitor units are left out; with ``--keep-inhibitors`` the results
+are those of the current database plus the two ``C19`` peptidases that it had under the wrong identifier.
+
 Testing Your Installation
 ---------------------------
 
