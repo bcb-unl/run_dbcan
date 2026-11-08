@@ -630,8 +630,9 @@ def _resolve_prodigal(path: Path, idx: ProteinIndex, out_tsv: Optional[Path]) ->
 
 
 def _resolve_legacy(path: Path, gff_type: str, idx: ProteinIndex) -> ResolutionResult:
-    """NCBI_prok, NCBI_euk, JGI: the rule of the processors in dbcan.IO.gff (report only)."""
-    feats = list(iter_features(path))
+    """NCBI_prok, NCBI_euk, JGI: the rule of the processors in dbcan.IO.gff (report only).
+    All rows are kept: those processors look at every direct child of a gene (exon included)."""
+    feats = list(iter_features(path, keep_ignored=True))
     rows: List[GeneResolution] = []
     n_gtf = sum(1 for f in feats if f.gtf)
     children: Dict[str, List[Feature]] = defaultdict(list)
