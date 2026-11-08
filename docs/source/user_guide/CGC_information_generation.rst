@@ -31,8 +31,9 @@ To identify and analyze CGCs, users must first prepare annotation information by
    they lie on the CAZyme domain. On proteins without a CAZyme annotation, labels from different sources are kept
    side by side (one protein can be, for example, ``TC`` and ``STP``); such a gene still fills only one role when
    CGCs are called. Each DIAMOND search keeps one best hit per protein; STP and TF HMM domains are resolved within their own
-   HMM library. The peptidase database is built from MEROPS ``pepunit.lib`` (peptidase units); hits to MEROPS
-   peptidase *inhibitor* units (families ``I*``) are not reported as ``Peptidase`` (they stay in the raw
+   HMM library. The peptidase database is built from MEROPS ``pepunit.lib`` (peptidase units, see
+   :ref:`rebuild-peptidase-db`); hits to MEROPS peptidase *inhibitor* units (families ``I*``), which a database
+   built with inhibitor units contains, are not reported as ``Peptidase`` (they stay in the raw
    ``diamond.out.peptidase`` file). In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of
    ``cgc_standard_out.tsv`` shows the first of CAZyme > TC > TF > STP > Sulfatase > Peptidase.
 

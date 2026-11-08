@@ -64,6 +64,15 @@ Unreleased
    protein are used; ``NA`` placeholder rows no longer shift the ``CGC_abund`` columns; ``Fams`` shows the family of
    each member's Gene Type role.
 
+.. rubric:: Databases
+
+#. New maintainer script ``python -m dbcan.utils.build_peptidase_db`` rebuilds ``peptidase_db.dmnd`` from MEROPS
+   ``pepunit.lib``: identifiers are read from the bracket before the family field (the currently distributed
+   database has 322 entries named after a bracket in the protein name or organism, e.g. ``misleading`` or
+   ``Clostridium``), inhibitor units, malformed identifiers and exact duplicates are left out
+   (``--keep-inhibitors`` keeps inhibitor units as decoys), and ``diamond makedb`` is run. See
+   :ref:`rebuild-peptidase-db`. The distributed database is not changed by this.
+
 .. rubric:: Figures
 
 #. One palette for every CGC figure (the original dbCAN colours). A gene with several roles takes the colour of its
