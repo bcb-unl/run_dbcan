@@ -25,6 +25,17 @@ import dbcan.constants.OverviewGenerator_constants as O
 
 logger = logging.getLogger(__name__)
 
+
+def _has_data_rows(path: Path) -> bool:
+    """True if ``path`` is a file with at least one line after its header line."""
+    try:
+        with open(path) as fh:
+            fh.readline()
+            return any(line.strip() for line in fh)
+    except OSError:
+        return False
+
+
 _CAZY_FAMILY_RE = re.compile(O.CAZY_ID_PATTERN)
 
 # CAZyme_annotation method name (--methods, lower-cased) -> result key used below
@@ -130,7 +141,9 @@ class OverviewGenerator:
         selected = self.selected_result_keys
         for key, path in self.result_file_map.items():
             if key not in selected:
-                if path.exists():
+                # A header-only table is the empty placeholder core writes for a method that was
+                # not selected; only a table with rows is an earlier run's result worth a warning.
+                if _has_data_rows(path):
                     logger.warning(
                         f"Ignoring {path.name}: method '{RESULT_KEY_TO_METHOD[key]}' was not selected with --methods in this run "
                         f"(the file is left over from an earlier run)."

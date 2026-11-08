@@ -51,7 +51,8 @@ Unreleased
    column keeps only CAZy family tokens, once each; an EC without a count is written ``EC:1``; the ``Substrate``
    column looks the EC up across the eHMM's composition families, falls back to the family-level substrate, and uses
    ``dbCAN-sub-substrate.tsv`` from the database directory when present (same result as the dbCAN-sub web server).
-   Only the tools selected with ``--methods`` are merged.
+   Only the tools selected with ``--methods`` are merged; a result table with rows left by an earlier run of an
+   unselected tool is ignored with a warning (the empty placeholder table is ignored silently).
 #. dbCAN-sub subfamily names are no longer rewritten by the ``GT2_*`` rename (it applies to ``dbCAN.hmm`` only).
 #. CGC signatures: TC, TF (DIAMOND), Sulfatase and Peptidase are full-length DIAMOND searches and keep the best hit
    per protein without a coordinate overlap test against dbCAN domains. Peptidase hits are filtered by subject

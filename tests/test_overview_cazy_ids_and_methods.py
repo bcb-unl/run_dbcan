@@ -137,3 +137,13 @@ def test_ignoring_unselected_method_is_a_warning(tmp_path, caplog):
     caplog.set_level(logging.WARNING, logger="dbcan.IO.OverviewGenerator")
     OverviewGenerator(OverviewGeneratorConfig(output_dir=str(tmp_path), methods=("hmm",))).run()
     assert any(r.levelno == logging.WARNING and "Ignoring diamond.out" in r.getMessage() for r in caplog.records)
+
+
+def test_empty_placeholder_of_unselected_method_is_not_warned(tmp_path, caplog):
+    """core writes a header-only diamond.out when DIAMOND is not selected; that is no stale result."""
+    _write_all_results(tmp_path)
+    pd.DataFrame(columns=D.CAZY_COLUMN_NAMES).to_csv(tmp_path / "diamond.out", sep="\t", index=False)
+    caplog.set_level(logging.WARNING, logger="dbcan.IO.OverviewGenerator")
+    OverviewGenerator(OverviewGeneratorConfig(output_dir=str(tmp_path), methods=("hmm", "dbCANsub"))).run()
+    assert "Ignoring diamond.out" not in caplog.text
+    assert read_tsv(tmp_path / "overview.tsv").set_index("Gene ID").loc["p1", "DIAMOND"] == "-"
