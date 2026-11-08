@@ -23,11 +23,23 @@ Download and rename the reads to ``<sample>_1/2.fastq.gz``, the names used by th
      done
    done
 
+.. note::
+   The precomputed files on the website keep the original names (``fefifo_8022_1__shotgun_1_val_1.fq.gz``,
+   ``fefifo_8022_1__shotgun_1.fastq.gz_trimming_report.txt``); with the renamed reads your files are
+   ``fefifo_8022_1_1_val_1.fq.gz`` etc.
+
 Steps
 -----
 
-With ``SAMPLES`` set as above, run :ref:`P1-P12 <mg-module1>` of the main protocol unchanged. Kraken2 (P1)
-finds very little contamination, so no host reads are removed.
+With ``SAMPLES`` set as above, run :ref:`P1-P10 <mg-module1>` and :ref:`P12 <mg-p12>` of the main protocol
+unchanged. Kraken2 (P1) finds very little contamination, so no host reads are removed.
+
+:ref:`P11 <mg-p11>` and P15 use one CGC of this dataset; set these values instead of the Carter ones, then run the
+P11 commands:
+
+.. code-block:: shell
+
+   S=fefifo_8022_1; CONTIG=k141_2168; CGC=CGC1      # REGION = k141_2168:4235-19858
 
 Plots (P13-P15):
 
@@ -39,9 +51,8 @@ Plots (P13-P15):
      dbcan_plot bar_plot --samples fefifo_8022_1,fefifo_8022_7 --top 20 --vertical-bar \
          -i fefifo_8022_1_abund/${t}_abund.out,fefifo_8022_7_abund/${t}_abund.out --pdf ${t}_abund.pdf
    done
-   # CGC of the example: k141_2168|CGC1 of fefifo_8022_1 (P11 region k141_2168:4235-19858)
-   dbcan_plot CGC_synteny_coverage_plot -i fefifo_8022_1.dbCAN --cgcid 'k141_2168|CGC1' \
-       --reads-count fefifo_8022_1.cgc.depth.txt --db-dir db
+   dbcan_plot CGC_synteny_coverage_plot -i $S.dbCAN --cgcid "$CONTIG|$CGC" \
+       --reads-count $S.cgc.depth.txt --db-dir db
 
 Timing
 ------

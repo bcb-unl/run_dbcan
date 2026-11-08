@@ -24,8 +24,15 @@ Data
 Steps
 -----
 
-With ``SAMPLES`` set as above, run :ref:`P1-P12 <mg-module1>` of the main protocol unchanged. Kraken2 (P1)
-finds very little contamination, so no host reads are removed.
+With ``SAMPLES`` set as above, run :ref:`P1-P10 <mg-module1>` and :ref:`P12 <mg-p12>` of the main protocol
+unchanged. Kraken2 (P1) finds very little contamination, so no host reads are removed.
+
+:ref:`P11 <mg-p11>` and P15 use one CGC of this dataset; set these values instead of the Carter ones, then run the
+P11 commands:
+
+.. code-block:: shell
+
+   S=HCZGU; CONTIG=k141_1169008; CGC=CGC1      # REGION = k141_1169008:2-5684
 
 Plots (P13-P15):
 
@@ -37,9 +44,8 @@ Plots (P13-P15):
      dbcan_plot bar_plot --samples HCZGU,HTOOS --top 20 --vertical-bar \
          -i HCZGU_abund/${t}_abund.out,HTOOS_abund/${t}_abund.out --pdf ${t}_abund.pdf
    done
-   # CGC of the example: k141_1169008|CGC1 of HCZGU (P11 region k141_1169008:2-5684)
-   dbcan_plot CGC_synteny_coverage_plot -i HCZGU.dbCAN --cgcid 'k141_1169008|CGC1' \
-       --reads-count HCZGU.cgc.depth.txt --db-dir db
+   dbcan_plot CGC_synteny_coverage_plot -i $S.dbCAN --cgcid "$CONTIG|$CGC" \
+       --reads-count $S.cgc.depth.txt --db-dir db
 
 Timing
 ------

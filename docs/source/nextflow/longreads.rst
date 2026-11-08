@@ -231,7 +231,7 @@ Coverage and Abundance
 
 - ``dbcan_utils_cal_coverage/``
 
-  - ``*_depth.txt``: read count of every gene (``dbcan_utils cal_coverage``: gene ID, length, count)
+  - ``<sample>.depth.txt``: read count of every gene (``dbcan_utils cal_coverage``: gene ID, length, count)
 
 - ``dbcan_utils_cal_abund/``
 

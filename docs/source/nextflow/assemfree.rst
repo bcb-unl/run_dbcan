@@ -148,9 +148,9 @@ Abundance Calculation
   
     Files in this directory:
     
-    - ``*_abund.txt``: CAZyme abundance values
-    - ``*_family_abund.txt``: Family-level abundance
-    - ``*_subfamily_abund.txt``: Subfamily-level abundance
+    - ``fam_abund.out``, ``subfam_abund.out``: family and subfamily abundance
+    - ``EC_abund.out``: EC abundance
+    - ``substrate_abund.out``: substrate abundance (also linked as ``fam_substrate_abund.out`` for ``dbcan_plot``)
 
 Visualization
 ~~~~~~~~~~~~~

@@ -9,10 +9,11 @@ step by step, on two samples of the Carter 2023 soil dataset (`Carter et al., Ce
 datasets and routes below only list what differs and link back to the steps here.
 
 .. figure:: ../_static/img/figures/protocol_flow.png
-   :width: 100%
+   :width: 90%
+   :target: ../_static/img/figures/protocol_flow.png
    :alt: The four modules of the protocol, their commands and output files
 
-   The four modules, the command of each step and the files it writes (``S`` = sample name).
+   The four modules, the command of each step and the files it writes (``S`` = sample name; click to enlarge).
 
 .. list-table:: Example datasets and routes
    :header-rows: 1
@@ -41,7 +42,8 @@ datasets and routes below only list what differs and link back to the steps here
    :width: 70%
    :alt: Individual assembly, co-assembly and assembly-free routes
 
-   Routes: individual sample assembly (steps 1-5, this page), co-assembly (6-10) and assembly-free (11).
+   The three routes: individual assembly (figure steps 1-5, this page), co-assembly (6-10) and assembly-free
+   (11). Figure step numbers are not the P1-P15 steps of the protocol.
 
 The raw reads, every intermediate file and the final results of each dataset are on
 https://bcb.unl.edu/dbCAN_tutorial/ (Carter 2023: ``dataset1-Carter2023/individual_assembly/``).
@@ -78,10 +80,10 @@ Requirements
      - 1.2.9
      - P3 assembly
    * - `pyrodigal <https://pyrodigal.readthedocs.io/>`_
-     - latest
+     - not recorded (run_dbcan now pins 3.6.3)
      - P4 gene prediction
-   * - `run_dbcan <https://github.com/bcb-unl/run_dbcan>`_ (with DIAMOND, pyHMMER)
-     - current
+   * - `run_dbcan <https://github.com/bcb-unl/run_dbcan>`_ (with DIAMOND 2.1.8, pyHMMER)
+     - 5.0.3 (commands on this page: current)
      - P5-P7, P10-P15
    * - `BWA <https://github.com/lh3/bwa>`_, `Samtools <https://github.com/samtools/samtools>`_
      - 0.7.17, 1.7
@@ -95,7 +97,7 @@ Requirements
 Setup
 -----
 
-**S1. Install the tools** (~5 min). One conda environment holds everything (see :doc:`/getting_started/installation`
+**S1. Install the tools.** One conda environment holds everything (see :doc:`/getting_started/installation`
 for run_dbcan itself):
 
 .. code-block:: shell
@@ -104,7 +106,7 @@ for run_dbcan itself):
        dbcan kraken2 krakentools trim-galore megahit pyrodigal bwa samtools mmseqs2
    conda activate cazyme_protocol
 
-**S2. Download the databases** (~2 h). run_dbcan databases (:doc:`/user_guide/prepare_the_database`) and, only if
+**S2. Download the databases.** run_dbcan databases (:doc:`/user_guide/prepare_the_database`) and, only if
 you run P1, a Kraken2 database:
 
 .. code-block:: shell
@@ -114,7 +116,7 @@ you run P1, a Kraken2 database:
    wget https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20240605.tar.gz
    mkdir K2 && tar -xvf k2_standard_20240605.tar.gz -C K2
 
-**S3. Download the reads** (~10 min). Originally `ERR7745896 <https://www.ncbi.nlm.nih.gov/sra/?term=ERR7745896>`_
+**S3. Download the reads.** Originally `ERR7745896 <https://www.ncbi.nlm.nih.gov/sra/?term=ERR7745896>`_
 and `ERR7738162 <https://www.ncbi.nlm.nih.gov/sra/?term=ERR7738162>`_, renamed after the season they were collected in. ``SAMPLES`` is used by every loop below:
 
 .. code-block:: shell
@@ -133,7 +135,7 @@ Module 1: reads to genes
 
 .. _mg-p1:
 
-**P1. Contamination check** (~10 min). Kraken2 classifies the reads; inspect the ``.kreport`` files (e.g. with
+**P1. Contamination check.** Kraken2 classifies the reads; inspect the ``.kreport`` files (e.g. with
 `Pavian <https://github.com/fbreitwieser/pavian>`_). Carter 2023 has almost no contamination, so the reads go
 straight to P2.
 
@@ -168,7 +170,7 @@ straight to P2.
 
 .. _mg-p2:
 
-**P2. Trim adapters and low-quality reads** (~20 min).
+**P2. Trim adapters and low-quality reads.**
 
 .. code-block:: shell
 
@@ -182,7 +184,7 @@ add ``--retain_unpaired`` to keep the other read.
 
 .. _mg-p3:
 
-**P3. Assemble each sample** (~4 h 20 min).
+**P3. Assemble each sample.**
 
 .. code-block:: shell
 
@@ -196,7 +198,7 @@ contigs also encode CAZymes.
 
 .. _mg-p4:
 
-**P4. Predict genes** (~20 min).
+**P4. Predict genes.**
 
 .. code-block:: shell
 
@@ -217,28 +219,25 @@ GFF genes like the proteins (``ID=k141_1_1``).
 Module 2: run_dbcan
 -------------------
 
-Choose **one** of the three commands; each one includes the previous one. The rest of the protocol needs P7.
+Choose **one** of the three commands; each one includes the previous one. The rest of the protocol needs P7
+(the slowest step, see :ref:`mg-timing`).
 
 .. list-table::
    :header-rows: 1
-   :widths: 12 30 38 20
+   :widths: 12 34 54
 
    * - Step
      - Command
      - Adds
-     - Time (per sample)
    * - P5
      - ``run_dbcan CAZyme_annotation``
      - CAZymes (``overview.tsv``)
-     - ~10 min
    * - P6
      - ``run_dbcan easy_CGC``
      - + CGCs (``cgc.gff``, ``cgc_standard_out.tsv``)
-     - ~15 min
    * - P7
      - ``run_dbcan easy_substrate``
      - + substrates (``substrate_prediction.tsv``, ``synteny_pdf/``)
-     - ~5 h
 
 .. _mg-p5:
 
@@ -246,7 +245,9 @@ Choose **one** of the three commands; each one includes the previous one. The re
 
 .. code-block:: shell
 
-   run_dbcan CAZyme_annotation --mode protein --input_raw_data Wet2014.faa --db_dir db --output_dir Wet2014.CAZyme
+   for s in $SAMPLES; do
+     run_dbcan CAZyme_annotation --mode protein --input_raw_data $s.faa --db_dir db --output_dir $s.CAZyme --threads 32
+   done
 
 .. _mg-p7:
 
@@ -269,13 +270,16 @@ Choose **one** of the three commands; each one includes the previous one. The re
    * - File
      - Content (details: :ref:`overview-columns`, :doc:`/user_guide/CGC_annotation`, :ref:`substrate-prediction`)
    * - ``overview.tsv``
-     - One row per CAZyme: dbCAN HMM, dbCAN-sub and DIAMOND results, ``#ofTools``, EC, ``Recommend Results``.
+     - One row per protein with a hit from any of the three tools (also ``#ofTools`` = 1): dbCAN HMM, dbCAN-sub
+       and DIAMOND results, ``#ofTools``, EC, ``Recommend Results`` (``--run_signalp`` adds a SignalP column,
+       see :doc:`/user_guide/signalp6_deeptmhmm`).
    * - ``cgc.gff``
      - Your GFF with the signature genes marked (CAZyme, TC, TF, STP, ...). Also the GFF for P10.
    * - ``cgc_standard_out.tsv``
      - One row per CGC gene: ``CGC#``, ``Gene Type``, ``Contig ID``, ``Protein ID``, start, stop, strand, annotation.
    * - ``substrate_prediction.tsv``
-     - One row per CGC: best dbCAN-PUL hit and its substrate, and the dbCAN-sub majority-voting substrate.
+     - One row per CGC: best dbCAN-PUL hit and its substrate, and the dbCAN-sub majority-voting substrate. Often
+       only one of the two gives a substrate; when they disagree, prefer dbCAN-PUL.
    * - ``synteny_pdf/``
      - One CGC-vs-PUL synteny plot per CGC with a dbCAN-PUL hit.
 
@@ -295,7 +299,7 @@ Module 3: abundance
 
 .. _mg-p8:
 
-**P8-P9. Map the clean reads to the contigs of the same sample, then sort and index** (~25 min).
+**P8-P9. Map the clean reads to the contigs of the same sample, then sort and index.**
 
 .. code-block:: shell
 
@@ -307,7 +311,7 @@ Module 3: abundance
 
 .. _mg-p10:
 
-**P10. Count reads per gene** (~12 min). Use the ``cgc.gff`` of P7: its gene IDs are exactly the protein IDs of
+**P10. Count reads per gene.** Use the ``cgc.gff`` of P7: its gene IDs are exactly the protein IDs of
 the run_dbcan tables.
 
 .. code-block:: shell
@@ -326,19 +330,19 @@ supplementary, QC-fail and duplicate alignments are ignored.
 
 .. _mg-p11:
 
-**P11. Read depth over one CGC** (~2 min), for the coverage plots of P15. The region is the contig and the first
-and last base of the CGC genes in ``cgc_standard_out.tsv``:
+**P11. Read depth over one CGC**, for the coverage plots of P15. Set the sample, contig and CGC (pick one from
+``$S.dbCAN/substrate_prediction.tsv``); the region comes from ``cgc_standard_out_summary.tsv``:
 
 .. code-block:: shell
 
-   CGC='k141_41392|CGC3'
-   REGION=$(awk -F'\t' -v id="$CGC" '$3"|"$1==id {c=$3; if(s==""||$5+0<s)s=$5+0; if($6+0>e)e=$6+0}
-                END{print c":"s"-"e}' Wet2014.dbCAN/cgc_standard_out.tsv)
-   samtools depth -a -r "$REGION" Wet2014.bam > Wet2014.cgc.depth.txt    # e.g. k141_41392:152403-165349
+   S=Wet2014; CONTIG=k141_41392; CGC=CGC3
+   REGION=$(awk -F'\t' -v c="$CONTIG" -v n="$CGC" '$1==n && $2==c {print c":"$3"-"$4}' \
+            $S.dbCAN/cgc_standard_out_summary.tsv)          # k141_41392:152403-165349
+   samtools depth -a -r "$REGION" $S.bam > $S.cgc.depth.txt
 
 .. _mg-p12:
 
-**P12. Abundance of families, ECs, substrates and CGCs** (~1 min).
+**P12. Abundance of families, ECs, substrates and CGCs.**
 
 .. code-block:: shell
 
@@ -387,7 +391,7 @@ Module 4: plots
 
 .. _mg-p13:
 
-**P13. Heatmap of substrate abundance** (1 min). ``--top 20`` keeps the 20 rows that differ most between the first
+**P13. Heatmap of substrate abundance.** ``--top 20`` keeps the 20 rows that differ most between the first
 two files; ``--cluster-map`` clusters the rows.
 
 .. code-block:: shell
@@ -397,7 +401,7 @@ two files; ``--cluster-map`` clusters the rows.
 
 .. _mg-p14:
 
-**P14. Bar plots of family, subfamily and EC abundance** (1 min).
+**P14. Bar plots of family, subfamily and EC abundance.**
 
 .. code-block:: shell
 
@@ -410,19 +414,19 @@ two files; ``--cluster-map`` clusters the rows.
    :width: 55%
    :alt: Bar plot of CAZyme family abundance in two samples
 
-   What ``bar_plot`` draws (here: ``fam_abund.out`` of two RNA-seq samples, see :ref:`figure_gallery`).
+   A ``bar_plot`` example (``fam_abund.out`` of two RNA-seq samples, see :ref:`figure_gallery`), drawn with
+   horizontal bars and ``--top 15``; the command above gives vertical bars of the top 20.
 
 .. _mg-p15:
 
-**P15. Plots of one CGC** (1 min). ``--cgcid`` is ``contig|CGCn``; ``-i`` is the run_dbcan folder of the sample
-the CGC comes from. Synteny plots read dbCAN-PUL from ``--db-dir`` (default ``db``). The CGC IDs on these pages
-come from the published runs; CGC numbering can differ in your run, so pick a CGC from your
-``substrate_prediction.tsv``.
+**P15. Plots of one CGC**, with ``S``, ``CONTIG`` and ``CGC`` of P11. ``--cgcid`` is ``contig|CGCn``; ``-i`` is
+the run_dbcan folder of the sample the CGC comes from. Synteny plots read dbCAN-PUL from ``--db-dir`` (default
+``db``). The CGC IDs on these pages come from the published runs; CGC numbering can differ in your run.
 
 .. code-block:: shell
 
-   dbcan_plot CGC_synteny_coverage_plot -i Wet2014.dbCAN --cgcid 'k141_41392|CGC3' \
-       --reads-count Wet2014.cgc.depth.txt --db-dir db
+   dbcan_plot CGC_synteny_coverage_plot -i $S.dbCAN --cgcid "$CONTIG|$CGC" \
+       --reads-count $S.cgc.depth.txt --db-dir db
 
 .. list-table::
    :header-rows: 1
@@ -455,7 +459,7 @@ come from the published runs; CGC numbering can differ in your run, so pick a CG
 Optional: non-redundant proteins of several samples
 ---------------------------------------------------
 
-To annotate CAZymes once for all samples (P5 only, ~3 h), cluster the proteins with MMseqs2. This does **not**
+To annotate CAZymes once for all samples (P5 only), cluster the proteins with MMseqs2. This does **not**
 work for CGCs, which need the contigs of each sample.
 
 .. code-block:: shell
@@ -472,7 +476,7 @@ work for CGCs, which need the contigs of each sample.
 Timing
 ------
 
-Carter 2023, two samples, 40 CPUs and 128 GB RAM: ~12 h in total, most of it in P3 and P7.
+Carter 2023, two samples, 40 CPUs and 128 GB RAM, run_dbcan 5.0.3: ~12 h for P1-P15, most of it in P3 and P7.
 
 .. list-table::
    :header-rows: 1
@@ -480,6 +484,8 @@ Carter 2023, two samples, 40 CPUs and 128 GB RAM: ~12 h in total, most of it in 
 
    * - Steps
      - Time
+   * - S1 install / S2 databases / S3 reads
+     - ~5 min / ~2 h / ~10 min
    * - P1 contamination check
      - ~10 min
    * - P2 trimming
@@ -487,12 +493,14 @@ Carter 2023, two samples, 40 CPUs and 128 GB RAM: ~12 h in total, most of it in 
    * - P3 assembly
      - ~4 h 20 min
    * - P4 gene prediction
-     - ~15 min
+     - ~20 min
    * - P5 CAZymes / P6 + CGCs / P7 + substrates
      - ~10 min / ~15 min / ~5 h
-   * - P8-P11 read mapping and counting
-     - ~36 min
+   * - P8-P9 mapping, sorting / P10 read counts / P11 CGC depth
+     - ~24 min / ~12 min / ~2 min
    * - P12 abundance
      - ~1 min
    * - P13-P15 plots
-     - ~3 min
+     - ~1 min each
+   * - Optional MMseqs2 clustering + P5 on the representatives
+     - ~3 h

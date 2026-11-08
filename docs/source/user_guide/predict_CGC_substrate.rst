@@ -126,7 +126,9 @@ Substrate prediction generates the following output files:
 
 * ``substrate_prediction.tsv`` - Main output, one row per CGC with a prediction, sorted by contig and then by CGC
   number (``CGC2`` before ``CGC10``). Columns: ``#cgcid``, ``PULID``,
-  ``dbCAN-PUL substrate``, ``bitscore``, ``signature pairs``, ``dbCAN-sub substrate``, ``dbCAN-sub substrate score``
+  ``dbCAN-PUL substrate``, ``bitscore``, ``signature pairs``, ``dbCAN-sub substrate``, ``dbCAN-sub substrate score``.
+  For many CGCs only one of the two methods gives a substrate; when both do and they disagree, prefer the
+  dbCAN-PUL call (homology to an experimentally characterized PUL; see the dbCAN3 paper).
 * ``CGC.faa`` - Protein sequences of all CGC genes used as DIAMOND queries, named
   ``<contig>|<CGC#>|<protein>|<Gene Type>|<family>``. The family is that of the Gene Type role (the CAZyme > TC > TF >
   STP > Sulfatase > Peptidase priority role of a multi-role gene: ``CAZyme|GH32_e132+Sulfatase|S1_7`` gives

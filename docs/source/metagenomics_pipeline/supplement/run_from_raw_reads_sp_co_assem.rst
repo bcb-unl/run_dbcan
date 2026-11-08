@@ -49,11 +49,11 @@ samples can be drawn on the same CGC:
 
 .. code-block:: shell
 
-   CGC='k141_597014|CGC1'     # choose a CGC from coasm.dbCAN/substrate_prediction.tsv
-   REGION=$(awk -F'\t' -v id="$CGC" '$3"|"$1==id {c=$3; if(s==""||$5+0<s)s=$5+0; if($6+0>e)e=$6+0}
-                END{print c":"s"-"e}' coasm.dbCAN/cgc_standard_out.tsv)
+   CONTIG=k141_597014; CGC=CGC1     # choose a CGC from coasm.dbCAN/substrate_prediction.tsv
+   REGION=$(awk -F'\t' -v c="$CONTIG" -v n="$CGC" '$1==n && $2==c {print c":"$3"-"$4}' \
+            coasm.dbCAN/cgc_standard_out_summary.tsv)
    for s in Wet2014 Dry2014; do samtools depth -a -r "$REGION" $s.bam > $s.cgc.depth.txt; done
-   dbcan_plot CGC_synteny_coverage_plot -i coasm.dbCAN --cgcid "$CGC" --db-dir db \
+   dbcan_plot CGC_synteny_coverage_plot -i coasm.dbCAN --cgcid "$CONTIG|$CGC" --db-dir db \
        --reads-count Wet2014.cgc.depth.txt --reads-count Dry2014.cgc.depth.txt --samples Wet2014,Dry2014
 
 Timing: as the main protocol, except that the single assembly takes longer than one individual assembly and

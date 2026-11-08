@@ -8,6 +8,33 @@ gives family, subfamily, EC and substrate abundance only: no genes, no CGCs, no 
 The setup and P1-P2 are those of :ref:`metagenomics-protocol` (same data, ``SAMPLES="Wet2014 Dry2014"``). Add
 ``seqtk`` and ``diamond`` to the conda environment.
 
+**S2b. Download the assembly-free mapping tables** (~1 min). ``run_dbcan database`` gives ``db/CAZy.dmnd`` and
+``db/fam-substrate-mapping.tsv``; the subfamily, EC and substrate steps of P5 also need two tables that it does not
+download (the nf-core/dbcan pipeline takes them from the same place):
+
+.. code-block:: shell
+
+   for f in CAZyID_subfam_mapping.tsv subfam_EC_mapping.tsv; do
+     wget -O db/$f https://dbcan.s3.us-west-2.amazonaws.com/dbcan_asmfree/$f
+   done
+
+.. list-table::
+   :header-rows: 1
+   :widths: 36 34 30
+
+   * - File in ``db/``
+     - Maps
+     - Used by
+   * - ``CAZyID_subfam_mapping.tsv``
+     - CAZy sequence → eCAMI subfamily (``GH5_e12``)
+     - ``diamond_subfam_abund``
+   * - ``subfam_EC_mapping.tsv``
+     - subfamily → EC, subfamily → substrate
+     - ``diamond_EC_abund``, ``diamond_substrate_abund``
+   * - ``fam-substrate-mapping.tsv``
+     - EC → substrate
+     - ``diamond_substrate_abund``
+
 **P3. Convert the trimmed reads to FASTA** (~9 min).
 
 .. code-block:: shell
@@ -44,15 +71,17 @@ change the results; ``--max-target-seqs 1`` assigns each read to its best CAZy s
    done
 
 ``-o`` is an output **file** here. ``-n`` is ``TPM`` (default), ``FPKM`` or ``RPM``; ``-d`` the database folder
-(default ``./db``). Reads are grouped by their best CAZy sequence, then by family and eCAMI subfamily; EC and
-substrate come from the subfamilies through ``fam-substrate-mapping.tsv``, as in dbCAN-sub.
+(default ``./db``). Reads are grouped by their best CAZy sequence, then by family and eCAMI subfamily. EC
+abundance sums the subfamilies of each EC (``subfam_EC_mapping.tsv``); substrate abundance sums the subfamilies
+linked to a substrate directly (``subfam_EC_mapping.tsv``) or through their EC (``fam-substrate-mapping.tsv``).
 
 .. note::
    ``--raw_reads`` only gives the total read number (the normalisation denominator); it may be FASTQ or FASTA
    (``.fq``/``.fastq``/``.fa``/``.fasta``/``.fna``, optionally ``.gz``). The families of a hit are the family or
    subfamily names (``GH5``, ``GH5_7``, ``CBM1``) in the CAZy sequence header, counted once each. Reads are counted
    per reference sequence: the accession of NCBI-style headers (``CAD7272370.1|GH33``), ``<protein number>|<file>``
-   of JGI-style headers (``CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta``).
+   of JGI-style headers (``CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta``). Subfamily, EC and
+   substrate abundance count only the CAZy sequences whose full header is listed in ``CAZyID_subfam_mapping.tsv``.
 
 **P6-P7. Plots** (1 min each).
 

@@ -42,8 +42,9 @@ align to the human genome (minimap2 for HiFi, BWA for Illumina):
 
    wget https://ftp.ensembl.org/pub/release-110/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
    bwa index -p hg38 Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+   minimap2 -x map-hifi -t 32 -d hg38.mmi Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
    for d in BML SRF; do
-     minimap2 -a -x map-hifi -t 32 Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz ${d}_MG.fastq.gz \
+     minimap2 -a -x map-hifi -t 32 hg38.mmi ${d}_MG.fastq.gz \
          | samtools fastq -f 4 -@ 32 -0 ${d}_MG.clean.fq.gz -
      bwa mem -t 32 hg38 ${d}_MT_1.fastq.gz ${d}_MT_2.fastq.gz \
          | samtools fastq -f 12 -@ 32 -1 ${d}_MT_1.clean.fq.gz -2 ${d}_MT_2.clean.fq.gz -
