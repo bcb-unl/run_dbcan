@@ -63,8 +63,8 @@ Each DIAMOND search keeps the best hit per protein (highest bit score). The labe
    * - no CAZyme, several full-length hits (TC, TF, sulfatase)
      - the one with the highest **bit score** (ties: min(query, subject) coverage, E-value, TC > TF > Sulfatase)
    * - domain labels (STP, fungal TF HMM, peptidase)
-     - always kept, also next to a CAZyme or a full-length label (``TC|...+STP|...``); the gene still fills only
-       **one** role in ``cgc_finder``, which also ignores a domain lying on the CAZyme domain
+     - always kept, also next to a CAZyme or a full-length label (``TC|...+STP|...``); ``cgc_finder`` uses only the
+       gene's final Gene Type (:ref:`cgc-finder`)
 
 All hits stay in ``total_cgc_info.tsv``.
 

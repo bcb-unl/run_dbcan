@@ -2,7 +2,7 @@
 SulfAtlas) are not used in cgc.gff: such a hit labels the whole protein, so it cannot be told
 apart from the CAZyme domain (e.g. GH13_31 + TC 8.A.9.1.1: the rBAT/SLC3 'transport accessory'
 family of TCDB is itself a GH13 homologue). Domain-level labels (STP, fungal TF HMM, MEROPS
-units) stay; whether they sit on the CAZyme domain is decided later by CGCFinder."""
+units) stay in the annotation; CGCFinder uses only the gene's final Gene Type."""
 from dbcan.configs.base_config import GFFConfig
 from dbcan.IO.gff import get_gff_processor
 

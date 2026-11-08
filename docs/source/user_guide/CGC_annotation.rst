@@ -22,26 +22,20 @@ CGC rules
    :width: 100%
    :alt: How cgc_finder joins CAZymes and signature genes into CGCs
 
-   **A** default joining rule; **B** one gene fills one role; **C** how the labels of one protein are used: the
-   first two rules decide what ``cgc.gff`` keeps (:ref:`gff_process <cgc-information-generation>`), the third is
-   applied by ``cgc_finder`` when it counts roles.
+   **A** default joining rule; **B** each gene counts once, by its final Gene Type; **C** how the labels of one
+   protein are kept in ``cgc.gff`` (:ref:`gff_process <cgc-information-generation>`).
 
-#. **Signature genes**: CAZymes (``#ofTools`` >= 2) and genes of the ``--additional_genes`` types (default ``TC``).
-   All other genes, including TF/STP genes that are not listed, count as null genes.
+#. **Signature genes**: CAZymes (``#ofTools`` >= 2) and genes whose Gene Type is one of the ``--additional_genes``
+   types (default ``TC``). All other genes, including TF/STP genes that are not listed, count as null genes.
 #. **Joining**: on each contig, consecutive signature genes are joined while at most ``--num_null_gene`` (2) null
    genes lie between them. ``--use_distance`` also requires them to be at most ``--base_pair_distance`` (15000 bp)
    apart; ``--no-use_null_genes`` drops the gene-count rule.
 #. **Validation**: a candidate is a CGC when it has >= ``--min_cluster_genes`` (2) genes, >= ``--min_core_cazyme``
    (1) CAZymes and the additional types (``--additional_logic all``: every listed type; ``any``: at least
    ``--additional_min_categories``). With the defaults: at least one CAZyme **and** one transporter.
-#. **One gene = one role**: the CAZymes and each required type must be filled by different genes, so one gene
-   labelled ``CAZyme|GH13+STP|...`` cannot form a CGC alone.
-#. **Same region**: an STP, fungal TF or peptidase domain that overlaps a CAZyme domain of the same protein by more
-   than 50% (of the shorter one) is one domain seen by two databases (e.g. CE1 and peptidase S09); the protein
-   counts as a CAZyme only. The label stays in the output files.
-
-The ``Gene Type`` column shows one type per gene, by priority CAZyme > TC > TF > STP > Sulfatase > Peptidase;
-``Gene Annotation`` keeps all labels.
+#. **Each gene counts once, by its final Gene Type**: the ``Gene Type`` column, one type per gene by priority
+   CAZyme > TC > TF > STP > Sulfatase > Peptidase. Its other labels stay in ``Gene Annotation`` but fill no role:
+   a ``CAZyme|GH13+STP|...`` gene is a CAZyme, never the STP, and ``TC|...+STP|...`` is a TC only.
 
 Options
 -------
@@ -53,8 +47,8 @@ Options
    * - Option
      - Description (default)
    * - ``--additional_genes``
-     - Required signature types besides CAZyme; repeat for several: ``TC``, ``TF``, ``STP``, ``Sulfatase``,
-       ``Peptidase`` (``TC``)
+     - Required signature types besides CAZyme, matched against the Gene Type (any case); repeat for several:
+       ``TC``, ``TF``, ``STP``, ``Sulfatase``, ``Peptidase`` (``TC``)
    * - ``--additional_logic`` / ``--additional_min_categories``
      - ``all`` = every listed type, ``any`` = at least N types (``all`` / 1)
    * - ``--num_null_gene``
@@ -77,7 +71,7 @@ Options
 .. note::
 
    * **CAZyme pairs**: ``--additional_genes CAZyme`` (alone) reports clusters of >= 2 CAZymes; all other genes then
-     count as null genes.
+     count as null genes. Next to other types, ``CAZyme`` asks for one CAZyme more than ``--min_core_cazyme``.
    * **Extensions** (``--extend_mode``) are added after the CGCs are found and do not count for the rules. They stop
      before the core of a neighbouring CGC; a gene both extensions would reach goes to the CGC whose core is nearer
      (ties: upstream CGC), so no gene is in two CGCs.

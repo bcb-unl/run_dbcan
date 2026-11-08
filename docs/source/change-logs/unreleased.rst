@@ -55,9 +55,16 @@ Unreleased
 #. dbCAN-sub subfamily names are no longer rewritten by the ``GT2_*`` rename (it applies to ``dbCAN.hmm`` only).
 #. CGC signatures: TC, TF (DIAMOND), Sulfatase and Peptidase are full-length DIAMOND searches and keep the best hit
    per protein without a coordinate overlap test against dbCAN domains. Peptidase hits are filtered by subject
-   (MEROPS unit) coverage, and MEROPS inhibitor units are dropped. Domain-level sources (STP, fungal TF HMM,
-   Peptidase) that cover the same region as a CAZyme domain are recorded as additional roles. ``total_cgc_info.tsv``
-   has a ``Source`` column. A CGC is accepted only when distinct genes fill its required roles (one gene, one role).
+   (MEROPS unit) coverage, and MEROPS inhibitor units are dropped. ``total_cgc_info.tsv`` has a ``Source`` column.
+#. ``cgc_finder``: each gene counts once, by its final Gene Type (CAZyme > TC > TF > STP > Sulfatase > Peptidase);
+   its other labels stay in ``Gene Annotation`` but fill no role. A ``CAZyme|GH13+STP|...`` gene next to a GH31 is
+   no longer a CGC with ``--additional_genes STP``, and a ``TC|...+STP|...`` gene is only a TC. Defaults (``TC``):
+   no change on *E. coli* K-12, *Xylona*, PUL0008 and PUL0230. With TC, TF, STP and Peptidase all required
+   (``--additional_logic all``): *E. coli* 19 -> 14 CGCs, *Xylona* 23 -> 15; each lost CGC had its STP or peptidase
+   only as a second label of a TC, TF or CAZyme gene. With ``--additional_logic any``: no change. A gene whose
+   Gene Type is not listed is now also a null gene for joining, so CGCs can be split or trimmed: with
+   ``--additional_genes STP`` alone *E. coli* goes from 46 to 28 CGCs. ``--additional_genes`` values are matched
+   case-insensitively (``stp``, ``SULFATLAS``).
 #. ``--extend_mode`` extensions stop before the core of a neighbouring CGC.
 #. ``CGC.faa`` headers (``<contig>|<CGC#>|<protein>|<Gene Type>|<family>``): the family is now that of the Gene
    Type role of a multi-role gene (CAZyme > TC > TF > STP > Sulfatase > Peptidase), not the second ``|`` field of
