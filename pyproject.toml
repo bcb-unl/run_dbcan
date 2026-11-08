@@ -72,7 +72,7 @@ classifiers = [
 
 [project.urls]
 Documentation = "https://run-dbcan-new.readthedocs.io/en/latest/"
-Source = "https://github.com/bcb-unl/run_dbcan_new/"
+Source = "https://github.com/bcb-unl/run_dbcan/"
 Home-page = "https://bcb.unl.edu/dbCAN2/"
 
 [project.scripts]

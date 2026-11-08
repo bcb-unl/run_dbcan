@@ -1287,3 +1287,70 @@ def dbcan_utils_options(func):
     for opt in reversed(options):
         func = opt(func)
     return func
+
+
+def build_peptidase_db_options(func):
+    """Options of ``python -m dbcan.utils.build_peptidase_db`` (maintainer tool)."""
+    import dbcan.constants.peptidase_db_constants as P
+
+    func = click.option(
+        '--log-level',
+        type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR'], case_sensitive=False),
+        default='INFO',
+        show_default=True,
+        help='Logging level (INFO prints the kept / left-out counts; DEBUG adds examples).',
+    )(func)
+    func = click.option(
+        '--threads', '-t',
+        type=click.IntRange(min=1),
+        default=1,
+        show_default=True,
+        help='Threads for diamond makedb.',
+    )(func)
+    func = click.option(
+        '--diamond_bin',
+        default=P.DIAMOND_CMD,
+        show_default=True,
+        help='DIAMOND executable.',
+    )(func)
+    func = click.option(
+        '--keep-inhibitors/--drop-inhibitors',
+        'keep_inhibitors',
+        default=True,
+        show_default=True,
+        help=('Keep MEROPS inhibitor units (I families) as decoys. run_dbcan never reports hits to them as '
+              'Peptidase, but with --max-target-seqs 1 they stop a protein whose best match is an inhibitor '
+              'from being labelled with a weaker peptidase hit.'),
+    )(func)
+    func = click.option(
+        '--makedb/--no-makedb',
+        default=True,
+        show_default=True,
+        help="Run 'diamond makedb' on the cleaned FASTA (--no-makedb writes the FASTA only).",
+    )(func)
+    func = click.option(
+        '--report',
+        type=click.Path(dir_okay=False),
+        default=None,
+        help='Optional TSV listing every left-out entry (accession, MEROPS id, reason, header).',
+    )(func)
+    func = click.option(
+        '--fasta',
+        type=click.Path(dir_okay=False),
+        default=None,
+        help='Cleaned FASTA to write [default: OUTPUT with a .faa suffix].',
+    )(func)
+    func = click.option(
+        '--output', '-o',
+        type=click.Path(dir_okay=False),
+        default=P.DEFAULT_OUTPUT_DB,
+        show_default=True,
+        help='DIAMOND database to write.',
+    )(func)
+    func = click.option(
+        '--input', '-i', 'input',
+        required=True,
+        type=click.Path(exists=True, dir_okay=False),
+        help=f'MEROPS pepunit.lib (plain or .gz), from {P.MEROPS_PEPUNIT_URL}.',
+    )(func)
+    return func

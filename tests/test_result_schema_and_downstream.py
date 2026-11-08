@@ -239,7 +239,8 @@ def test_cgc_post_processing_handles_no_inputs(tmp_path):
     process_cgc_sig_results(cfg, None, SimpleNamespace(fungi=False), cfg, cfg, cfg)
     out = pd.read_csv(tmp_path / B.GFF_CGC_SIG_FILE, sep="\t")
     # 'Source' (TC / TF_prok / TF_fungi / STP / ...) keeps TF DIAMOND and TF HMM apart for the CGC step
-    assert list(out.columns) == PU.CGC_SIG_RESULT_COLUMN + ["Type", PU.SIGNATURE_SOURCE_COLUMN]
+    assert list(out.columns) == PU.CGC_SIG_RESULT_COLUMN + ["Type", PU.SIGNATURE_SOURCE_COLUMN,
+                                                          PU.SIGNATURE_BITSCORE_COLUMN]
     assert out.empty
 
 
