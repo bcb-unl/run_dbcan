@@ -923,7 +923,8 @@ def topology_annotation_options(func):
         '--run_signalp/--no-run_signalp',
         default=False,
         show_default=True,
-        help='Run SignalP 6 (BioLib) on translated proteins and append peptide signal columns to overview.',
+        help=('Run a user-installed SignalP 6 (the signalp6 command, must be on PATH) on the proteins and '
+              'append signal peptide columns to overview.'),
     )(func)
     func = click.option(
         '--run_deeptmhmm/--no-run_deeptmhmm',

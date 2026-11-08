@@ -76,7 +76,7 @@ Key Features and Improvements
 
    - **SignalP 6.0**: signal peptide prediction in the `CAZyme_annotation` command via `--run_signalp`. Results are merged into `overview.tsv` in a **SignalP** column. Organism class: `--signalp_org` (`other` / `euk`).
 
-   - **DeepTMHMM**: transmembrane topology via `--run_deeptmhmm` and `--deeptmhmm_dir` (directory containing the user-installed `predict.py`). Results are merged into **DeepTMHMM** in `overview.tsv`. In the current release DeepTMHMM only runs when `--run_signalp` is also given.
+   - **DeepTMHMM**: transmembrane topology via `--run_deeptmhmm` and `--deeptmhmm_dir` (directory containing the user-installed `predict.py`). Results are merged into **DeepTMHMM** in `overview.tsv`. It runs with or without `--run_signalp`.
 
    - Neither tool is bundled with `dbcan`. Install and test them locally, then enable the flags. See :doc:`user_guide/signalp6_deeptmhmm` and the `SignalP 6.0 installation instructions <https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md>`_.
 
