@@ -51,6 +51,8 @@ _CDS_TYPES = frozenset(G.GFF_RESOLVER_CDS_TYPES)
 _GENE_TYPES = frozenset(G.GFF_RESOLVER_GENE_TYPES)
 _TRANSCRIPT_TYPES = frozenset(G.GFF_RESOLVER_TRANSCRIPT_TYPES)
 _IGNORED_TYPES = frozenset(G.GFF_RESOLVER_IGNORED_TYPES)
+_PSEUDO_TYPES = frozenset(G.GFF_RESOLVER_PSEUDO_TYPES)
+_STRONG_ATTRS = frozenset(G.GFF_RESOLVER_STRONG_KEY_ATTRS)
 
 # Where each --gff_type looks for the protein ID first. Every resolver type falls back to the
 # generic GFF3 order, so a key used by another pipeline is still found; the order only matters
@@ -255,13 +257,13 @@ class ProteinIndex:
             out.extend(t for t in pid.split("|") if t)
         return out
 
-    def lookup(self, key: str) -> Optional[str]:
+    def lookup(self, key: str, allow_alias: bool = True) -> Optional[str]:
         if not key or any(c.isspace() for c in key):
             return None
         key = clean_sequence_id(key)
         if key in self.exact:
             return key
-        return self.alias.get(key)
+        return self.alias.get(key) if allow_alias else None
 
 
 def _id_variants(value: str) -> List[str]:
@@ -392,19 +394,50 @@ class _Transcript:
     gene: Optional[Feature]
     gene_key: str
     cds: List[Feature] = field(default_factory=list)
+    # False when ``gene`` is not a gene row (no gene parent: the transcript itself, or a CDS
+    # parented directly by a gene-less ID); the gene span is then taken from the transcripts.
+    gene_is_row: bool = True
 
     @property
     def cds_len(self) -> int:
         return sum(c.end - c.start + 1 for c in self.cds)
 
+    @property
+    def is_pseudo(self) -> bool:
+        """Pseudogene: a 'pseudogene'/'pseudogenic_transcript' row, or CDS rows marked pseudo=true
+        that carry no protein ID (NCBI). The NCBI readers skip such genes."""
+        for f in (self.gene, self.feat):
+            if f is not None and f.ftype in _PSEUDO_TYPES:
+                return True
+        return bool(self.cds) and all(
+            c.attrs.get("pseudo", "").lower() == "true" and not _protein_id_attr(c.attrs) for c in self.cds
+        )
 
-def _candidate_keys(tr: _Transcript, profile) -> List[Tuple[str, str]]:
+
+def _protein_id_attr(attrs: Dict[str, str]) -> Optional[str]:
+    return attrs.get("protein_id") or attrs.get("proteinId")
+
+
+def _gene_key_fallback(attrs: Dict[str, str]) -> Optional[str]:
+    """gffread-style transcripts without a gene parent name their gene in geneID/gene_id/gene."""
+    for name in G.GFF_RESOLVER_GENE_KEY_ATTRS:
+        value = attrs.get(name)
+        if value:
+            return value.split(",")[0]
+    return None
+
+
+def _candidate_keys(tr: _Transcript, profile) -> List[Tuple[str, str, bool]]:
+    """(identifier, provenance, strong). Strong: an ID-like attribute (protein_id, ID,
+    transcript_id, ...) of the CDS or of a transcript row, or the transcript key itself; weak:
+    Name/locus_tag and gene-level identifiers, which isoforms and neighbours can share."""
+    tr_is_gene = tr.feat is not None and tr.feat.ftype in _GENE_TYPES
     sources = {
         "CDS": tr.cds[0].attrs if tr.cds else {},
         "transcript": tr.feat.attrs if tr.feat is not None else {},
         "gene": tr.gene.attrs if tr.gene is not None else {},
     }
-    keys: List[Tuple[str, str]] = []
+    keys: List[Tuple[str, str, bool]] = []
     seen: Set[str] = set()
     for src, names in profile:
         attrs = sources[src]
@@ -412,14 +445,15 @@ def _candidate_keys(tr: _Transcript, profile) -> List[Tuple[str, str]]:
             value = attrs.get(name)
             if not value:
                 continue
+            strong = name in _STRONG_ATTRS and (src == "CDS" or (src == "transcript" and not tr_is_gene))
             for i, var in enumerate(_id_variants(value.split(",")[0])):
                 if var not in seen:
                     seen.add(var)
-                    keys.append((var, f"{src}.{name}" + ("~" if i else "")))
+                    keys.append((var, f"{src}.{name}" + ("~" if i else ""), strong))
     for var in _id_variants(tr.tid):
         if var not in seen:
             seen.add(var)
-            keys.append((var, "transcript.key"))
+            keys.append((var, "transcript.key", not tr_is_gene))
     return keys
 
 
@@ -497,31 +531,49 @@ def _resolve_transcripts(path: Path, gff_type: str, idx: ProteinIndex,
                 gparents = tfeat.parents if tfeat is not None else []
                 gfeat = by_id.get(gparents[0]) if gparents else None
                 if gfeat is not None:
-                    gkey = gparents[0]
+                    tr = _Transcript(tid, tfeat, gfeat, gparents[0])
+                elif gparents:
+                    # Parent=<gene> without a gene row: group the isoforms by that ID
+                    tr = _Transcript(tid, tfeat, tfeat, gparents[0], gene_is_row=False)
+                elif tfeat is not None and tfeat.ftype not in _GENE_TYPES and _gene_key_fallback(tfeat.attrs):
+                    # gffread-style transcript (no gene rows): geneID=/gene_id=/gene= names the gene
+                    tr = _Transcript(tid, tfeat, tfeat, _gene_key_fallback(tfeat.attrs), gene_is_row=False)
                 else:
-                    gfeat, gkey = tfeat, tid
-                tr = transcripts[tid] = _Transcript(tid, tfeat, gfeat, gkey)
+                    tr = _Transcript(tid, tfeat, tfeat, tid, gene_is_row=tfeat is not None)
+                transcripts[tid] = tr
             tr.cds.append(c)
 
-    # transcript -> protein
+    # transcript -> protein, in two passes: first only strong keys found exactly in the FASTA
+    # (CDS protein_id, transcript ID, ...), then every key (Name, gene IDs, version-less/JGI
+    # aliases). A weak key of an earlier gene can thus never take the protein that a later gene
+    # names exactly. Pseudogenes only take a protein named by their CDS protein ID.
     tx_protein: Dict[str, Tuple[str, str]] = {}
     claimed: Dict[str, str] = {}          # protein -> gene key of the transcript that uses it
     cross_gene = 0
-    for tid, tr in transcripts.items():
-        for key, prov in _candidate_keys(tr, profile):
-            pid = idx.lookup(key)
-            if pid is None:
+    cand = {tid: _candidate_keys(tr, profile) for tid, tr in transcripts.items()}
+    pseudo = {tid for tid, tr in transcripts.items() if tr.is_pseudo}
+    for strong_pass in (True, False):
+        for tid, tr in transcripts.items():
+            if tid in tx_protein:
                 continue
-            owner = claimed.get(pid)
-            if owner is not None:
-                # already used by another transcript (e.g. isoforms matched through their shared
-                # gene ID); try the next key of this transcript
-                if owner != tr.gene_key:
-                    cross_gene += 1
-                continue
-            claimed[pid] = tr.gene_key
-            tx_protein[tid] = (pid, prov)
-            break
+            for key, prov, strong in cand[tid]:
+                if strong_pass and not strong:
+                    continue
+                if tid in pseudo and not prov.startswith(("CDS.protein_id", "CDS.proteinId")):
+                    continue
+                pid = idx.lookup(key, allow_alias=not strong_pass)
+                if pid is None:
+                    continue
+                owner = claimed.get(pid)
+                if owner is not None:
+                    # already used by another transcript (e.g. isoforms matched through their shared
+                    # gene ID); try the next key of this transcript
+                    if owner != tr.gene_key and not strong_pass:
+                        cross_gene += 1
+                    continue
+                claimed[pid] = tr.gene_key
+                tx_protein[tid] = (pid, prov)
+                break
 
     genes: "OrderedDict[str, List[str]]" = OrderedDict()
     for tid, tr in transcripts.items():
@@ -532,33 +584,54 @@ def _resolve_transcripts(path: Path, gff_type: str, idx: ProteinIndex,
     for gkey, tids in genes.items():
         best = max(tids, key=lambda t: _isoform_score(transcripts[t], tx_protein.get(t, (None,))[0], annotations))
         tr = transcripts[best]
-        span = tr.gene if tr.gene is not None else None
+        span = tr.gene if tr.gene is not None and tr.gene_is_row else None
         if span is not None:
             contig, start, end, strand, order = span.seqid, span.start, span.end, span.strand, span.order
         else:
-            contig, strand, order = tr.cds[0].seqid, tr.cds[0].strand, tr.cds[0].order
-            start = min(c.start for t in tids for c in transcripts[t].cds)
-            end = max(c.end for t in tids for c in transcripts[t].cds)
+            # no gene row: span of the transcript rows (or of the CDS rows) of every isoform
+            parts = [f for t in tids for f in ([transcripts[t].feat] if transcripts[t].feat is not None
+                                              else transcripts[t].cds)]
+            first = min(parts, key=lambda f: f.order)
+            contig, strand, order = first.seqid, first.strand, first.order
+            start = min(f.start for f in parts)
+            end = max(f.end for f in parts)
         pid, prov = tx_protein.get(best, (G.GFF_UNKNOWN_ANNOTATION, ""))
         status = G.GFF_STATUS_MATCHED if best in tx_protein else G.GFF_STATUS_UNMATCHED
-        cands = () if status == G.GFF_STATUS_MATCHED else tuple(k for k, _ in _candidate_keys(tr, profile))[:6]
-        rows.append(GeneResolution(
-            gkey, contig, start, end, strand, pid, status, prov, "gene", len(tids),
-            tuple(tx_protein[t][0] for t in tids if t in tx_protein), cands, order,
-        ))
+        if status == G.GFF_STATUS_UNMATCHED and all(t in pseudo for t in tids):
+            # pseudogene without a protein: a non-coding null row (Other|pseudogene), like tRNAs
+            rows.append(GeneResolution(gkey, contig, start, end, strand, G.GFF_NA_PROTEIN_ID,
+                                       G.GFF_STATUS_NONCODING, "", G.GFF_PSEUDOGENE_FEATURE, order=order))
+        else:
+            cands = () if status == G.GFF_STATUS_MATCHED else tuple(k for k, _, _ in cand[best])[:6]
+            rows.append(GeneResolution(
+                gkey, contig, start, end, strand, pid, status, prov, "gene", len(tids),
+                tuple(tx_protein[t][0] for t in tids if t in tx_protein), cands, order,
+            ))
         coding_keys.add(gkey)
         if tr.gene is not None and tr.gene.fid:
             coding_keys.add(tr.gene.fid)
 
     # non-coding genes (tRNA, rRNA, ncRNA, pseudogenes without CDS): null rows
+    seen_noncoding: Set[str] = set()
     for f in top_level:
         if f.ftype not in _GENE_TYPES and f.ftype not in _TRANSCRIPT_TYPES:
             continue
         gid = f.fid or f"__line{f.order}"
         if gid in coding_keys or gid in genes:
             continue
-        kids = children.get(gid, [])
+        if f.ftype not in _GENE_TYPES:
+            # gffread-style transcript without a gene row: one null row per gene, none for a
+            # non-coding isoform of a coding gene
+            gkey = _gene_key_fallback(f.attrs)
+            if gkey is not None:
+                if gkey in genes or gkey in coding_keys or gkey in seen_noncoding:
+                    continue
+                seen_noncoding.add(gkey)
+                gid = gkey
+        kids = children.get(f.fid or "", [])
         ftype = kids[0].ftype if kids else f.ftype
+        if ftype in _PSEUDO_TYPES or f.ftype in _PSEUDO_TYPES:
+            ftype = G.GFF_PSEUDOGENE_FEATURE
         rows.append(GeneResolution(gid, f.seqid, f.start, f.end, f.strand, G.GFF_NA_PROTEIN_ID,
                                    G.GFF_STATUS_NONCODING, "", ftype, order=f.order))
     if gtf_gene or gtf_tx:

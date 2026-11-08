@@ -67,6 +67,15 @@ GFF_RESOLVER_TRANSCRIPT_TYPES = (
     "mRNA", "transcript", "tRNA", "rRNA", "ncRNA", "lnc_RNA", "lncRNA", "snRNA", "snoRNA",
     "pseudogenic_transcript", "primary_transcript", "miRNA", "pre_miRNA",
 )
+# Pseudogenes: kept as non-coding null rows (Other|pseudogene) unless their CDS names a protein
+GFF_RESOLVER_PSEUDO_TYPES = ("pseudogene", "pseudogenic_transcript")
+GFF_PSEUDOGENE_FEATURE = "pseudogene"
+# gffread-style transcripts without a gene parent: the gene is named by these attributes
+GFF_RESOLVER_GENE_KEY_ATTRS = ("geneID", "gene_id", "gene")
+# Identifiers matched first (exact FASTA ID), before Name/locus_tag/gene-level keys and aliases
+GFF_RESOLVER_STRONG_KEY_ATTRS = (
+    "protein_id", "proteinId", "ID", "transcript_id", "orig_protein_id", "orig_transcript_id",
+)
 # Rows below the transcript level that never identify a gene or protein; not kept in memory.
 GFF_RESOLVER_IGNORED_TYPES = (
     "exon", "intron", "five_prime_UTR", "three_prime_UTR", "5'-UTR", "3'-UTR", "UTR",

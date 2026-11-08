@@ -228,15 +228,20 @@ def gff_process_cmd(ctx, log_level, log_file, verbose, **kwargs):
     diamond_peptidase_config = create_config(DiamondPeptidaseConfig, namespace="peptidase", **kwargs)
 
     gff_config = create_config(GFFConfig, **kwargs)
-    run_dbCAN_CGCFinder_preprocess(
-        diamond_tc_config,
-        diamond_tf_config,
-        pyhmmer_tf_config,
-        pyhmmer_stp_config,
-        diamond_sulfatlas_config,
-        diamond_peptidase_config,
-        gff_config
-    )
+    from dbcan.IO.gff_resolver import GffResolutionError
+    try:
+        run_dbCAN_CGCFinder_preprocess(
+            diamond_tc_config,
+            diamond_tf_config,
+            pyhmmer_tf_config,
+            pyhmmer_stp_config,
+            diamond_sulfatlas_config,
+            diamond_peptidase_config,
+            gff_config
+        )
+    except GffResolutionError as e:
+        # a wrong --gff_type / GFF: a clean message and exit 1, no traceback
+        raise click.ClickException(f"GFF check failed before the signature searches.\n{e}")
 
 @cli.command('cgc_finder')
 @logging_options
@@ -346,6 +351,8 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
         click.echo("step 3/3  CGC identification...")
         _invoke_subset(ctx, cgc_finder_cmd, merged)
         click.echo("CGC analysis completed.")
+    except click.ClickException:
+        raise
     except Exception as e:
         import traceback
         click.echo(f"error: {str(e)}")
@@ -398,6 +405,8 @@ def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
         _invoke_subset(ctx, substrate_prediction_cmd, merged)
 
 
+    except click.ClickException:
+        raise
     except Exception as e:
         import traceback
         click.echo(f"error: {str(e)}")
