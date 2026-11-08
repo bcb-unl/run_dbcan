@@ -36,6 +36,36 @@ PLOT_GENE_GAP_COLOR = "white"   # thin outline that separates abutting arrows
 PLOT_DEFAULT_DPI = 200
 PLOT_DEFAULT_FORMATS = ("pdf",)
 PLOT_SUPPORTED_FORMATS = ("pdf", "png", "svg")
+# matplotlib backends that cannot open a window (dbcan_plot heatmap_plot --show-fig)
+PLOT_NON_INTERACTIVE_BACKENDS = ("agg", "pdf", "ps", "svg", "pgf", "cairo", "template")
+
+# CGC extent blocks (circos CGC ring, multi-contig overview). Deliberately NOT gene-type
+# colours, so that "CGC with substrate prediction" cannot be mistaken for a CAZyme gene.
+CGC_EXTENT_COLOR = "#ABB2B9"            # CGC without a substrate prediction (cool grey)
+CGC_EXTENT_PREDICTED_COLOR = "#34495E"  # CGC with a substrate prediction (slate)
+
+# Layout geometry of the linear figures, in inches unless noted ("U" = inches per y data unit)
+CGC_MAP_UNIT_IN = 0.27          # inches per y data unit of the gene axis
+CGC_MAP_GENE_H = 1.0            # gene arrow height (data units)
+CGC_MAP_LEFT_IN = 0.45
+CGC_MAP_RIGHT_IN = 0.4
+CGC_MAP_TITLE_IN = 0.62         # title + substrate line
+CGC_MAP_LEGEND_IN = 0.42
+CGC_MAP_DEPTH_PANEL_IN = 0.85   # height of one read-depth panel
+CGC_MAP_DEPTH_GAP_IN = 0.14
+SYNTENY_UNIT_IN = 0.27
+SYNTENY_GENE_H = 1.0
+SYNTENY_CGC_TRACK_Y = 3.2       # y of the CGC track (data units); the PUL track is at y = 0
+SYNTENY_TITLE_IN = 0.62
+SYNTENY_LEGEND_IN = 0.42
+SYNTENY_RIGHT_IN = 0.35
+OVERVIEW_ROW_IN = 0.46          # height of one contig row
+OVERVIEW_BAR_IN = 0.09          # contig bar thickness
+OVERVIEW_CGC_IN = 0.2           # CGC block height
+OVERVIEW_TITLE_IN = 0.62
+OVERVIEW_FOOT_IN = 0.5
+OVERVIEW_FIG_W = 11.0
+OVERVIEW_RIGHT_IN = 0.75        # room for the length label after the longest bar
 
 # read-depth panels (dbcan_plot CGC_coverage_plot / CGC_synteny_coverage_plot);
 # the original dbCAN coverage colours (red line over a light red fill)

@@ -336,3 +336,99 @@ def test_old_seaborn_style_names_work(tmp_path, style):
 def test_bar_plot_missing_file_exits_non_zero(tmp_path):
     res = plot_cli("bar_plot", "-i", tmp_path / "nope.out", "--samples", "A", "-o", tmp_path)
     assert res.exit_code == 1
+
+
+# ---------------------------------------------------------------- review fixes
+def test_plot_fixtures_are_not_git_ignored():
+    import subprocess
+    root = Path(__file__).resolve().parent.parent
+    if subprocess.run(["git", "-C", str(root), "rev-parse"], capture_output=True).returncode != 0:
+        pytest.skip("not a git checkout")
+    files = [str(p.relative_to(root)) for p in DATA.rglob("*") if p.is_file()]
+    res = subprocess.run(["git", "-C", str(root), "check-ignore", "--no-index", *files],
+                         capture_output=True, text=True)
+    assert res.stdout.strip() == "", f"fixtures ignored by .gitignore: {res.stdout}"
+
+
+def _boxes(lay):
+    return [(i, *lay.box(i), lay.tiers[i]) for i, lab in enumerate(lay.labels) if lab]
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_label_leaders_never_cross_other_labels(seed):
+    import random
+    rnd = random.Random(seed)
+    words = ["TC 2.A.53.3.12", "Cyanate_lyase", "GH13_31 + TC 8.A.9.1.1", "TC 3.A.1.147.9", "CynR", "GH16_3 + S1_19",
+             "TC 3.A.2.1.1", "GT2", "CE4", "HTH_AraC"]
+    x, extents = 0, []
+    for _ in range(14):
+        w = rnd.choice([150, 300, 600, 900, 1500])
+        extents.append((x, x + w))
+        x += w + rnd.choice([0, 20, 80])
+    labels = [rnd.choice(words) for _ in extents]
+    anchors = [(a + b) / 2 for a, b in extents]
+    lay = V.layout_labels(labels, anchors, -100, x + 100, 8.0, 0.9, P.PLOT_LABEL_FONT_SIZE, extents=extents)
+    boxes = _boxes(lay)
+    for i, b0, b1, t in boxes:
+        lx = lay.anchors[i]
+        assert extents[i][0] <= lx <= extents[i][1]              # the leader starts on its own gene
+        for j, c0, c1, u in boxes:
+            if j == i:
+                continue
+            if u == t:
+                assert b1 <= c0 or c1 <= b0, (labels[i], labels[j])   # no overlap within a tier
+            if t > 0 and u < t:
+                assert not (c0 < lx < c1), (labels[i], labels[j])    # leader passes no lower label
+
+
+def test_read_depth_accepts_any_whitespace(tmp_path):
+    p = tmp_path / "space.depth.txt"
+    p.write_text("".join(l.replace("\t", "  ") for l in (RUN / "two_contigs.depth.txt").open()))
+    assert V.read_depth(p, "ctgA", 1000, 1100) == V.read_depth(RUN / "two_contigs.depth.txt", "ctgA", 1000, 1100)
+
+
+def test_read_depth_unknown_contig_is_an_error():
+    with pytest.raises(V.PlotInputError, match="ctgZ"):
+        V.read_depth(RUN / "two_contigs.depth.txt", "ctgZ", 1000, 1100)
+
+
+def test_coverage_plot_contig_mismatch_exits_non_zero(run_dir, tmp_path):
+    bad = tmp_path / "renamed.depth.txt"
+    bad.write_text((run_dir / "two_contigs.depth.txt").read_text().replace("ctgA", "ctgA_v2"))
+    res = plot_cli("CGC_coverage_plot", "-i", run_dir, "--cgcid", "ctgA|CGC1", "-o", tmp_path, "--reads-count", bad)
+    assert res.exit_code == 1
+    assert "ctgA" in res.output
+    assert not list(tmp_path.glob("*.cgc-coverage.*"))
+
+
+def test_cgc_extent_colours_are_not_gene_type_colours():
+    gene_colours = {c.upper() for c in B.CGC_FEATURE_COLORS.values()}
+    for c in (CC.CGC_RANGE_COLOR, CC.CGC_RANGE_PREDICTED_COLOR, CC.OVERVIEW_CGC_COLOR, CC.OVERVIEW_CGC_PREDICTED_COLOR):
+        assert c.upper() not in gene_colours
+    assert CC.CGC_RANGE_COLOR != CC.CGC_RANGE_PREDICTED_COLOR
+
+
+def test_tf_label_prefers_named_family():
+    g = V.Gene.build("p", "c", 1, 100, "+", "TF|0036286+TF|HTH_AraC")
+    assert g.label == "HTH_AraC"
+    assert V.Gene.build("p", "c", 1, 100, "+", "TF|0036286").label == "TF 0036286"
+
+
+def test_importing_plot_modules_keeps_the_matplotlib_backend():
+    import subprocess
+    import sys
+    code = ("import matplotlib; matplotlib.use('svg'); import dbcan.plot.cgc_viz, dbcan.utils.plots, "
+            "dbcan.plot.plot_cgc_circle, dbcan.plot.syntenic_plot; "
+            "assert matplotlib.get_backend().lower() == 'svg', matplotlib.get_backend()")
+    res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         cwd=Path(__file__).resolve().parent.parent)
+    assert res.returncode == 0, res.stderr
+
+
+def test_heatmap_show_fig_without_display_saves_and_fails(tmp_path, monkeypatch):
+    import dbcan.utils.plots as plots
+    monkeypatch.setattr(plots, "_interactive_backend", lambda: False)
+    res = plot_cli("heatmap_plot", *_abund_args(), "-o", tmp_path, "--show-fig")
+    assert res.exit_code == 1
+    assert "--show-fig" in res.output
+    assert (tmp_path / "heatmap.pdf").exists()

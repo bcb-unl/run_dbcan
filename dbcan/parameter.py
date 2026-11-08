@@ -790,7 +790,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.0,
         type=float,
         show_default=True,
-        help='Minimum BLAST identity (0.0–1.0) for PUL–CGC homology hits.',
+        help='Minimum DIAMOND percent identity (0-100, e.g. 30 for 30%) for PUL–CGC homology hits.',
     )(func)
     func = click.option(
         '-cov',

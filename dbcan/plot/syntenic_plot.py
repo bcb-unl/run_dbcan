@@ -31,12 +31,12 @@ from dbcan.plot.cgc_map import draw_depth_panels, load_depth_tracks, substrate_t
 
 logger = logging.getLogger(__name__)
 
-U = 0.27
-GENE_H = 1.0
-Y_CGC = 3.2          # y of the CGC track; the PUL track is at y = 0
-TITLE_IN = 0.62
-LEGEND_IN = 0.42
-R_IN = 0.35
+U = P.SYNTENY_UNIT_IN
+GENE_H = P.SYNTENY_GENE_H
+Y_CGC = P.SYNTENY_CGC_TRACK_Y
+TITLE_IN = P.SYNTENY_TITLE_IN
+LEGEND_IN = P.SYNTENY_LEGEND_IN
+R_IN = P.SYNTENY_RIGHT_IN
 IDENTITY_CMAP = mcolors.LinearSegmentedColormap.from_list("dbcan_identity", list(P.SYNTENY_IDENTITY_RAMP))
 
 
@@ -191,8 +191,10 @@ def plot_synteny(cgc_genes: Sequence[V.Gene], cgcid: str, pul_genes: Sequence[V.
 
     c_x = [g.mid for g in cgc_genes]
     p_x = [(a + b) / 2 for a, b, _ in placed]
-    lay_c = V.layout_labels([g.label for g in cgc_genes], c_x, xlo, xhi, W, ax_w / W, fs)
-    lay_p = V.layout_labels([g.label for g in pul_genes], p_x, xlo, xhi, W, ax_w / W, fs)
+    lay_c = V.layout_labels([g.label for g in cgc_genes], c_x, xlo, xhi, W, ax_w / W, fs,
+                            extents=[(g.start, g.end) for g in cgc_genes])
+    lay_p = V.layout_labels([g.label for g in pul_genes], p_x, xlo, xhi, W, ax_w / W, fs,
+                            extents=[(a, b) for a, b, _ in placed])
     tier_h = (fs * 1.25 / 72) / U + 0.08
     y_top = Y_CGC + GENE_H / 2 + 0.3 + max(1, lay_c.ntiers) * tier_h + 0.1
     y_scale = -GENE_H / 2 - 0.3 - max(1, lay_p.ntiers) * tier_h - 0.75

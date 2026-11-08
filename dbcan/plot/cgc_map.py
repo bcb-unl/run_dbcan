@@ -19,13 +19,13 @@ from dbcan.plot import cgc_viz as V
 
 logger = logging.getLogger(__name__)
 
-U = 0.27            # inches per y data unit in the gene axis
-GENE_H = 1.0
-L_IN, R_IN = 0.45, 0.4
-TITLE_IN = 0.62
-LEGEND_IN = 0.42
-PANEL_IN = 0.85     # height of one read-depth panel
-PANEL_GAP_IN = 0.14
+U = P.CGC_MAP_UNIT_IN
+GENE_H = P.CGC_MAP_GENE_H
+L_IN, R_IN = P.CGC_MAP_LEFT_IN, P.CGC_MAP_RIGHT_IN
+TITLE_IN = P.CGC_MAP_TITLE_IN
+LEGEND_IN = P.CGC_MAP_LEGEND_IN
+PANEL_IN = P.CGC_MAP_DEPTH_PANEL_IN
+PANEL_GAP_IN = P.CGC_MAP_DEPTH_GAP_IN
 
 
 def substrate_text(names: Optional[Sequence[str]]) -> str:
@@ -103,7 +103,8 @@ def plot_cgc_map(genes: Sequence[V.Gene], cgcid: str, out_dir: Path, *, substrat
     W = max(8.0, min(16.0, 3.0 + 0.6 * len(genes)))
     ax_w = W - L_IN - R_IN
     fs = P.PLOT_LABEL_FONT_SIZE
-    lay = V.layout_labels([g.label for g in genes], [g.mid for g in genes], xlo, xhi, W, ax_w / W, fs)
+    lay = V.layout_labels([g.label for g in genes], [g.mid for g in genes], xlo, xhi, W, ax_w / W, fs,
+                          extents=[(g.start, g.end) for g in genes])
     tier_h = (fs * 1.25 / 72) / U + 0.08
     lab_base = GENE_H / 2 + 0.3
     y_top = lab_base + max(1, lay.ntiers) * tier_h + 0.1

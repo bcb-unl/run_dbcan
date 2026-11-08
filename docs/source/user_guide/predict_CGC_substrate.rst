@@ -84,8 +84,7 @@ Parameters
      - Maximum E-value of a DIAMOND hit against dbCAN-PUL (default: 0.01)
    * - ``-iden`` / ``--identity_cutoff``
      - Minimum percent identity of a DIAMOND hit, compared with DIAMOND ``pident`` on a **0-100 scale**
-       (default: 0, i.e. no filter). For 30% identity use ``-iden 30``, not ``0.3``. (The ``--help`` text says
-       0.0-1.0; the code uses percent.)
+       (default: 0, i.e. no filter). For 30% identity use ``-iden 30``, not ``0.3``.
    * - ``-cov`` / ``--coverage_cutoff``
      - Minimum query coverage of a DIAMOND hit as a **fraction** (0-1) of the CGC protein length,
        ``(qend - qstart + 1) / qlen`` (default: 0)
@@ -120,6 +119,12 @@ Substrate prediction generates the following output files:
 * ``synteny_pdf/`` - One synteny plot per CGC with a dbCAN-PUL hit (``<contig>_<CGC>_<PUL>-syntenic.pdf``): the CGC
   above its best dbCAN-PUL match, homologous genes linked by grey ribbons (darker = higher identity; only the DIAMOND
   hits that pass ``-evalue``/``-iden``/``-cov`` are drawn). See :ref:`cgc_visualization`.
+
+  The synteny figures are drawn after ``substrate_prediction.tsv`` has been written. If one of them cannot be made
+  (most often because ``<db_dir>/dbCAN-PUL/<PUL>.out/cgc.gff`` is missing from the database directory),
+  ``substrate_prediction`` and ``easy_substrate`` stop with an error and a **non-zero exit status**, even though
+  ``substrate_prediction.tsv`` is complete. Download the full database (``run_dbcan database``) or restore the
+  ``dbCAN-PUL/`` folder and run the command again.
 
 The per-protein ``Substrate`` column of ``overview.tsv`` is a different result: it is produced during
 ``CAZyme_annotation`` from dbCAN-sub hits and ``fam-substrate-mapping.tsv``, independently of CGCs

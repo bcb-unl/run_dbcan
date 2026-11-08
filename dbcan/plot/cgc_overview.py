@@ -2,7 +2,7 @@
 
 A tidy ideogram: one row per contig that carries at least one CGC (all rows share one bp
 scale), the contig name on the left and its length at the end of the bar, CGC blocks on
-the bar (CAZyme colour when a substrate was predicted, grey otherwise) and labels only for
+the bar (slate when a substrate was predicted, cool grey otherwise; never a gene-type colour) and labels only for
 the CGCs with a substrate prediction (``CGC6 alpha-glucan``). When no substrate prediction
 exists the CGC ids are shown where they fit.
 """
@@ -21,13 +21,13 @@ from dbcan.plot import cgc_viz as V
 
 logger = logging.getLogger(__name__)
 
-ROW_IN = 0.46          # height of one contig row
-BAR_IN = 0.09          # contig bar thickness
-CGC_IN = 0.2           # CGC block height
-TITLE_IN = 0.62
-FOOT_IN = 0.5
-FIG_W = 11.0
-R_IN = 0.75            # room for the length label after the longest bar
+ROW_IN = P.OVERVIEW_ROW_IN
+BAR_IN = P.OVERVIEW_BAR_IN
+CGC_IN = P.OVERVIEW_CGC_IN
+TITLE_IN = P.OVERVIEW_TITLE_IN
+FOOT_IN = P.OVERVIEW_FOOT_IN
+FIG_W = P.OVERVIEW_FIG_W
+R_IN = P.OVERVIEW_RIGHT_IN
 
 
 def _cgc_span(genes: Sequence[V.Gene]):
@@ -113,7 +113,7 @@ def plot_overview(cgcs: Dict[str, List[V.Gene]], sizes: Dict[str, int], calls: D
         for it in items:
             wbox = max(it["b"] - it["a"], 0.002 * wmax)
             xb = (it["a"] + it["b"]) / 2 - wbox / 2
-            color = V.gene_color("CAZyme") if it["pred"] else C.OVERVIEW_CGC_COLOR
+            color = C.OVERVIEW_CGC_PREDICTED_COLOR if it["pred"] else C.OVERVIEW_CGC_COLOR
             ax.add_patch(Rectangle((xb, yb - CGC_IN / 2), wbox, CGC_IN, facecolor=color, edgecolor="none",
                                    zorder=3 if it["pred"] else 2))
             if it["tier"] is None:
@@ -139,7 +139,7 @@ def plot_overview(cgcs: Dict[str, List[V.Gene]], sizes: Dict[str, int], calls: D
 
     hs, ls = [], []
     if n_pred:
-        hs.append(Patch(facecolor=V.gene_color("CAZyme")))
+        hs.append(Patch(facecolor=C.OVERVIEW_CGC_PREDICTED_COLOR))
         ls.append("CGC with substrate prediction")
     if n_pred < len(cgcs):
         hs.append(Patch(facecolor=C.OVERVIEW_CGC_COLOR))

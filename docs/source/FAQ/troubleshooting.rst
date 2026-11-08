@@ -60,7 +60,7 @@ Thresholds
    The pyHMMER coverage options use 0-1 (default 0.35).
 
 **Which unit does substrate_prediction -iden use?**
-   Percent identity on a **0-100 scale** (DIAMOND ``pident``), although ``--help`` says 0.0-1.0. ``-iden 0.3`` keeps
+   Percent identity on a **0-100 scale** (DIAMOND ``pident``; older releases said 0.0-1.0 in ``--help``). ``-iden 0.3`` keeps
    almost everything; use ``-iden 30`` for 30% identity. ``-cov`` is a fraction (0-1) of the CGC protein length.
 
 CGC prediction

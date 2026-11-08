@@ -1,4 +1,5 @@
 import dbcan.constants.base_constants as base_constants
+import dbcan.constants.plots_constants as plots_constants
 
 # File paths and names
 CGC_GFF_FILE = base_constants.CGC_GFF_FILE
@@ -25,8 +26,8 @@ CGC_LABEL_MIN_R = 101
 CGC_LABEL_MAX_R = 108
 
 CGC_TRACK_BG_COLOR = "#F2F2F2"
-CGC_RANGE_COLOR = base_constants.CGC_FEATURE_COLORS["Other"]
-CGC_RANGE_PREDICTED_COLOR = base_constants.CGC_FEATURE_COLORS["CAZyme"]
+CGC_RANGE_COLOR = plots_constants.CGC_EXTENT_COLOR
+CGC_RANGE_PREDICTED_COLOR = plots_constants.CGC_EXTENT_PREDICTED_COLOR
 CGC_LABEL_SIZE = 7
 CGC_TICK_LABEL_SIZE = 7
 CGC_FIGURE_SIZE = 9.0
@@ -36,8 +37,9 @@ DEG_LINE_COLOR = "#C0392B"
 
 # Overview (multi-contig) layout
 OVERVIEW_MAX_CONTIGS = 60
-OVERVIEW_CONTIG_COLOR = "#E4E4E4"
-OVERVIEW_CGC_COLOR = base_constants.CGC_FEATURE_COLORS["Other"]
+OVERVIEW_CONTIG_COLOR = "#ECECEC"
+OVERVIEW_CGC_COLOR = plots_constants.CGC_EXTENT_COLOR
+OVERVIEW_CGC_PREDICTED_COLOR = plots_constants.CGC_EXTENT_PREDICTED_COLOR
 
 # Feature colours: the shared palette
 CGC_FEATURE_LEGEND = base_constants.CGC_FEATURE_LEGEND

@@ -7,20 +7,17 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import matplotlib
+import matplotlib as mpl
+import matplotlib.colors as colors
+import matplotlib.pyplot as plt
+import rich_click as click
 
-matplotlib.use("Agg")
-import matplotlib as mpl  # noqa: E402
-import matplotlib.colors as colors  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
-import rich_click as click  # noqa: E402
-
-import dbcan.constants.cgc_substrate_prediction_constants as CSP  # noqa: E402
-import dbcan.constants.plots_constants as P  # noqa: E402
-from dbcan.configs.plots_config import PlotsConfig  # noqa: E402
-from dbcan.parameter import logging_options  # noqa: E402
-from dbcan.main import setup_logging  # noqa: E402
-from dbcan.plot import cgc_viz as V  # noqa: E402
+import dbcan.constants.cgc_substrate_prediction_constants as CSP
+import dbcan.constants.plots_constants as P
+from dbcan.configs.plots_config import PlotsConfig
+from dbcan.parameter import logging_options
+from dbcan.main import setup_logging
+from dbcan.plot import cgc_viz as V
 
 mpl.rcParams["pdf.fonttype"] = 42
 mpl.rcParams["ps.fonttype"] = 42
@@ -192,6 +189,10 @@ def _output_path(cfg: PlotsConfig, name: str, default: str) -> Path:
     return path
 
 
+def _interactive_backend() -> bool:
+    return plt.get_backend().lower() not in P.PLOT_NON_INTERACTIVE_BACKENDS
+
+
 def heatmap_plot(cfg: PlotsConfig, input_files: str, samples: str, show_abund: bool, cluster_map: bool,
                  palette: str, col: str, value: str, plot_style: str, top: int, show_fig: bool):
     import seaborn as sns
@@ -231,13 +232,16 @@ def heatmap_plot(cfg: PlotsConfig, input_files: str, samples: str, show_abund: b
         plt.yticks(fontsize=10)
         plt.tight_layout(pad=0.5)
         default = P.HEATMAP_FILE
-    if show_fig:
-        plt.show()
-        return []
     out = _output_path(cfg, cfg.pdf, default)
     plt.savefig(out, bbox_inches="tight")
-    plt.close("all")
     logger.info(f"Saved plot: {out}")
+    if show_fig:
+        if not _interactive_backend():
+            plt.close("all")
+            raise PlotError(f"--show-fig needs a display (matplotlib backend '{plt.get_backend()}' cannot open a "
+                            f"window); the heatmap was saved to {out}.")
+        plt.show()
+    plt.close("all")
     return [out]
 
 
@@ -323,7 +327,7 @@ click.rich_click.MAX_WIDTH = 100
               help="Matplotlib style for bar/heatmap ('seaborn' is mapped to 'seaborn-v0_8').")
 @click.option("--vertical-bar", "--vertical_bar", is_flag=True,
               help="bar_plot: vertical bars (default: horizontal bars).")
-@click.option("--show-fig", "--show_fig", is_flag=True, help="Display the heatmap window instead of saving it.")
+@click.option("--show-fig", "--show_fig", is_flag=True, help="heatmap_plot: also open the heatmap in a window (needs a display); the PDF is still written.")
 @click.option("--show-abund", "--show_abund", is_flag=True, help="Annotate heatmap cells with the abundance values.")
 @click.option("--palette", "palette", default=None, help="Heatmap colormap name (e.g. viridis, Reds).")
 @click.option("--cluster-map", "--cluster_map", is_flag=True, help="Cluster heatmap rows.")
@@ -369,6 +373,8 @@ def cli(function, log_level, log_file, verbose, input_path, output_dir, db_dir, 
     ```
     """
     setup_logging(log_level, log_file, verbose)
+    if not (show_fig and function == "heatmap_plot"):
+        plt.switch_backend("Agg")       # figures are only written to files: no display needed
     if show_annotation:
         logger.warning("--show-annotation is deprecated: family labels are always drawn on CGC plots.")
     try:

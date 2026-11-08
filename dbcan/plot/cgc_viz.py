@@ -19,13 +19,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch, Polygon
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.patches import Patch, Polygon  # noqa: E402
-
-import dbcan.constants.plots_constants as P  # noqa: E402
+import dbcan.constants.plots_constants as P
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +114,11 @@ def short_label(gtype: str, detail: str) -> str:
     if gtype == "Peptidase":
         return first.split(".")[0] or "Peptidase"
     if gtype == "TF":
-        if first.isdigit():
-            return f"TF {first}"
+        # dbCAN-PUL gffs give 'TF|0036286+TF|HTH_AraC': prefer the named family over a bare number
+        named = [d.strip() for d in detail.split(";") if d.strip() and not d.strip().isdigit()]
+        if not named:
+            return f"TF {first}" if first else "TF"
+        first = named[0]
         m = re.match(r"^([A-Z0-9]+)_[A-Z0-9]{3,5}$", first)   # UniProt mnemonic CYNR_ECOLI
         return (m.group(1) if m else first)[:16] or "TF"
     return first[:16] or gtype
@@ -274,23 +274,37 @@ def read_substrates(path: Path) -> Dict[str, SubstrateCall]:
 
 
 def read_depth(path: Path, contig: str, lo: int, hi: int) -> Dict[int, float]:
-    """samtools-depth style file (contig, position, depth) -> {position: depth}.
+    """samtools-depth style file (contig, position, depth; any whitespace) -> {position: depth}.
 
     Only rows of ``contig`` inside [lo, hi] are kept (a depth file that covers several
-    contigs used to be merged by position alone).
+    contigs used to be merged by position alone). Raises :class:`PlotInputError` when the
+    file has no row at all for ``contig`` (wrong file, or contig names that do not match the
+    cgc.gff), since the figure would otherwise show a flat zero coverage.
     """
     out: Dict[int, float] = {}
+    seen_contig = False
+    other: List[str] = []
     with Path(path).open() as fh:
         for line in fh:
-            f = line.rstrip("\n").split("\t")
-            if len(f) < 3 or f[0] != contig:
+            f = line.split()
+            if len(f) < 3 or f[0].startswith("#"):
                 continue
+            if f[0] != contig:
+                if len(other) < 3 and f[0] not in other:
+                    other.append(f[0])
+                continue
+            seen_contig = True
             try:
                 pos = int(f[1])
                 if lo <= pos <= hi:
                     out[pos] = float(f[2])
             except ValueError:
                 continue
+    if not seen_contig:
+        found = ", ".join(repr(c) for c in other) or "none"
+        raise PlotInputError(
+            f"{path}: no read-depth rows for contig '{contig}' (contigs found: {found}). "
+            "The contig names of the depth file must match the cgc.gff.")
     return out
 
 
@@ -355,29 +369,136 @@ def assign_tiers(spans: Sequence[Tuple[float, float]], pad: float) -> List[int]:
 @dataclass
 class LabelLayout:
     labels: List[str]
-    anchors: List[float]      # x of the gene the label belongs to
+    anchors: List[float]      # x where the leader leaves the gene (inside the gene's extent)
     xs: List[float]           # x of the label centre (clamped inside the axis)
     tiers: List[int]
     ntiers: int
+    widths: List[float] = field(default_factory=list)
+
+    def box(self, i: int) -> Tuple[float, float]:
+        w = self.widths[i] if self.widths else 0.0
+        return self.xs[i] - w / 2, self.xs[i] + w / 2
+
+
+def _free_points(lo: float, hi: float, blocked: Sequence[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """Sub-intervals of [lo, hi] not covered by any of the ``blocked`` intervals."""
+    free = [(lo, hi)]
+    for b0, b1 in blocked:
+        nxt = []
+        for f0, f1 in free:
+            if b1 <= f0 or b0 >= f1:
+                nxt.append((f0, f1))
+                continue
+            if b0 > f0:
+                nxt.append((f0, b0))
+            if b1 < f1:
+                nxt.append((b1, f1))
+        free = nxt
+    return [(a, b) for a, b in free if b >= a]
 
 
 def layout_labels(labels: Sequence[str], anchors: Sequence[float], xlo: float, xhi: float,
-                  fig_w: float, ax_frac: float, fontsize: float) -> LabelLayout:
+                  fig_w: float, ax_frac: float, fontsize: float,
+                  extents: Optional[Sequence[Tuple[float, float]]] = None) -> LabelLayout:
+    """Stack gene labels in tiers so that neither labels nor leader lines cross any text.
+
+    A label in tier ``t > 0`` is joined to its gene by a vertical leader through tiers
+    ``0 .. t-1``. The leader may leave the gene anywhere inside its extent (``extents``;
+    default the anchor point); the label is centred over the leader, or starts / ends at
+    it when centring does not fit. Tiers are filled bottom-up, left to right. A label is
+    put in the current tier only when (1) it does not overlap a label of that tier, (2) its
+    leader passes no label of a lower tier, and (3) every label still waiting keeps some
+    point of its gene that no label covers, so its leader can always rise to a later tier.
+    """
     widths = text_widths(fig_w, ax_frac, xlo, xhi, labels, fontsize)
     span = xhi - xlo
+    if extents is None:
+        extents = [(a, a) for a in anchors]
+    tiers, leaders, xs, forced = _pack_labels(labels, widths, anchors, extents, xlo, xhi, span)
+    if forced:
+        logger.debug(f"{forced} gene label(s) could not avoid every leader line")
+    used = sorted({tiers[i] for i, lab in enumerate(labels) if lab})
+    remap = {t: k for k, t in enumerate(used)}      # drop empty tiers
+    tiers = [remap.get(t, 0) for t in tiers]
+    return LabelLayout(list(labels), leaders, xs, tiers, len(used), widths)
+
+
+def _pack_labels(labels, widths, anchors, extents, xlo, xhi, span):
+    """Tier packing of :func:`layout_labels`; returns (tiers, leader xs, centres, n forced)."""
+    n = len(widths)
+    pad = 0.012 * span            # gap between two labels of one tier
+    lpad = 0.004 * span           # clearance between a leader and a label box
     xs = [min(max(a, xlo + w / 2), xhi - w / 2) for a, w in zip(anchors, widths)]
-    keep = [i for i, lab in enumerate(labels) if lab]
-    tiers = [0] * len(labels)
-    packed = assign_tiers([(xs[i] - widths[i] / 2, xs[i] + widths[i] / 2) for i in keep], pad=0.012 * span)
-    for i, t in zip(keep, packed):
-        tiers[i] = t
-    return LabelLayout(list(labels), list(anchors), xs, tiers, (max(packed) + 1) if packed else 0)
+    leaders = list(anchors)
+    tiers = [0] * n
+    blocked: List[Tuple[float, float]] = []       # label boxes of the finished tiers (+ clearance)
+
+    def leader_room(i: int, boxes: Sequence[Tuple[float, float]]) -> List[Tuple[float, float]]:
+        a = anchors[i]
+        e0, e1 = extents[i]
+        inset = 0.15 * (e1 - e0)
+        return _free_points(min(e0 + inset, a), max(e1 - inset, a), boxes)
+
+    def leader_points(i: int) -> List[float]:
+        a = anchors[i]
+        pts = []
+        for f0, f1 in leader_room(i, blocked):
+            pts += [min(max(a, f0), f1), (f0 + f1) / 2, f0, f1]
+        out = []
+        for p in sorted(pts, key=lambda p: abs(p - a)):
+            if all(not (b0 < p < b1) for b0, b1 in blocked) and p not in out:
+                out.append(p)
+        return out
+
+    def centre(i: int, lx: float, shift: int) -> float:
+        # shift 0: centred over the leader; +1 / -1: the label starts / ends just at the leader
+        cx = lx + shift * 0.42 * widths[i]
+        return min(max(cx, xlo + widths[i] / 2), xhi - widths[i] / 2)
+
+    waiting = sorted((i for i, lab in enumerate(labels) if lab), key=lambda i: anchors[i])
+    forced = 0
+    t = 0
+    while waiting:
+        row: List[Tuple[float, float]] = []                 # boxes of tier t
+        placed_any = False
+        for i in list(waiting):
+            pts = [anchors[i]] if t == 0 else leader_points(i)
+            choice = None
+            for lx in pts:
+                for shift in (0, 1, -1):
+                    cx = centre(i, lx, shift)
+                    b0, b1 = cx - widths[i] / 2, cx + widths[i] / 2
+                    if any(not (b1 + pad <= r0 or b0 >= r1 + pad) for r0, r1 in row):
+                        continue                              # (1)
+                    newbox = (b0 - lpad, b1 + lpad)
+                    if any(j != i and not leader_room(j, blocked + row + [newbox]) for j in waiting):
+                        continue                              # (3)
+                    choice = (lx, cx, b0, b1)
+                    break
+                if choice:
+                    break
+            if choice is None:
+                continue
+            lx, cx, b0, b1 = choice
+            tiers[i], leaders[i], xs[i] = t, lx, cx
+            row.append((b0, b1))
+            waiting.remove(i)
+            placed_any = True
+        if not placed_any:              # cannot happen with a free leader point; never loop forever
+            i = waiting.pop(0)
+            pts = leader_points(i) or [anchors[i]]
+            tiers[i], leaders[i], xs[i] = t, pts[0], centre(i, pts[0], 0)
+            row.append((xs[i] - widths[i] / 2, xs[i] + widths[i] / 2))
+            forced += 1
+        blocked += [(r0 - lpad, r1 + lpad) for r0, r1 in row]
+        t += 1
+    return tiers, leaders, xs, forced
 
 
 def draw_labels(ax, lay: LabelLayout, y0: float, tier_h: float, direction: int, fontsize: float,
                 gene_edge: float, span: float):
     """Draw stacked labels from y0 outward (direction +1 = up, -1 = down) with leader lines."""
-    for lab, anchor, x, t in zip(lay.labels, lay.anchors, lay.xs, lay.tiers):
+    for i, (lab, anchor, x, t) in enumerate(zip(lay.labels, lay.anchors, lay.xs, lay.tiers)):
         if not lab:
             continue
         y = y0 + direction * t * tier_h
@@ -385,7 +506,12 @@ def draw_labels(ax, lay: LabelLayout, y0: float, tier_h: float, direction: int, 
                 color=P.PLOT_INK, zorder=6)
         if t > 0 or abs(x - anchor) > 0.01 * span:
             yl = y - direction * 0.06
-            ax.plot([anchor, anchor, x], [gene_edge, yl, yl], color=P.PLOT_LEADER_COLOR, lw=0.6, zorder=2)
+            b0, b1 = lay.box(i)
+            inset = 0.02 * (b1 - b0)
+            # vertical leader up to just under the label; a horizontal part only when the
+            # leader ends beside the label (a label pushed in from the axis edge)
+            x_end = min(max(anchor, b0 + inset), b1 - inset)
+            ax.plot([anchor, anchor, x_end], [gene_edge, yl, yl], color=P.PLOT_LEADER_COLOR, lw=0.6, zorder=2)
 
 
 def nice_step(span: float, target: int = 6) -> float:
