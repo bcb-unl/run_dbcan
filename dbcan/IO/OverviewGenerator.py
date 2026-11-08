@@ -29,6 +29,7 @@ _CAZY_FAMILY_RE = re.compile(O.CAZY_ID_PATTERN)
 
 # CAZyme_annotation method name (--methods, lower-cased) -> result key used below
 METHOD_TO_RESULT_KEY = {"diamond": "diamond", "hmm": "dbcan_hmm", "dbcansub": "dbcan_sub"}
+RESULT_KEY_TO_METHOD = {"diamond": "diamond", "dbcan_hmm": "hmm", "dbcan_sub": "dbCANsub"}
 
 class OverviewGenerator:
     """Generate overview of CAZyme annotations."""
@@ -131,7 +132,7 @@ class OverviewGenerator:
             if key not in selected:
                 if path.exists():
                     logger.info(
-                        f"Ignoring {path.name}: {key} was not selected with --methods in this run "
+                        f"Ignoring {path.name}: method '{RESULT_KEY_TO_METHOD[key]}' was not selected with --methods in this run "
                         f"(the file is left over from an earlier run)."
                     )
                 continue
