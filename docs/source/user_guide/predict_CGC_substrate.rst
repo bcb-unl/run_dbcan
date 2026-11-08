@@ -84,25 +84,37 @@ Parameters
      - Maximum E-value of a DIAMOND hit against dbCAN-PUL (default: 0.01)
    * - ``-iden`` / ``--identity_cutoff``
      - Minimum percent identity of a DIAMOND hit, compared with DIAMOND ``pident`` on a **0-100 scale**
-       (default: 0, i.e. no filter). For 30% identity use ``-iden 30``, not ``0.3``. (The ``--help`` text says
-       0.0-1.0; the code uses percent.)
+       (default: 0, i.e. no filter). For 30% identity use ``-iden 30``, not ``0.3``.
    * - ``-cov`` / ``--coverage_cutoff``
      - Minimum query coverage of a DIAMOND hit as a **fraction** (0-1) of the CGC protein length,
        ``(qend - qstart + 1) / qlen`` (default: 0)
    * - ``-bsc`` / ``--bitscore_cutoff``
      - Minimum bit score of a CGC-PUL match, averaged over the matched PUL proteins (default: 50)
-   * - ``-upghn``, ``-uqcgn``, ``-cpn``, ``-tpn``
-     - Minimum numbers of matched genes and gene pairs for a CGC-PUL match (defaults: 2, 2, 1, 2).
-       ``-uqcgn`` is compared with the number of distinct PUL genes hit and ``-upghn`` with the number of distinct
-       CGC genes with hits (the reverse of the ``--help`` wording; both default to 2).
+   * - ``-upghn`` / ``--uniq_pul_gene_hit_num``
+     - Minimum number of distinct PUL genes hit by the CGC proteins (default: 2)
+   * - ``-uqcgn`` / ``--uniq_query_cgc_gene_num``
+     - Minimum number of distinct CGC genes with a hit in the PUL (default: 2)
+   * - ``-cpn`` / ``--CAZyme_pair_num``
+     - Minimum number of CAZyme-CAZyme hit pairs (CGC CAZyme hitting a PUL CAZyme) (default: 1)
+   * - ``-tpn`` / ``--total_pair_num``
+     - Minimum total number of hit pairs of any signature type (default: 2)
+   * - ``-ept`` / ``-eptn``
+     - Extra pair types that must be present, e.g. ``-ept TC-TC,STP-STP -eptn 1,1`` (one count per type;
+       a different number of counts is an error)
    * - ``-hmmevalue`` / ``-hmmcov``
      - Maximum i-Evalue (default: 0.01) and minimum HMM coverage as a fraction 0-1 (default: 0) of the dbCAN-sub
        hits used by the domain composition method
    * - ``-ndsc``, ``-npsc``, ``-subs``
      - Minimum counts and score for a dbCAN-sub based substrate call (defaults: 2, 2, 2.0)
 
-``--pul``, ``-o/--out``, ``-w/--workdir``, ``-rerun`` and ``-env`` are accepted for backward compatibility but are not
-used. The number of DIAMOND threads is chosen automatically (all CPUs) for this command; ``easy_substrate`` uses
+   * - ``-odbcan_sub true``
+     - Also write ``substrate_prediction_dbcan_sub.tsv`` (see below). Default: ``false``
+   * - ``-odbcanpul true``
+     - Also write ``substrate_prediction_dbcan_pul.tsv`` (see below). Default: ``false``
+
+``--pul``, ``-o/--out``, ``-w/--workdir``, ``-rerun`` and ``-env`` (options of the run_dbcan 3/4 substrate scripts)
+are hidden from ``--help``; they are still accepted so that old command lines keep working, but they have no
+effect and a warning is logged when they are given. The number of DIAMOND threads is chosen automatically (all CPUs) for this command; ``easy_substrate`` uses
 ``--threads``. For all options, run ``run_dbcan substrate_prediction --help`` or see the ``API documentation``.
 
 Output Files
@@ -115,6 +127,17 @@ Substrate prediction generates the following output files:
 * ``CGC.faa`` - Protein sequences of all CGC genes used as DIAMOND queries
 * ``PUL_blast.out`` - Raw DIAMOND search results
 * ``synteny_pdf/`` - Synteny plots directory. It shows the gene cluster mappings between PULs and CGCs
+* ``substrate_prediction_dbcan_sub.tsv`` (``-odbcan_sub true``) - The dbCAN-sub evidence of every CGC: one row
+  per dbCAN-sub hit of a CGC protein that passes ``-hmmevalue``/``-hmmcov`` (subfamily, EC, substrate, i-Evalue,
+  coverage), followed by the CGC-level columns ``CGC substrate scores`` (``substrate:score`` for all substrates,
+  highest first; ``-`` when the CGC does not pass ``-ndsc``/``-npsc``), ``CGC dbCAN-sub substrate`` and
+  ``CGC dbCAN-sub substrate score`` (``-`` when the best score is below ``-subs``)
+* ``substrate_prediction_dbcan_pul.tsv`` (``-odbcanpul true``) - The DIAMOND hits between each CGC and its
+  best-matching dbCAN-PUL (CGC protein, PUL protein, CGC, PUL ID and the DIAMOND columns)
+
+The ``#cgcid`` of all tables is ``<contig>|<CGC#>``. Contig and protein IDs may contain ``|`` (for example NCBI
+``gi|...|ref|...|`` IDs); they are matched against ``cgc_standard_out.tsv`` and not split at ``|``. A PUL that is
+in ``PUL.dmnd`` but missing from ``dbCAN-PUL.xlsx`` is reported with substrate ``-`` and a warning.
 
 The per-protein ``Substrate`` column of ``overview.tsv`` is a different result: it is produced during
 ``CAZyme_annotation`` from dbCAN-sub hits and ``fam-substrate-mapping.tsv``, independently of CGCs

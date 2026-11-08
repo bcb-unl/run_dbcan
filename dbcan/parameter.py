@@ -1,7 +1,27 @@
+import logging
 import rich_click as click
 from dataclasses import fields
 from typing import Any, Dict, Optional
 import psutil
+
+logger = logging.getLogger(__name__)
+
+
+def ignored_option(*param_decls, note: str = "", **kwargs):
+    """A deprecated option that is still accepted (existing command lines keep working) but has no
+    effect: hidden from --help, never forwarded by the easy_* commands, and a warning is logged when
+    it is given a non-default value."""
+    default = kwargs.get("default")
+
+    def _warn(ctx, param, value):
+        given = tuple(value) != tuple(default or ()) if isinstance(value, (tuple, list)) else value != default
+        if given:
+            name = max(param.opts, key=len)
+            logger.warning("%s is deprecated and ignored%s", name, f": {note}" if note else ".")
+        return value
+
+    return click.option(*param_decls, hidden=True, callback=_warn, **kwargs)
+
 
 
 
@@ -492,12 +512,11 @@ def diamond_peptidase_options(func):
     return func
 
 def pyhmmer_pfam(func):
-    func = click.option(
+    func = ignored_option(
         '--run_pfam',
         is_flag=True,
         default=False,
-        show_default=True,
-        help='Run Pfam pyhmmer on null genes (Pfam_null_cgc / CGC null annotation).',
+        note='Pfam_null_cgc always runs the Pfam search.',
     )(func)
     func = click.option(
         '--e_value_threshold_pfam',
@@ -647,13 +666,12 @@ def cgc_options(func):
         show_default=True,
         help='Minimum total genes in a CGC locus.',
     )(func)
-    func = click.option(
+    func = ignored_option(
         '--feature_type',
         'feature_types',
         multiple=True,
         default=["CDS"],
-        show_default=True,
-        help='GFF feature types to parse (repeat option for multiple values, e.g. --feature_type CDS --feature_type gene).',
+        note='cgc_finder uses every gene of cgc.gff (feature types are chosen per --gff_type by gff_process).',
     )(func)
     return func
 
@@ -664,58 +682,30 @@ def cgc_substrate_base_options(func):
     take --input_raw_data/--mode (GitHub issue #81); easy_substrate adds them itself.
     """
     func = output_dir_option(func)
-    func = click.option(
-        '--pul',
-        required=False,
-        default=None,
-        type=click.Path(exists=True, dir_okay=False),
-        help='Path to dbCAN-PUL PUL.faa when you need an explicit PUL database file.',
-    )(func)
-    func = click.option(
-        '-o',
-        '--out',
-        default='substrate.out',
-        show_default=True,
-        help='Legacy filename hint for standalone substrate tools (results still go under --output_dir).',
-    )(func)
-    func = click.option(
-        '-w',
-        '--workdir',
-        default='.',
-        show_default=True,
-        type=str,
-        help='Working directory for legacy substrate scripts (prefer --output_dir for run_dbcan).',
-    )(func)
-    func = click.option(
-        '-rerun',
-        '--rerun',
-        default=False,
-        type=bool,
-        show_default=True,
-        help='Re-run substrate prediction (pass true/false explicitly; rarely needed).',
-    )(func)
-    func = click.option(
-        '-env',
-        '--env',
-        default='local',
-        show_default=True,
-        type=str,
-        help='Execution environment label for external wrappers (usually keep local).',
-    )(func)
+    # Options of the run_dbcan 3/4 substrate scripts; accepted so old command lines keep working.
+    _legacy = 'substrate_prediction reads its inputs from --output_dir and the PUL database from --db_dir.'
+    func = ignored_option('--pul', default=None, type=click.Path(dir_okay=False), note=_legacy)(func)
+    func = ignored_option('-o', '--out', default='substrate.out', note=_legacy)(func)
+    func = ignored_option('-w', '--workdir', default='.', type=str, note=_legacy)(func)
+    func = ignored_option('-rerun', '--rerun', default=False, type=bool, note=_legacy)(func)
+    func = ignored_option('-env', '--env', default='local', type=str, note=_legacy)(func)
     func = click.option(
         '-odbcan_sub',
         '--odbcan_sub',
         type=bool,
-        default=None,
-        help='If set to true/false, force exporting extra dbCAN-sub tables; omit to use package default.',
+        default=False,
+        show_default=True,
+        help=('true: also write substrate_prediction_dbcan_sub.tsv, the dbCAN-sub hits of every CGC protein with '
+              'the per-CGC substrate scores behind the dbCAN-sub substrate call.'),
     )(func)
     func = click.option(
         '-odbcanpul',
         '--odbcanpul',
-        default=True,
+        default=False,
         type=bool,
         show_default=True,
-        help='Whether to export dbCAN-PUL homology tables (pass true/false).',
+        help=('true: also write substrate_prediction_dbcan_pul.tsv, the DIAMOND hits between each CGC and its '
+              'best-matching dbCAN-PUL.'),
     )(func)
     func = click.option(
         '--db_dir',
@@ -735,7 +725,7 @@ def cgc_substrate_homology_params_options(func):
         default=2,
         type=int,
         show_default=True,
-        help='Minimum unique PUL genes hit by BLAST for a valid PUL–CGC link.',
+        help='Minimum number of distinct PUL genes hit by DIAMOND for a valid PUL–CGC link.',
     )(func)
     func = click.option(
         '-uqcgn',
@@ -743,11 +733,12 @@ def cgc_substrate_homology_params_options(func):
         default=2,
         type=int,
         show_default=True,
-        help='Minimum unique CGC genes participating in a PUL–CGC link.',
+        help='Minimum number of distinct CGC genes with a DIAMOND hit in a PUL–CGC link.',
     )(func)
     func = click.option(
         '-cpn',
         '--CAZyme_pair_num',
+        'CAZyme_pair_num',  # explicit name: click would lower-case it and the config field would not match
         default=1,
         type=int,
         show_default=True,
@@ -766,7 +757,8 @@ def cgc_substrate_homology_params_options(func):
         '--extra_pair_type',
         default=None,
         type=str,
-        help='Optional comma-separated accessory gene pair types (advanced PUL matching).',
+        help=('Optional comma-separated query-PUL gene type pairs that must also be matched, e.g. TC-TC,STP-STP; '
+              'give one minimum count per pair with --extra_pair_type_num.'),
     )(func)
     func = click.option(
         '-eptn',
@@ -782,7 +774,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.0,
         type=float,
         show_default=True,
-        help='Minimum BLAST identity (0.0–1.0) for PUL–CGC homology hits.',
+        help='Minimum DIAMOND percent identity (0–100, e.g. 30 for 30%%) for PUL–CGC homology hits.',
     )(func)
     func = click.option(
         '-cov',
@@ -790,7 +782,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.0,
         type=float,
         show_default=True,
-        help='Minimum BLAST query coverage (0.0–1.0) for PUL–CGC homology hits.',
+        help='Minimum DIAMOND query coverage as a fraction (0.0–1.0) of the CGC protein for PUL–CGC homology hits.',
     )(func)
     func = click.option(
         '-bsc',
@@ -798,7 +790,7 @@ def cgc_substrate_homology_params_options(func):
         default=50.0,
         type=float,
         show_default=True,
-        help='Minimum BLAST bit score for PUL–CGC homology hits.',
+        help='Minimum bit score of a PUL–CGC link, averaged over the matched PUL genes.',
     )(func)
     func = click.option(
         '-evalue',
@@ -806,7 +798,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.01,
         type=float,
         show_default=True,
-        help='Maximum BLAST E-value for PUL–CGC homology hits.',
+        help='Maximum DIAMOND E-value for PUL–CGC homology hits.',
     )(func)
     return func
 
@@ -885,7 +877,8 @@ def topology_annotation_options(func):
         '--run_deeptmhmm/--no-run_deeptmhmm',
         default=False,
         show_default=True,
-        help='Run a user-installed DeepTMHMM predict.py and append transmembrane predictions to overview.',
+        help=('Run a user-installed DeepTMHMM predict.py (needs --deeptmhmm_dir; works with or without '
+              '--run_signalp) and append transmembrane predictions to overview.'),
     )(func)
     func = click.option(
         '--deeptmhmm_dir',
@@ -906,11 +899,10 @@ def topology_annotation_options(func):
         show_default=True,
         help='SignalP organism class: other (bacteria/archaea) or euk (eukaryotes).',
     )(func)
-    func = click.option(
+    func = ignored_option(
         '--force_topology/--no-force_topology',
         default=False,
-        show_default=True,
-        help='Recompute topology columns even when overview already contains predictions.',
+        note='overview.tsv is rewritten by every CAZyme_annotation run, so topology is always recomputed.',
     )(func)
     return func
 
