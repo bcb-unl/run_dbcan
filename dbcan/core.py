@@ -119,6 +119,9 @@ def run_dbCAN_CAZyme_overview(config):
 def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, overviewconfig, methods):
     import logging
     failures = []
+    # overview.tsv merges only the methods run now, not result files left by an earlier run.
+    if getattr(overviewconfig, 'methods', None) is None:
+        overviewconfig.methods = tuple(methods)
     if 'diamond' in methods:
         logging.info("DIAMOND CAZy...")
         try:

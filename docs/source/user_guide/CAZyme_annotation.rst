@@ -42,8 +42,8 @@ Key Parameters
      - Optional, comma-separated list of tools: ``diamond``, ``hmm``, ``dbCANsub``. Default: ``diamond,hmm,dbCANsub`` (all three).
        Example: ``--methods diamond,hmm``. Do not repeat the option; only the last ``--methods`` value is used.
    * - ``--threads``
-     - Number of CPU threads for DIAMOND and pyHMMER. Default: all logical CPUs of the machine.
-       (Gene prediction with pyrodigal currently always uses all CPUs; this is a known limitation.)
+     - Number of CPU threads for gene prediction (pyrodigal, ``prok``/``meta`` modes), DIAMOND and pyHMMER.
+       Default: all logical CPUs of the machine.
    * - ``--e_value_threshold``
      - Maximum E-value for DIAMOND hits against CAZy (default: ``1e-102``). The best hit per protein is kept.
    * - ``--e_value_threshold_dbcan`` / ``--coverage_threshold_dbcan``
@@ -161,7 +161,10 @@ Columns of ``overview.tsv``
    * - ``dbCAN_sub``
      - dbCAN-sub subfamilies with coordinates, e.g. ``GH23_e819(102-244)``; joined with ``+``.
    * - ``DIAMOND``
-     - CAZy families of the best DIAMOND hit in CAZy, joined with ``+`` (e.g. ``CBM50+GH23``).
+     - CAZy families of the best DIAMOND hit in CAZy, joined with ``+`` (e.g. ``CBM50+GH23``). Only whole family
+       or subfamily names (``GH13``, ``GH13_6``, ``CBM50``) are taken from the CAZy sequence header; accessions
+       (also those starting with ``AA``/``CE``/``GT``, e.g. ``AAK49401.1``), EC numbers, JGI protein numbers and
+       file names are dropped, and a family repeated in the header is listed once.
    * - ``#ofTools``
      - Number of tools (0-3) that reported at least one hit for the protein.
    * - ``Recommend Results``
@@ -204,6 +207,11 @@ To customize which analytical methods are used:
 Available method combinations: ``hmm``, ``diamond``, ``dbCANsub``, or any comma-separated combination. Skipped tools
 still get an empty result file, so ``overview.tsv`` is always generated. With a single method, ``#ofTools`` is at most 1
 and ``Recommend Results`` stays ``-``, so no protein is used as a CAZyme in CGC prediction.
+
+``overview.tsv`` only merges the results of the methods selected in the current run. When the output directory
+still holds result files of other methods from an earlier run (for example ``diamond.out`` after re-running with
+``--methods hmm``), those files are left in place but ignored, and the log says so (``Ignoring diamond.out ...``,
+``--log-level INFO``).
 
 .. admonition:: Next Steps
 

@@ -85,6 +85,10 @@ NULL = "null"
 PEPTIDASE = "Peptidase"
 SULFATASE = "Sulfatase"
 
+# A whole CAZy family/subfamily token in a '|' separated CAZy DIAMOND header, e.g. GH13 or GH13_6.
+# Anchored at both ends so that GenBank accessions such as AAK49401.1 or CEA12345.1 do not match.
+CAZY_FAMILY_TOKEN_PATTERN = r"^(?:GH|GT|PL|CE|AA|CBM)\d+(?:_\d+)?$"
+
 
 
 # Input/Output file names
