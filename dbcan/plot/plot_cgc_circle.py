@@ -96,7 +96,7 @@ class CGCCircosPlot:
         return [g for g in self.genes_by_contig.get(contig, []) if (g.contig, g.start, g.end) in members]
 
     def _cgc_label(self, cid: str) -> str:
-        parts = V.split_cgc_id(cid)
+        parts = V.split_cgc_key(cid)
         name = parts[1] if parts else cid
         call = self.calls.get(cid)
         names = call.names() if call else []

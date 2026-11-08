@@ -193,3 +193,61 @@ def test_dbcan_sub_detail_table(outdir):
     assert df["CGC substrate scores"].iloc[0] == "xylan:2;cellulose:1"
     assert set(df["CGC dbCAN-sub substrate"]) == {"xylan"}
     assert set(df["CGC dbCAN-sub substrate score"]) == {"2"}
+
+
+# ---- multi-role annotations, row order, shared query-ID parser ------------------------------------
+
+@pytest.mark.parametrize("annotation,gene_type,family", [
+    ("CAZyme|GH32_e132+Sulfatase|S1_7", "CAZyme", "GH32_e132"),
+    ("CAZyme|GH13_22|GT5_e25", "CAZyme", "GH13_22+GT5_e25"),
+    ("STP|HTH_1+STP|LysR_substrate", "STP", "HTH_1+LysR_substrate"),
+    ("TF|OXYR_ECOLI+STP|HTH_1+STP|LysR_substrate", "TF", "OXYR_ECOLI"),
+    ("TC|1.I.1.1.3+STP|Pkinase", "TC", "1.I.1"),
+    ("CAZyme|CBM50_e1400+TC|1.A.34.1.2+Peptidase|M23.UNB+STP|Peptidase_M23", "CAZyme", "CBM50_e1400"),
+    ("Other|tRNA", "Other", "tRNA"),
+    ("null", "null", "null"),
+])
+def test_gene_family_uses_the_gene_type_role(annotation, gene_type, family):
+    from dbcan.annotation.cgc_substrate_prediction import Gene
+    g = Gene(["CGC1", gene_type, CONTIG, PROT[0], "1", "90", "+", annotation])
+    assert g.Protein_Fam == family
+    qid = g.Get_CAzyID()
+    assert qid == f"{CONTIG}|CGC1|{PROT[0]}|{gene_type}|{family}"
+    # the query ID reads back with the shared parser, also without the known-ID map
+    assert parse_query_id(qid) == QueryID(CONTIG, "CGC1", PROT[0], gene_type, family)
+
+
+def test_substrate_prediction_rows_sorted_by_contig_then_cgc_number(outdir):
+    from dbcan.annotation.cgc_substrate_prediction import PULhit, cgc_sort_key
+    sp = _sp(outdir)
+    ids = ["b|CGC10", "a|CGC2", "b|CGC9", f"{CONTIG}|CGC3", "a|CGC10", f"{CONTIG}|CGC1"]
+    sp.queryCGC2hit = {c: PULhit(100.0, "PUL0001", "xylan", ["CAZyme-CAZyme"]) for c in ids[:3]}
+    sp.dbcan_sub_CGC2substrates = {c: "xylan" for c in ids[3:]}
+    sp.result_print_to_file()
+    rows = [l.split("\t")[0] for l in open(sp.out).read().splitlines()[1:]]
+    assert rows == ["a|CGC2", "a|CGC10", "b|CGC9", "b|CGC10", f"{CONTIG}|CGC1", f"{CONTIG}|CGC3"]
+    assert sorted(ids, key=cgc_sort_key) == rows
+
+
+@pytest.mark.parametrize("contig", [CONTIG, "scaffold|CGC7|v2"])
+def test_synteny_links_use_the_substrate_query_ids(outdir, tmp_path, contig):
+    """PUL_blast.out written from the CGC.faa IDs of substrate_prediction: every hit becomes a link,
+    with '|' in contig and protein IDs (even a contig containing a CGC token) and a multi-role gene."""
+    from dbcan.plot import cgc_viz as V
+    from dbcan.plot.syntenic_plot import HomologyCutoffs, read_pul_links
+    cgc = outdir / "cgc_standard_out.tsv"
+    cgc.write_text(CGC_OUT.replace("CAZyme|GH43_10", "CAZyme|GH43_10+Sulfatase|S1_7").replace(CONTIG, contig))
+    sp = _sp(outdir)
+    sp.extract_seq_in_CGC()
+    queries = [rec.id for rec in sp.seqs]
+    assert queries[1] == f"{contig}|CGC1|{PROT[1]}|CAZyme|GH43_10"
+    blast = outdir / "PUL_blast.out"
+    blast.write_text("".join("\t".join(_blast_line(q, f"PUL0001_{i}:PUL0001:WP_{i}:CAZyme:GH5_2")) + "\n"
+                             for i, q in enumerate(queries)))
+    cgcs = V.read_cgc_table(cgc)
+    cgcid = f"{contig}|CGC1"
+    assert cgcid in cgcs
+    pul_genes = [V.Gene.build(f"WP_{i}", "PUL0001", 1 + 1000 * i, 900 + 1000 * i, "+", "CAZyme|GH5_2")
+                 for i in range(3)]
+    links = read_pul_links(blast, cgcid, "PUL0001", cgcs[cgcid], pul_genes, HomologyCutoffs(0.01, 0, 0))
+    assert sorted((l.q.pid, l.s.pid) for l in links) == [(PROT[i], f"WP_{i}") for i in range(3)]

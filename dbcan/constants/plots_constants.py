@@ -17,7 +17,7 @@ CGC_FEATURE_LEGEND = base_constants.CGC_FEATURE_LEGEND
 CGC_FEATURE_COLORS = base_constants.CGC_FEATURE_COLORS
 CGC_GENE_TYPE_PRIORITY = base_constants.CGC_GENE_TYPE_PRIORITY
 CGC_GENE_TYPE_ALIASES = base_constants.CGC_GENE_TYPE_ALIASES
-OTHER_GENE_TYPE = "Other"   # palette key for genes without a signature hit (null) and RNAs
+OTHER_GENE_TYPE = base_constants.CGC_OTHER_GENE_TYPE   # palette key for genes without a signature hit (null) and RNAs
 
 # ---------------------------------------------------------------------------
 # Shared look of the linear figures (CGC map, coverage, synteny, overview)

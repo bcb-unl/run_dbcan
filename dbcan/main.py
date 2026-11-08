@@ -89,6 +89,23 @@ def _precheck_protein_gff(kwargs):
         raise click.ClickException(f"GFF check failed before step 1.\n{e}")
 
 
+def _precheck_topology(kwargs):
+    """--run_deeptmhmm / --run_signalp: fail before the CAZyme searches when the tool cannot run."""
+    import shutil
+    import dbcan.constants.signalp_tmhmm_constants as T
+    if kwargs.get('run_deeptmhmm'):
+        d = kwargs.get('deeptmhmm_dir')
+        if not d:
+            raise click.UsageError("--run_deeptmhmm needs --deeptmhmm_dir (the directory that contains DeepTMHMM "
+                                   f"{T.DEEPTMHMM_PREDICT_SCRIPT}).")
+        script = Path(d).expanduser() / T.DEEPTMHMM_PREDICT_SCRIPT
+        if not script.is_file():
+            raise click.UsageError(f"--deeptmhmm_dir {d}: {T.DEEPTMHMM_PREDICT_SCRIPT} not found ({script}).")
+    if kwargs.get('run_signalp') and shutil.which(T.SIGNALP_EXECUTABLE) is None:
+        raise click.UsageError(f"--run_signalp: '{T.SIGNALP_EXECUTABLE}' is not on PATH. Install SignalP 6 "
+                               "(DTU academic licence) or drop --run_signalp.")
+
+
 def _invoke_subset(ctx, cmd, all_kwargs):
     """
     Invoke a click command with a subset of parameters from all_kwargs.
@@ -143,6 +160,7 @@ def database_cmd(ctx, log_level, log_file, verbose, **kwargs):
 def cazyme_annotation_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """annotate CAZyme using run_dbcan with prokaryotic, metagenomics, and protein sequences."""
     setup_logging(log_level, log_file, verbose)
+    _precheck_topology(kwargs)
     from dbcan.configs.signalp_tmhmm_config import SignalPTMHMMConfig
     from dbcan.configs.diamond_config import DiamondCAZyConfig
     from dbcan.configs.pyhmmer_config import PyHMMERDBCANConfig

@@ -84,6 +84,7 @@ def test_missing_deeptmhmm_dir_raises(outdir):
 
 
 def test_cazyme_annotation_runs_topology_for_deeptmhmm_only(tmp_path):
+    (tmp_path / "predict.py").write_text("# DeepTMHMM\n")
     with patch("dbcan.core.run_dbCAN_input_process"), \
          patch("dbcan.core.run_dbCAN_CAZyme_annotation"), \
          patch("dbcan.core.run_dbCAN_topology_annotation") as topo:
@@ -96,13 +97,33 @@ def test_cazyme_annotation_runs_topology_for_deeptmhmm_only(tmp_path):
 
 
 def test_cazyme_annotation_exits_nonzero_when_topology_fails(tmp_path):
-    with patch("dbcan.core.run_dbCAN_input_process"), \
+    with patch("shutil.which", return_value="/usr/bin/signalp6"), \
+         patch("dbcan.core.run_dbCAN_input_process"), \
          patch("dbcan.core.run_dbCAN_CAZyme_annotation"), \
          patch("dbcan.core.run_dbCAN_topology_annotation", side_effect=DbcanStepError("SignalP6 failed")):
         result = CliRunner().invoke(cli, [
             "CAZyme_annotation", "--input_raw_data", "x.faa", "--mode", "protein", "--output_dir", str(tmp_path),
             "--db_dir", str(tmp_path), "--run_signalp"])
     assert result.exit_code != 0
+
+
+@pytest.mark.parametrize("extra,message", [
+    (["--run_deeptmhmm"], "--run_deeptmhmm needs --deeptmhmm_dir"),
+    (["--run_deeptmhmm", "--deeptmhmm_dir", "{tmp}"], "predict.py not found"),
+    (["--run_signalp"], "'signalp6' is not on PATH"),
+])
+def test_topology_tools_are_checked_before_cazyme_annotation(tmp_path, extra, message):
+    extra = [e.replace("{tmp}", str(tmp_path)) for e in extra]
+    with patch("shutil.which", return_value=None), \
+         patch("dbcan.core.run_dbCAN_input_process") as step1, \
+         patch("dbcan.core.run_dbCAN_CAZyme_annotation") as step2:
+        result = CliRunner().invoke(cli, [
+            "CAZyme_annotation", "--input_raw_data", "x.faa", "--mode", "protein", "--output_dir", str(tmp_path),
+            "--db_dir", str(tmp_path), *extra])
+    assert result.exit_code == 2
+    assert message in " ".join(result.output.replace("\u2502", " ").split())   # rich wraps long messages
+    step1.assert_not_called()
+    step2.assert_not_called()
 
 
 # ---- deprecated / ignored options ---------------------------------------------------------------

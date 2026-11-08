@@ -131,7 +131,7 @@ class OverviewGenerator:
         for key, path in self.result_file_map.items():
             if key not in selected:
                 if path.exists():
-                    logger.info(
+                    logger.warning(
                         f"Ignoring {path.name}: method '{RESULT_KEY_TO_METHOD[key]}' was not selected with --methods in this run "
                         f"(the file is left over from an earlier run)."
                     )

@@ -235,8 +235,10 @@ and ``Recommend Results`` stays ``-``, so no protein is used as a CAZyme in CGC 
 
 ``overview.tsv`` only merges the results of the methods selected in the current run. When the output directory
 still holds result files of other methods from an earlier run (for example ``diamond.out`` after re-running with
-``--methods hmm``), those files are left in place but ignored, and the log says so (``Ignoring diamond.out ...``,
-``--log-level INFO``).
+``--methods hmm``), those files are left in place but ignored, and a warning says so (``Ignoring diamond.out ...``).
+The result files of the selected methods are deleted when the run starts, so a selected method that fails in this
+run contributes nothing (an empty table) to ``overview.tsv`` instead of its result from an earlier run; the command
+then exits with a non-zero status.
 
 .. admonition:: Next Steps
 

@@ -16,8 +16,9 @@ Both tools run after the CAZyme search, on the proteins of ``overview.tsv`` that
    * Each tool runs when its own flag is given: ``--run_signalp`` and ``--run_deeptmhmm`` can be used alone or
      together.
    * If a requested tool cannot run (``signalp6`` not on ``PATH``, ``--deeptmhmm_dir`` missing or without
-     ``predict.py``) or fails, ``CAZyme_annotation`` exits with a non-zero status after the CAZyme results are
-     written. When both tools are requested and only one fails, the column of the other one is still added to
+     ``predict.py``), ``CAZyme_annotation`` stops with a usage error (exit status 2) **before** the CAZyme
+     searches start. If a tool fails while running, ``CAZyme_annotation`` exits with a non-zero status after the
+     CAZyme results are written. When both tools are requested and only one fails, the column of the other one is still added to
      ``overview.tsv``. Check the log and the ``signalp6_out`` / ``deeptmhmm_out`` folders.
    * The **SignalP** / **DeepTMHMM** columns are recomputed on every run (``overview.tsv`` is rewritten by each
      ``CAZyme_annotation`` run). ``--force_topology`` is deprecated: it is still accepted but ignored.

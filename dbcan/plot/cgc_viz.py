@@ -23,14 +23,13 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch, Polygon
 
 import dbcan.constants.plots_constants as P
+from dbcan.IO.cgc_ids import normalize_gene_type, parse_roles, split_cgc_id, split_cgc_key  # noqa: F401 (re-exported)
 
 logger = logging.getLogger(__name__)
 
 PALETTE = P.CGC_FEATURE_COLORS
 OTHER = P.OTHER_GENE_TYPE
 
-# 'contig|CGC12' or 'contig|CGC12|protein|type|family'; the contig may itself contain '|'
-_CGC_ID_RE = re.compile(r"^(?P<contig>.+?)\|(?P<cgc>CGC\d+)(?:\|(?P<rest>.*))?$")
 _ECAMI_SUFFIX = re.compile(r"_e\d+$")
 
 
@@ -51,40 +50,8 @@ def setup_matplotlib() -> None:
 # ---------------------------------------------------------------------------
 # ids and gene types
 # ---------------------------------------------------------------------------
-def split_cgc_id(text: str) -> Optional[Tuple[str, str, str]]:
-    """'NC_1|CGC3|NP_1.1|TC|2.A' -> ('NC_1', 'CGC3', 'NP_1.1|TC|2.A'); None if no CGC token."""
-    m = _CGC_ID_RE.match(text or "")
-    if not m:
-        return None
-    return m.group("contig"), m.group("cgc"), m.group("rest") or ""
-
-
-def normalize_gene_type(name: str) -> str:
-    """Map a signature type spelling (SULFATLAS, PEPTIDASE, cazyme ...) to a palette key."""
-    return P.CGC_GENE_TYPE_ALIASES.get((name or "").strip().lower(), OTHER)
-
-
-def parse_roles(annotation: str) -> List[Tuple[str, str]]:
-    """'CAZyme|GH13_31+TC|8.A.9.1.1' -> [('CAZyme', 'GH13_31'), ('TC', '8.A.9.1.1')].
-
-    Roles of the same type are merged (details joined by ';'); roles are ordered by the
-    Gene Type priority; 'null' and unknown types are dropped.
-    """
-    merged: Dict[str, List[str]] = {}
-    for part in (annotation or "").split("+"):
-        part = part.strip()
-        if not part or part.lower() in ("null", "na", "-"):
-            continue
-        name, _, detail = part.partition("|")
-        gtype = normalize_gene_type(name)
-        if gtype == OTHER:
-            continue
-        details = merged.setdefault(gtype, [])
-        detail = detail.strip()
-        if detail and detail not in details:
-            details.append(detail)
-    order = P.CGC_GENE_TYPE_PRIORITY
-    return [(t, ";".join(d)) for t, d in sorted(merged.items(), key=lambda kv: order.get(kv[0], 99))]
+# split_cgc_id, normalize_gene_type and parse_roles live in dbcan.IO.cgc_ids (shared with
+# substrate_prediction and dbcan_utils).
 
 
 def primary_gene_type(annotation: str, fallback: str = "") -> str:
@@ -137,10 +104,12 @@ class Gene:
     annotation: str = "null"
     gtype: str = OTHER
     roles: List[Tuple[str, str]] = field(default_factory=list)
+    gene_type: str = ""     # 'Gene Type' column of cgc_standard_out.tsv as written (null, CAZyme, ...)
 
     @classmethod
     def build(cls, pid, contig, start, end, strand, annotation, type_hint=""):
         g = cls(str(pid), str(contig), int(start), int(end), strand or ".", annotation or "null")
+        g.gene_type = (type_hint or "").strip()
         g.roles = parse_roles(g.annotation)
         g.gtype = primary_gene_type(g.annotation, type_hint)
         return g
