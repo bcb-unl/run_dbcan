@@ -22,7 +22,8 @@ updated once a year, between July and September.
      - dbCAN-sub subfamily HMMs (remote name ``dbCAN_sub.hmm``)
      - ``CAZyme_annotation``
    * - ``fam-substrate-mapping.tsv``
-     - CAZy family/EC to substrate table; fills the ``Substrate`` column of ``overview.tsv``
+     - CAZy family/EC to substrate table; fills the ``Substrate`` columns of ``overview.tsv`` and
+       ``dbCANsub_hmm_results.tsv``
      - ``CAZyme_annotation``
    * - ``dbCAN-sub-substrate.tsv`` (optional)
      - Per-subfamily (Subfamily, EC, Count, Substrate) table of the dbCAN-sub web server; used before

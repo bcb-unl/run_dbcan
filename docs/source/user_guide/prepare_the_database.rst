@@ -147,7 +147,8 @@ Or copy the whole S3 release (about 12 GB: it also holds ``Pfam-A.hmm`` and the 
    aws s3 cp s3://dbcan/db_v5-2-9_5-5-2026/ ./db --recursive --no-sign-request
    mv db/dbCAN_sub.hmm db/dbCAN-sub.hmm
 
-Test files are in the `dbCAN2 test data folder <https://bcb.unl.edu/dbCAN2/download/test>`_; the
+All files can also be browsed on the `dbCAN2 download page <https://bcb.unl.edu/dbCAN2/download/>`_. Test files
+are in its `test data folder <https://bcb.unl.edu/dbCAN2/download/test>`_; the
 :doc:`../getting_started/quick_start` uses them.
 
 .. _rebuild-peptidase-db:
@@ -156,47 +157,30 @@ Rebuilding ``peptidase_db.dmnd`` (maintainers)
 ----------------------------------------------
 
 Users download the finished file. For a new MEROPS release the dbCAN team rebuilds it from ``pepunit.lib``
-(DIAMOND must be on ``PATH``):
+(DIAMOND on ``PATH``; ``--help`` lists all options):
 
 .. code-block:: shell
 
    wget https://ftp.ebi.ac.uk/pub/databases/merops/current_release/pepunit.lib     # ~440 MB
-   python -m dbcan.utils.build_peptidase_db \
-       --input pepunit.lib --output peptidase_db.dmnd \
+   python -m dbcan.utils.build_peptidase_db --input pepunit.lib --output peptidase_db.dmnd \
        --report peptidase_db.dropped.tsv --threads 4
 
-.. list-table::
-   :widths: 30 70
-   :header-rows: 1
-
-   * - Step
-     - What the script does
-   * - Identifier
-     - Read from the bracket right before ``#<family>#{... unit: ...}``:
-       ``>MER0003996 - ubiquitin-specific endopeptidase 39 [misleading] (Mus musculus) [C19.972]#C19#{peptidase unit:
-       187-549}`` gives ``C19.972``. The currently distributed database took the *first* bracket and has 322 entries
-       named ``misleading``, ``Clostridium``, ..., which run_dbcan never reports.
-   * - Record name
-     - ``>MER0003996|C19.972``; run_dbcan keeps the part after ``|`` as ``Peptidase ID``.
-   * - Kept
-     - Peptidase units and, by default, inhibitor units (families ``I*``) as decoys (``--drop-inhibitors`` leaves
-       them out).
-   * - Left out
-     - Identifiers not of the form ``<type><family>.<id>`` (e.g. ``a01.UNa``), records without ``MER`` accession or
-       sequence, exact duplicates (first accession kept). Counts are logged; ``--report`` lists every record.
-   * - Output
-     - Cleaned FASTA (``--fasta``, default ``peptidase_db.faa``) and ``diamond makedb`` (skip with
-       ``--no-makedb``). Non-zero exit when no peptidase unit is found or ``makedb`` fails.
-
-MEROPS release of 2023-02-22 (1,227,939 records): 984,975 peptidase units (287 families) and 147,401 inhibitor
-units are kept; the database is about 313 MB (about 290 MB with ``--drop-inhibitors``).
+* **Identifier**: taken from the bracket right before ``#<family>#{... unit: ...}`` (``... [misleading] (Mus
+  musculus) [C19.972]#C19#{peptidase unit: ...}`` gives ``C19.972``) and written as ``>MER0003996|C19.972``. The
+  currently distributed database took the *first* bracket: 322 entries are named ``misleading``, ``Clostridium``, ...
+  and are never reported.
+* **Kept**: peptidase units and, by default, inhibitor units (``I*``) as decoys (``--drop-inhibitors`` leaves them
+  out). **Left out**: malformed identifiers (``a01.UNa``), records without ``MER`` accession or sequence, exact
+  duplicates; ``--report`` lists them.
+* **Result** (MEROPS 2023-02-22): 984,975 peptidase units (287 families) + 147,401 inhibitor units, ~313 MB, plus
+  the cleaned FASTA (``--fasta``, ``peptidase_db.faa``). On the test genomes it gives the results of the current
+  database plus the two ``C19`` peptidases that the current database has under the wrong identifier.
 
 .. note::
 
-   **Why keep inhibitor units?** Each protein keeps only its best DIAMOND hit (``--max-target-seqs 1``) and hits to
-   inhibitor units are never reported as ``Peptidase``. With the decoys, a protein whose best match is an inhibitor
-   cannot take a weaker peptidase hit instead: on *Xylona heveae* one protein whose best hit is ``I51.001``
-   (carboxypeptidase Y inhibitor) is labelled ``C18.UPW`` (a viral peptidase family) when they are dropped. They also
-   keep DIAMOND in its fast query-indexed mode on small genomes.
+   **Why keep inhibitor units?** Each protein keeps only its best DIAMOND hit and inhibitor hits are never reported
+   as ``Peptidase``, so a protein whose best match is an inhibitor cannot take a weaker peptidase hit instead
+   (*Xylona heveae*: ``I51.001`` would otherwise become ``C18.UPW``, a viral family). They also keep DIAMOND fast on
+   small genomes.
 
 Next: :doc:`CAZyme_annotation`.

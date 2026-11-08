@@ -50,39 +50,36 @@ What it searches
      - domains
 
 Each DIAMOND search keeps the best hit per protein (highest bit score). The labels are then combined per gene
-(``+``-joined in ``cgc.gff``) with three rules, drawn in :ref:`the CGC rule figure <cgc-rules-figure>`:
+(``+``-joined in ``cgc.gff``), as drawn in :ref:`the CGC rule figure <cgc-rules-figure>`:
 
-* **CAZyme wins over full-length labels.** On a CAZyme protein, its TC, TF (DIAMOND) and sulfatase hits are not
-  written to ``cgc.gff``.
-* **One full-length label per protein.** A non-CAZyme protein with several full-length hits keeps only the one
-  with the highest bit score.
-* Domain labels (STP, fungal TF HMM, peptidase) are kept; ``cgc_finder`` ignores them only when they lie on the
-  CAZyme domain.
+.. list-table::
+   :widths: 45 55
+   :header-rows: 1
 
-All hits always stay in ``total_cgc_info.tsv``.
+   * - Protein has
+     - Labels in ``cgc.gff``
+   * - CAZyme (``#ofTools`` >= 2) + TC / TF (DIAMOND) / sulfatase hit
+     - CAZyme only (a full-length hit cannot be placed next to the CAZyme domain)
+   * - no CAZyme, several full-length hits (TC, TF, sulfatase)
+     - the one with the highest **bit score** (ties: min(query, subject) coverage, E-value, TC > TF > Sulfatase)
+   * - domain labels (STP, fungal TF HMM, peptidase)
+     - always kept, also next to a CAZyme or a full-length label (``TC|...+STP|...``); the gene still fills only
+       **one** role in ``cgc_finder``, which also ignores a domain lying on the CAZyme domain
 
-.. note::
-
-   **Why these rules.** A full-length database hit is a name for the whole protein; its alignment span is not a
-   domain and cannot be placed next to the CAZyme domain. Without the first rule a GH13 protein that also hits TC
-   8.A.9 (the rBAT/SLC3 family, itself a GH13 homologue) would be both CAZyme and transporter, and any cluster of
-   glycosyltransferases with a TCDB homologue would become a CGC.
-
-   For the second rule the **bit score** is used, not the E-value: the E-value grows with database size
-   (E = K·m·n·e\ :sup:`-λS`) and TCDB, ``TF.dmnd`` and SulfAtlas differ in size, while bit scores of one query
-   use the same scoring system. Ties go to the higher min(query, subject) coverage, then the lower E-value, then
-   TC > TF > Sulfatase. Example: *E. coli* LacI hits ``LACI_ECOLI`` (TF, 677 bits) and TCDB ``3.A.1.2.1``
-   (55 bits): it is labelled ``TF``. A ``total_cgc_info.tsv`` written before the ``Bitscore`` column existed keeps
-   all labels.
+All hits stay in ``total_cgc_info.tsv``.
 
 .. note::
 
-   **Sulfatase and peptidase filters.** SulfAtlas entries are full-length proteins, often sulfatases fused to GH
-   domains, so a hit must also cover >= 70% of the SulfAtlas protein (``--subject_coverage_threshold_sulfatase``;
-   ``0`` turns it off). Otherwise a GH32 protein matching only the GH part was labelled ``S1_7`` (*E. coli*:
-   6 of 113 sulfatase hits remain, *Xylona*: 10 of 267; CGCs and substrates unchanged). Peptidase coverage is
-   measured on the MEROPS unit (``--subject-cover``). Hits to MEROPS inhibitor units (``I*``) are never reported
-   as ``Peptidase`` (see :ref:`rebuild-peptidase-db`).
+   * **Why the bit score**: E-values grow with database size, and TCDB, ``TF.dmnd`` and SulfAtlas differ in size.
+     *E. coli* LacI: ``LACI_ECOLI`` (TF, 677 bits) beats TCDB ``3.A.1.2.1`` (55 bits), so it is ``TF``. A
+     ``total_cgc_info.tsv`` without the ``Bitscore`` column (older runs) keeps all labels.
+   * **Why CAZyme wins**: a GH13 protein that also hits TC 8.A.9 (rBAT/SLC3, itself a GH13 homologue) would
+     otherwise be CAZyme *and* transporter, and any glycosyltransferase cluster with a TCDB homologue a CGC.
+   * **Sulfatase**: a hit must also cover >= 70% of the SulfAtlas protein
+     (``--subject_coverage_threshold_sulfatase``; ``0`` = off), because many entries are sulfatases fused to GH
+     domains (*E. coli*: 6 of 113 hits remain, CGCs and substrates unchanged).
+   * **Peptidase**: coverage is measured on the MEROPS unit; hits to inhibitor units (``I*``) are never reported
+     as ``Peptidase`` (see :ref:`rebuild-peptidase-db`).
 
 Choosing ``--gff_type``
 -----------------------
@@ -135,9 +132,9 @@ to ``prodigal``. ``easy_CGC``/``easy_substrate`` with ``--mode protein`` need ``
      all isoforms are listed in ``gff_resolution.tsv``.
    * Transcripts without gene rows (gffread) are grouped by ``geneID``/``gene_id``/``gene`` only when they share
      contig and strand and overlap, so two ``tnpA`` copies stay two genes.
-   * Genes without CDS (tRNA, rRNA, pseudogenes) are kept as ``protein_id=NA`` null genes.
-   * Checks: on *E. coli* NCBI GFF3, ``GFF3`` matches 4140/4140 protein-coding genes, as ``NCBI_prok``; on
-     *Xylona heveae*, ``GFF3`` writes the same ``cgc.gff`` as ``NCBI_euk``.
+   * Genes without CDS (tRNA, rRNA, pseudogenes) are kept as ``protein_id=NA`` null genes; a pseudogene (a
+     ``pseudogene`` row, or ``CDS`` rows with ``pseudo=true`` and no ``protein_id``) gets
+     ``CGC_annotation=Other|pseudogene``.
 
 .. _gff-match-check:
 

@@ -1,5 +1,5 @@
 """Draw cgc_rules.png: how cgc_finder joins signature genes into CGCs (default settings),
-one gene = one role, and which labels of a protein go into cgc.gff.
+one gene = one role, and how the labels of one protein are used (gff_process / cgc_finder).
 
 Run from the repository root:  python docs/source/_static/img/figures/src/cgc_rules.py
 """
@@ -81,18 +81,20 @@ bracket(3 + s, 3 + s + 5.6, yb - 3.2, "one gene only: not a CGC", BAD)
 row(30, yb, [("CAZyme", "GH13 + STP", 5.6, 2.6, True, "STP"), ("CAZyme", "GH31"), N])
 bracket(30, 30 + s + 5.6, yb - 3.2, "CGC: GH31 = CAZyme, GH13 gene = STP", OK)
 
-# ---- C: labels written to cgc.gff
+# ---- C: how the labels of one protein are used
 xc = 62
-ax.text(xc, 29, "C  Labels of one protein in cgc.gff", fontsize=9.5, color=INK, weight="bold", va="center")
+ax.text(xc, 29, "C  How the labels of one protein are used", fontsize=9.5, color=INK, weight="bold", va="center")
 lines = [
-    ("CAZyme (#ofTools >= 2) + TC / TF(DIAMOND) / sulfatase hit", "CAZyme only"),
-    ("not a CAZyme, several full-length hits", "best bit score only"),
-    ("STP / fungal TF / peptidase domain on the CAZyme domain", "counts as CAZyme only"),
+    ("CAZyme (#ofTools >= 2) + TC / TF(DIAMOND) / sulfatase hit", "cgc.gff: CAZyme only", "gff_process"),
+    ("not a CAZyme, several full-length hits", "cgc.gff: best bit score only", "gff_process"),
+    ("STP / fungal TF / peptidase domain on the CAZyme domain", "kept in cgc.gff; counts as CAZyme only",
+     "cgc_finder"),
 ]
-for k, (a, b) in enumerate(lines):
+for k, (a, b, step) in enumerate(lines):
     y = 24.5 - k * 5.4
     ax.text(xc, y, a, fontsize=7.6, color=INK, va="center")
     ax.text(xc + 2, y - 2.2, "→ " + b, fontsize=7.8, color=OK, va="center", weight="bold")
+    ax.text(103.5, y - 2.2, step, fontsize=7.0, color=MUTED, va="center", ha="right", style="italic")
 ax.text(xc, 7.5, "all hits stay in total_cgc_info.tsv", fontsize=7.4, color=MUTED, va="center", style="italic")
 
 # legend

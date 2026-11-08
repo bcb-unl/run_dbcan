@@ -35,7 +35,7 @@ Input data
    ``gffread -y ... -S``.
 
 **Which protein IDs are safe?**
-   Use unique IDs of at most 80 characters that contain at least one letter. In ``--mode protein``:
+   Use unique IDs of at most 80 characters. In ``--mode protein``:
 
    * only the first word of each FASTA header is kept;
    * IDs longer than 80 characters are truncated;
@@ -45,11 +45,10 @@ Input data
    These changes are applied to ``uniInput.faa`` only, not to your GFF. For CGC prediction the GFF identifiers are
    cleaned the same way before matching, except for the ``_1``, ``_2`` suffixes of duplicated IDs.
 
-**overview.tsv is empty or has no annotations, although the HMM/DIAMOND result files contain hits.**
-   Known limitation: purely numeric protein IDs (``>0``, ``>1``, ...) are read as numbers when the result tables are
-   merged, so the rows of ``overview.tsv`` show ``-`` everywhere and ``#ofTools`` = 0. IDs such as ``NA``, ``NULL``, ``nan``
-   or ``None`` are read as missing values, and ``overview.tsv`` may not be written at all (the error is only logged).
-   Rename such sequences with a prefix, for example:
+**overview.tsv shows** ``-`` **everywhere for numeric IDs (5.2.9 and earlier).**
+   Older releases read purely numeric IDs (``>0``, ``>1``) as numbers and ``NA``/``NULL``/``nan``/``None`` as
+   missing values when merging the tables. This is fixed after 5.2.9 (GitHub issue #82). With an older release,
+   prefix the IDs:
 
    .. code-block:: shell
 

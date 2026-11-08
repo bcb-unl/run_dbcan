@@ -120,7 +120,10 @@ All files are written to ``--output_dir``. The ones you will open first are in *
      - Raw hits of DIAMOND (CAZy), dbCAN HMM and dbCAN-sub HMM
    * - ``total_cgc_info.tsv``
      - 2
-     - Transporter (TC), TF, STP, sulfatase and peptidase hits (from ``diamond.out.*``, ``*_hmm_results.tsv``)
+     - All transporter (TC), TF, STP, sulfatase and peptidase hits
+   * - ``diamond.out.tc``, ``.tf``, ``.sulfatase``, ``.peptidase``; ``STP_hmm_results.tsv``, ``TF_hmm_results.tsv``
+     - 2
+     - Raw hits of each signature search (``TF_hmm_results.tsv`` only with ``--fungi``)
    * - ``cgc.gff``
      - 2
      - Your genes with their CAZyme / signature labels: the input of ``cgc_finder``

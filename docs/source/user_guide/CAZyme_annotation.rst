@@ -23,20 +23,24 @@ Input modes
 
    * - ``--mode``
      - Input
-   * - ``prok`` (default)
+   * - ``prok``
      - Bacterial or archaeal genome (DNA). Genes are predicted with pyrodigal, trained on the input.
    * - ``meta``
      - Metagenome assembly, MAGs or many genomes in one file (DNA). pyrodigal metagenome mode, no training, streamed.
    * - ``protein``
-     - Any proteome, including fungi and other eukaryotes annotated with funannotate, BRAKER, NCBI or JGI.
+     - Any proteome, including fungi and other eukaryotes annotated with
+       `funannotate <https://github.com/nextgenusfs/funannotate>`_, `BRAKER <https://github.com/Gaius-Augustus/BRAKER>`_,
+       NCBI or JGI.
 
-The input may be gzipped. Any other ``--mode`` is rejected (case-insensitive).
+Always give ``--mode`` (``--help`` marks it required). The input may be gzipped; any other value is rejected
+(case-insensitive).
 
 .. warning::
 
    pyrodigal predicts **prokaryotic** genes only. On a fungal genome it splits most genes at their introns
-   (*Xylona heveae*: 32,471 ORFs of median 104 aa instead of 8,201 genes); run_dbcan then logs a ``WARNING``
-   but does not stop. Use ``--mode protein`` with a eukaryotic annotation instead.
+   (*Xylona heveae*: 32,471 ORFs of median 104 aa instead of 8,201 genes). run_dbcan logs a ``WARNING`` when the
+   median protein is below 150 aa and more than 30% are shorter than 100 aa, but does not stop. Use
+   ``--mode protein`` with a eukaryotic annotation instead.
 
 Main options
 ------------
@@ -138,6 +142,11 @@ Columns of ``overview.tsv``
 #. a complete EC without an entry, and a subfamily without EC, fall back to the family-level substrate (or to the
    family's only substrate); an incomplete EC (``a.b.c.-``) has no fallback.
 
+.. note::
+
+   Subfamilies without any EC therefore get the family-level substrate, e.g. GH71 -> ``alpha-glucan``, while the
+   dbCAN-sub web server shows **no** substrate for them. This is the expected difference between the two.
+
 In ``dbCANsub_hmm_results.tsv`` the ``Substrate`` column has one entry per EC, in the order of ``Subfam EC``,
 separated by ``;``. Several substrates of one (family, EC) are joined with ``,`` inside that entry; ``-`` = no
 substrate for that EC.
@@ -155,11 +164,8 @@ In ``--mode protein`` the FASTA is copied into ``uniInput.faa`` with these chang
 
 The GFF is not rewritten; its IDs are cleaned the same way when they are matched for CGC prediction.
 
-.. warning::
-
-   Protein IDs must contain at least one letter. Numeric IDs (``>0``, ``>1``) and ``NA``, ``NULL``, ``nan`` or
-   ``None`` are read as numbers or missing values when the tables are merged, so ``overview.tsv`` loses their
-   annotation or is not written. Prefix them, e.g. ``>prot_0`` (see :doc:`../FAQ/troubleshooting`).
+IDs are always read as text, so numeric (``>0``, ``>007``) and ``NA``/``None``-like IDs are kept (5.2.9 and earlier
+lost them in ``overview.tsv``; there, prefix them, e.g. ``>prot_0``).
 
 Choosing tools with ``--methods``
 ---------------------------------

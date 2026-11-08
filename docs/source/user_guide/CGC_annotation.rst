@@ -22,8 +22,9 @@ CGC rules
    :width: 100%
    :alt: How cgc_finder joins CAZymes and signature genes into CGCs
 
-   **A** default joining rule; **B** one gene fills one role; **C** which labels of a protein ``cgc.gff`` keeps
-   (see :ref:`cgc-information-generation`).
+   **A** default joining rule; **B** one gene fills one role; **C** how the labels of one protein are used: the
+   first two rules decide what ``cgc.gff`` keeps (:ref:`gff_process <cgc-information-generation>`), the third is
+   applied by ``cgc_finder`` when it counts roles.
 
 #. **Signature genes**: CAZymes (``#ofTools`` >= 2) and genes of the ``--additional_genes`` types (default ``TC``).
    All other genes, including TF/STP genes that are not listed, count as null genes.

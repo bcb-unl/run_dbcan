@@ -16,12 +16,15 @@ Start here
 ----------
 
 #. :doc:`getting_started/installation` (conda, pip or Docker)
-#. :doc:`user_guide/prepare_the_database` (``run_dbcan database --db_dir db``, about 8 GB)
+#. :doc:`user_guide/prepare_the_database` (``run_dbcan database --db_dir db``, about 8 GB; files:
+   :doc:`getting_started/database_description`)
 #. :doc:`getting_started/quick_start`: one command per task on example genomes
 #. The step pages of the user guide, for options and output columns
 
 Problems or unexpected results? See :doc:`FAQ/troubleshooting`. To start from raw metagenomic reads, use the
-**Metagenomics pipeline** or the **Nextflow pipeline** sections.
+:doc:`metagenomics_pipeline/run_from_raw_reads` (updated protocol:
+`bioRxiv 2024.01.10.575125 <https://www.biorxiv.org/content/10.1101/2024.01.10.575125v1>`_) or the
+:doc:`nextflow/index`.
 
 What is new in version 5
 ------------------------
@@ -51,7 +54,8 @@ What is new in version 5
      - SignalP 6.0 and DeepTMHMM columns in ``overview.tsv`` (installed by the user):
        :doc:`user_guide/signalp6_deeptmhmm`.
    * - Logging
-     - ``--log-level``, ``--log-file`` and ``-v`` on every command.
+     - ``--log-level`` (DEBUG/INFO/WARNING/ERROR/CRITICAL, default ``WARNING``), ``--log-file`` and ``-v``
+       (= ``--log-level DEBUG``) on every command.
 
 Contact
 -------
