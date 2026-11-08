@@ -85,9 +85,9 @@ Unreleased
 #. New maintainer script ``python -m dbcan.utils.build_peptidase_db`` rebuilds ``peptidase_db.dmnd`` from MEROPS
    ``pepunit.lib``: identifiers are read from the bracket before the family field (the currently distributed
    database has 322 entries named after a bracket in the protein name or organism, e.g. ``misleading`` or
-   ``Clostridium``), inhibitor units, malformed identifiers and exact duplicates are left out
-   (``--keep-inhibitors`` keeps inhibitor units as decoys), and ``diamond makedb`` is run. See
-   :ref:`rebuild-peptidase-db`. The distributed database is not changed by this.
+   ``Clostridium``), malformed identifiers and exact duplicates are left out, inhibitor units are kept as decoys
+   (run_dbcan never reports them as Peptidase; ``--drop-inhibitors`` leaves them out), and ``diamond makedb`` is
+   run. See :ref:`rebuild-peptidase-db`. The distributed database is not changed by this.
 
 .. rubric:: Figures
 
@@ -119,3 +119,13 @@ Unreleased
 #. Assembly-free DIAMOND counting: CAZy family tokens are parsed at any position, JGI sequence IDs keep the protein
    number, and ``.fq/.fastq/.fa/.fasta/.fna`` (optionally ``.gz``) read files are accepted.
 #. The GFF match report counts a childless gene with a non-coding biotype (e.g. *E. coli* ``ralA``) as non-coding.
+
+.. rubric:: Known issues / to test
+
+#. ``dbCAN.hmm`` V15 merges the ``GT2_*`` models into one ``GT2`` profile (881 profiles). This is kept as is for
+   now; its effect on GT2 sensitivity (fewer GT2 calls than with the split models were seen on test genomes) is to
+   be tested before the next release. The fungal taxon profile on the dev branch is locked to the previous
+   ``dbCAN.hmm`` and has to be recalibrated for V15.
+#. ``fam-substrate-mapping.tsv``: for an incomplete EC (``a.b.c.-``) with several substrates under the same family
+   (25 keys, e.g. GH94 + 2.4.1.-) the last substrate alphabetically is used, as in 5.2.9. A per-subfamily
+   substrate table (``dbCAN-sub-substrate.tsv``) in the database directory replaces this lookup.

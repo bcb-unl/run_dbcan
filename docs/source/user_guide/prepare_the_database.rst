@@ -254,7 +254,8 @@ The script
   bracket and has 322 such entries (``misleading``, ``Clostridium``, ...), which run_dbcan never reports;
 * writes records as ``>MER0003996|C19.972``. DIAMOND reports this as ``sseqid`` and run_dbcan keeps the part after
   ``|`` as ``Peptidase ID``;
-* leaves out inhibitor units (``{inhibitor unit: ...}``, families ``I*``), identifiers that do not match
+* keeps inhibitor units (``{inhibitor unit: ...}``, families ``I*``) as decoys by default (``--drop-inhibitors``
+  leaves them out, see below); leaves out identifiers that do not match
   ``<catalytic type><family>.<id>`` (e.g. the lower-case ``a01.UNa``), records without a ``MER`` accession or
   sequence, and exact duplicates (same identifier and same sequence; the first accession is kept);
 * logs the counts per reason, writes every left-out record to ``--report`` (optional), keeps the cleaned FASTA
@@ -262,15 +263,17 @@ The script
   It exits with a non-zero status when the input has no peptidase unit or ``diamond makedb`` fails.
 
 ``pepunit.lib`` of the current MEROPS release (dated 2023-02-22, 1,227,939 records): 984,975 peptidase units
-kept (287 families), 176,943 inhibitor units, 1 malformed identifier and 66,020 duplicates left out; the database
-is about 290 MB.
+(287 families) and 147,401 inhibitor units are kept, 1 malformed identifier and the duplicates are left out; the
+database is about 313 MB (about 290 MB with ``--drop-inhibitors``).
 
-``--keep-inhibitors`` keeps the inhibitor units (147,401 after removing duplicates) as decoys. run_dbcan never
+Inhibitor units are kept by default (147,401 after removing duplicates) as decoys. run_dbcan never
 reports a hit to them as ``Peptidase``, but because each protein keeps only its best DIAMOND hit
 (``--max-target-seqs 1``), they stop a protein whose best match is an inhibitor from taking a weaker peptidase hit
 instead. On *Xylona heveae* one protein whose best hit is ``I51.001`` (carboxypeptidase Y inhibitor) is labelled
-``C18.UPW`` (a viral peptidase family) when the inhibitor units are left out; with ``--keep-inhibitors`` the results
-are those of the current database plus the two ``C19`` peptidases that it had under the wrong identifier.
+``C18.UPW`` (a viral peptidase family) when the inhibitor units are left out (``--drop-inhibitors``); with the
+default the results are those of the current database plus the two ``C19`` peptidases that it had under the wrong
+identifier. Keeping the inhibitor units also keeps the search fast on small genomes (DIAMOND chooses its
+query-indexed mode for this database size).
 
 Testing Your Installation
 ---------------------------

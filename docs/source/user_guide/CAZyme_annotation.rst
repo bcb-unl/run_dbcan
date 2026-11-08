@@ -159,7 +159,11 @@ The annotation process generates several key output files in your specified outp
 * ``overview.tsv`` - Summary of identified CAZymes (see below)
 * ``dbCAN_hmm_results.tsv`` - dbCAN HMM hits after filtering
 * ``diamond.out`` - DIAMOND search results against CAZy
-* ``dbCANsub_hmm_results.tsv`` - dbCAN-sub HMM hits, including subfamily EC numbers and substrates
+* ``dbCANsub_hmm_results.tsv`` - dbCAN-sub HMM hits, including subfamily EC numbers and substrates. Its
+  ``Substrate`` column has one entry per EC token, in the order of ``Subfam EC``, separated by ``;``; when one
+  (family, EC) maps to several substrates they are separated by ``,`` inside that entry (``-`` = no substrate for
+  that EC). The protein-level ``Substrate`` column of ``overview.tsv`` is the sorted, de-duplicated list of all
+  these substrates, separated by ``;``.
 * ``dbCANsub_hmm_raw.tsv`` - unfiltered dbCAN-sub hits used to build the previous file
 
 .. _overview-columns:

@@ -17,7 +17,7 @@ class PeptidaseDbBuildConfig(BaseConfig):
     # optional TSV with one row per entry that was left out (accession, MEROPS id, reason, header)
     report: Optional[str] = None
     # True: keep MEROPS inhibitor units (valid I identifiers) as decoys; run_dbcan drops hits to them
-    keep_inhibitors: bool = False
+    keep_inhibitors: bool = True   # inhibitor units act as decoys (see prepare_the_database.rst)
     # False: write the FASTA only (no 'diamond makedb')
     makedb: bool = True
     diamond_bin: str = P.DIAMOND_CMD

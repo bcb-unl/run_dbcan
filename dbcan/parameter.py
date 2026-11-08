@@ -1090,7 +1090,7 @@ def build_peptidase_db_options(func):
     func = click.option(
         '--keep-inhibitors/--drop-inhibitors',
         'keep_inhibitors',
-        default=False,
+        default=True,
         show_default=True,
         help=('Keep MEROPS inhibitor units (I families) as decoys. run_dbcan never reports hits to them as '
               'Peptidase, but with --max-target-seqs 1 they stop a protein whose best match is an inhibitor '

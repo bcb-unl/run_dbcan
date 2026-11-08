@@ -156,10 +156,22 @@ def test_no_peptidase_units_is_an_error(tmp_path):
 
 def test_cli_fasta_only(tmp_path):
     lib = _write_lib(tmp_path / "pepunit.lib")
-    res = CliRunner().invoke(cli, ["-i", str(lib), "-o", str(tmp_path / "db" / "peptidase_db.dmnd"), "--no-makedb"])
+    res = CliRunner().invoke(cli, ["-i", str(lib), "-o", str(tmp_path / "db" / "peptidase_db.dmnd"), "--no-makedb",
+                                   "--drop-inhibitors"])
     assert res.exit_code == 0, res.output
     assert _read_fasta(tmp_path / "db" / "peptidase_db.faa")[0] == EXPECTED_IDS
     assert not (tmp_path / "db" / "peptidase_db.dmnd").exists()
+
+
+def test_cli_keeps_inhibitor_units_by_default(tmp_path):
+    """Inhibitor units are decoys: with DIAMOND --max-target-seqs 1 they stop an inhibitor-like protein from
+    taking a weaker peptidase label (run_dbcan never reports them as Peptidase)."""
+    lib = _write_lib(tmp_path / "pepunit.lib")
+    res = CliRunner().invoke(cli, ["-i", str(lib), "-o", str(tmp_path / "db" / "peptidase_db.dmnd"), "--no-makedb"])
+    assert res.exit_code == 0, res.output
+    ids = _read_fasta(tmp_path / "db" / "peptidase_db.faa")[0]
+    assert set(EXPECTED_IDS) < set(ids)
+    assert any(i.split("|")[1].startswith("I") for i in ids)
 
 
 def test_cli_missing_diamond_exits_nonzero(tmp_path):
