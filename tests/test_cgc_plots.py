@@ -594,13 +594,14 @@ def test_synteny_paralog_label_shown_where_its_ribbon_is_visible():
     assert texts == ["41%", "88%", "96%"]    # the crossing link is visible in the gap
 
 
-def test_multiple_matches_are_secondary_outlines_drawn_on_top():
-    """Two similar genes hitting each other's counterpart (paralogues): the one-to-one best pairs
-    are filled ribbons, the cross hits are secondary outlines with their own visible labels."""
+def test_multiple_matches_draw_only_the_one_to_one_pairs():
+    """Two similar genes hitting each other's counterpart (paralogues): only the one-to-one best
+    pairs are drawn and labelled; the cross hits are left out so nothing is hidden."""
     import matplotlib
     matplotlib.use("Agg", force=True)
+    import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
-    from dbcan.plot.syntenic_plot import Link, draw_link_labels, split_primary_links
+    from dbcan.plot.syntenic_plot import Link, draw_links, split_primary_links
 
     def gene(pid, s, e):
         return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="CAZyme", roles=[("CAZyme", "GH32")])
@@ -613,8 +614,23 @@ def test_multiple_matches_are_secondary_outlines_drawn_on_top():
     assert sorted((l.q.pid, l.s.pid) for l in secondary) == [("q1", "s2"), ("q2", "s1")]
     fig, ax = plt.subplots()
     ax.set_xlim(-100, 2100)
-    n = draw_link_labels(ax, primary, lambda g: (g.start, g.end, g.strand), 2.7, 0.5, 2200 / 6.0,
-                         secondary=secondary)
+    drawn = draw_links(ax, links, lambda g: (g.start, g.end, g.strand), mcolors.Normalize(20, 100), 2200 / 6.0)
     texts = sorted(t.get_text() for t in ax.texts)
+    n_ribbons = len(ax.patches)
     plt.close(fig)
-    assert texts == ["50%", "50%", "87%", "88%"] and n == 4
+    assert len(drawn) == 2 and n_ribbons == 2
+    assert texts == ["87%", "88%"]
+
+
+def test_one_to_one_pairing_falls_back_to_the_next_free_partner():
+    from dbcan.plot.syntenic_plot import Link, split_primary_links
+
+    def gene(pid, s):
+        return V.Gene(contig="c", start=s, end=s + 900, strand="+", pid=pid, gtype="TC", roles=[("TC", "1.A")])
+
+    q1, q2, s1, s2 = gene("q1", 0), gene("q2", 1000), gene("s1", 0), gene("s2", 1000)
+    # q2's best hit is s1, but s1 is taken by the stronger q1-s1 pair: q2 pairs with s2
+    links = [Link(q1, s1, 95, 900), Link(q2, s1, 60, 400), Link(q2, s2, 55, 350)]
+    primary, secondary = split_primary_links(links)
+    assert sorted((l.q.pid, l.s.pid) for l in primary) == [("q1", "s1"), ("q2", "s2")]
+    assert [(l.q.pid, l.s.pid) for l in secondary] == [("q2", "s1")]

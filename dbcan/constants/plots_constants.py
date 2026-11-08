@@ -86,11 +86,6 @@ SYNTENY_LINK_LABEL_FORMAT = "{:.0f}%"
 SYNTENY_LINK_LABEL_FONT_SIZE = 8.0
 SYNTENY_LINK_LABEL_WHITE_FROM = 80.0     # identity (%) from which the ribbon is dark enough for white text
 SYNTENY_LINK_LABEL_LEVELS = (0.0, 0.55, -0.55)   # y offsets (data units) tried to keep labels apart
-# Secondary links (a further hit of a gene that already has its one-to-one match): dashed outline on top
-SYNTENY_SECONDARY_EDGE_COLOR = "#4D4D4D"
-SYNTENY_SECONDARY_EDGE_LW = 0.9
-SYNTENY_SECONDARY_EDGE_STYLE = (0, (3, 2))
-SYNTENY_SECONDARY_LABEL_BOX_ALPHA = 0.85
 SYNTENY_PDF_DIR = "synteny_pdf"
 SYNTENY_FILE_TEMPLATE = "{cgc}_{pul}-syntenic.{ext}"
 DBCAN_PUL_DIR = "dbCAN-PUL"
