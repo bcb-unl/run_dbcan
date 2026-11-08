@@ -65,9 +65,6 @@ HMM_SIGNATURE_SOURCES = frozenset({'STP', 'TF_fungi'})
 MEROPS_PEPTIDASE_ID_PATTERN = r"^[A-HJ-Z]\d+[A-Z]?\.[A-Za-z0-9]+$"
 MEROPS_INHIBITOR_ID_PATTERN = r"^I\d+[A-Z]?\.[A-Za-z0-9]+$"
 
-# Signature sources whose hits are domains (coordinates comparable with dbCAN domains):
-# STP / TF HMM domains and MEROPS peptidase units (pepunit.lib).
-DOMAIN_LEVEL_SIGNATURE_SOURCES = frozenset({'STP', 'TF_fungi', 'Peptidase'})
 # Full-length protein databases (TCDB, prokaryotic TF DIAMOND, SulfAtlas): a hit labels the whole
 # protein and its position cannot be compared with a domain. On a protein that is a CGC CAZyme these
 # labels are dropped from cgc.gff (they stay in total_cgc_info.tsv): the CAZyme annotation wins.
@@ -78,6 +75,3 @@ FULL_LENGTH_SIGNATURE_SOURCES = frozenset({'TC', 'TF_prok', 'Sulfatase'})
 FULL_LENGTH_SOURCE_PRIORITY = ('TC', 'TF_prok', 'Sulfatase')
 # total_cgc_info.tsv column (last) with the DIAMOND bit score of a hit; empty for HMM sources.
 SIGNATURE_BITSCORE_COLUMN = 'Bitscore'
-# A domain-level signature on a CAZyme domain (overlap > this fraction of the shorter
-# interval) describes the same region and is not an extra CGC signature.
-SAME_REGION_OVERLAP_THRESHOLD = 0.5

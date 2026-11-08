@@ -23,33 +23,40 @@ Workflow
 The assembly-free workflow consists of the following main steps:
 
 1. **Quality Control** (FastQC + TrimGalore)
+
    - FastQC quality assessment of raw sequencing reads
    - TrimGalore adapter trimming and quality filtering
 
 2. **Taxonomic Filtering** (Kraken2, optional)
+
    - Taxonomic classification using Kraken2
    - Extraction of reads matching specified taxonomy (default: human reads, tax ID 9606)
    - Can be skipped with ``--skip_kraken_extraction``
 
 3. **Read Conversion** (seqtk seq)
+
    - Convert FASTQ reads to FASTA format
    - Handles both paired-end and single-end reads
 
 4. **CAZyme Search** (DIAMOND blastx)
+
    - Direct alignment of reads against CAZy DIAMOND database
    - Fast protein search using DIAMOND's optimized algorithm
    - Automatic download of CAZy database if not provided
 
 5. **Abundance Calculation** (dbcan_asmfree)
+
    - Read-level abundance calculation
    - CAZyme family and subfamily abundance
-   - Gene-level abundance estimation
+   - EC and substrate abundance (from the subfamilies)
 
 6. **Visualization** (dbcan_plot)
+
    - Generation of abundance plots and heatmaps
    - CAZyme family distribution plots
 
 7. **Report Generation** (MultiQC)
+
    - Aggregated quality control and analysis reports
 
 Usage
@@ -121,12 +128,14 @@ Read Conversion
 ~~~~~~~~~~~~~~~
 
 - ``seqtk/``
+
   - ``*.fasta``: Converted FASTA files from FASTQ reads
 
 CAZyme Search
 ~~~~~~~~~~~~~
 
 - ``diamond/``
+
   - ``*.out``: DIAMOND blastx output files
   - ``*.out.tc``: DIAMOND output with taxonomy classification
 
@@ -134,18 +143,20 @@ Abundance Calculation
 ~~~~~~~~~~~~~~~~~~~~~
 
 - ``dbcan_asmfree_cal_abund/``
+
   - ``*_abund/``: Abundance calculation results
   
     Files in this directory:
     
-    - ``*_abund.txt``: CAZyme abundance values
-    - ``*_family_abund.txt``: Family-level abundance
-    - ``*_subfamily_abund.txt``: Subfamily-level abundance
+    - ``fam_abund.out``, ``subfam_abund.out``: family and subfamily abundance
+    - ``EC_abund.out``: EC abundance
+    - ``substrate_abund.out``: substrate abundance (also linked as ``fam_substrate_abund.out`` for ``dbcan_plot``)
 
 Visualization
 ~~~~~~~~~~~~~
 
 - ``dbcan_plot/``
+
   - ``*_pdf/``: Visualization plots
   
     Files in this directory:

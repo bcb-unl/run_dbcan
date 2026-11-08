@@ -1,187 +1,102 @@
 .. _cgc-finder:
 
-CAZyme Gene Cluster (CGC) Identification
-========================================
+CGC Identification (``cgc_finder``)
+===================================
 
-Introduction
----------------
-
-After preparing the CGC annotation information and generating a ``cgc.gff`` file, the next step is to identify CAZyme Gene Clusters (CGCs) in your genome. The ``cgc_finder`` command analyzes the annotated genes to detect clusters involved in carbohydrate metabolism.
-
-Basic Usage
---------------
-
-Once the ``cgc.gff`` file is created (automatically saved in your output directory), you can run the CGC finder:
+Step 3 of the pipeline. ``cgc_finder`` reads ``cgc.gff`` (written by ``gff_process``) and reports every group of
+neighbouring CAZymes and signature genes that passes the CGC rules.
 
 .. code-block:: shell
-   :caption: Basic CGC Finder Usage
-   :emphasize-lines: 1
 
-   run_dbcan cgc_finder --output_dir <OUTPUT_DIRECTORY>
+   run_dbcan cgc_finder --output_dir output_EscheriaColiK12MG1655_fna
 
-Examples for Different Genome Types
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Output: ``cgc_standard_out.tsv`` (one row per gene of each CGC) and ``cgc_standard_out_summary.tsv`` (one row per
+CGC: gene counts per type and length). ``cgc.gff`` is not modified.
 
-.. code-block:: shell
-   :caption: Prokaryotic protein analysis
+CGC rules
+---------
 
-   run_dbcan cgc_finder --output_dir output_EscheriaColiK12MG1655_faa
+.. _cgc-rules-figure:
 
-.. code-block:: shell
-   :caption: Prokaryotic genome analysis
+.. figure:: ../_static/img/figures/cgc_rules.png
+   :width: 100%
+   :alt: How cgc_finder joins CAZymes and signature genes into CGCs, and how gff_process labels the genes
 
-   run_dbcan cgc_finder --output_dir output_EscheriaColiK12MG1655_fna/
+   **A** default joining rule; **B** each gene counts once, by its final Gene Type: a CAZyme with an STP domain does
+   not fill the STP role; **C** how :ref:`gff_process <cgc-information-generation>` chooses the labels of a gene in
+   ``cgc.gff``, and the ``Gene Type`` priority. Gene colours as in the run_dbcan CGC plots.
 
-.. code-block:: shell
-   :caption: Fungal protein analysis
+#. **Signature genes**: CAZymes (``#ofTools`` >= 2) and genes whose Gene Type is one of the ``--additional_genes``
+   types (default ``TC``). All other genes, including TF/STP genes that are not listed, count as null genes.
+#. **Joining**: on each contig, consecutive signature genes are joined while at most ``--num_null_gene`` (2) null
+   genes lie between them. ``--use_distance`` also requires them to be at most ``--base_pair_distance`` (15000 bp)
+   apart; ``--no-use_null_genes`` drops the gene-count rule.
+#. **Validation**: a candidate is a CGC when it has >= ``--min_cluster_genes`` (2) genes, >= ``--min_core_cazyme``
+   (1) CAZymes and the additional types (``--additional_logic all``: every listed type; ``any``: at least
+   ``--additional_min_categories``). With the defaults: at least one CAZyme **and** one transporter.
+#. **Each gene counts once, by its final Gene Type**: the ``Gene Type`` column, one type per gene by priority
+   CAZyme > TC > TF > STP > Sulfatase > Peptidase. Its other labels stay in ``Gene Annotation`` but fill no role:
+   a ``CAZyme|GH13+STP|...`` gene is a CAZyme, never the STP, and ``TC|...+STP|...`` is a TC only.
 
-   run_dbcan cgc_finder --output_dir output_Xylona_heveae_TC161_faa/
-
-.. code-block:: shell
-   :caption: JGI protein catalog analysis
-
-   run_dbcan cgc_finder --output_dir output_Xylhe1_faa/
-
-CGC Prediction Rules
-------------------------
-
-``cgc_finder`` reads ``cgc.gff``. Genes annotated as ``CAZyme`` (proteins with ``#ofTools`` >= 2 in ``overview.tsv``)
-are core signature genes; genes annotated with one of the ``--additional_genes`` types (default: ``TC``; the type is
-the part before ``|`` of each ``+``-separated label, matched exactly) are additional signature genes. On each contig, consecutive signature genes are joined into one candidate cluster
-as long as the following rules hold:
-
-1. **Null Gene Search** (Default, ``--use_null_genes``)
-
-   At most ``--num_null_gene`` (default: 2) non-signature genes may lie between two consecutive signature genes.
-
-2. **Distance-Based Search** (AntiSMASH-like, off by default, ``--use_distance``)
-
-   The distance between two consecutive signature genes must not exceed ``--base_pair_distance`` (default: 15000 bp).
-
-A candidate is reported as a CGC only if it has at least ``--min_cluster_genes`` genes (default: 2), at least
-``--min_core_cazyme`` CAZymes (default: 1), and the required additional gene types: with ``--additional_logic all``
-(default) every listed type must be present; with ``any``, at least ``--additional_min_categories`` types.
-With the defaults, a CGC therefore needs at least one CAZyme and one transporter (TC).
-
-Genes with several labels (for example ``CAZyme|GH13_31+TC|8.A.9.1.1``) are handled as follows:
-
-* **One gene, one role.** The core CAZyme(s) and each required additional type must come from *different* genes.
-  A single CAZyme+TC gene cannot be both the CAZyme and the transporter of a CGC; it can be the transporter next to
-  another CAZyme, or the CAZyme next to another transporter.
-* **Same region.** A domain-level label (MEROPS peptidase unit, STP or fungal TF HMM domain) that overlaps a CAZyme
-  domain of the same protein by more than 50% of the shorter interval is treated as the same domain classified by
-  two databases (for example CE1 and peptidase family S09 on an alpha/beta-hydrolase) and does not count as an
-  additional signature; the protein counts as a CAZyme only. The label stays in ``cgc.gff`` and
-  ``cgc_standard_out.tsv``. TC, TF (DIAMOND) and sulfatase labels come from full-length protein databases and are
-  never compared by coordinates. E-values of different databases are not compared.
-
-.. note::
-
-   You can use either rule individually or combine both for stricter CGC prediction criteria.
-   ``--extend_mode bp`` or ``--extend_mode gene`` (with ``--extend_bp`` / ``--extend_gene_count``) adds flanking
-   genes to each reported CGC after detection. CGCs are detected (and validated) on their core genes first; the
-   extensions are then trimmed so that every gene belongs to at most one CGC: an extension stops before the core of
-   the neighbouring CGC, and a gene that both neighbouring extensions would reach goes to the CGC whose core is
-   nearer in genes (a tie goes to the upstream CGC). Extended genes do not count for the CGC rules.
-
-Advanced Usage
-------------------
-
-To customize CGC prediction parameters:
-
-.. code-block:: shell
-   :caption: Advanced CGC prediction with custom parameters
-   :emphasize-lines: 1
-
-   run_dbcan cgc_finder --output_dir output_dir --use_null_genes --num_null_gene 5 --use_distance --base_pair_distance 15000 --additional_genes TC --additional_genes TF --additional_genes STP
-
-Key Parameters
-~~~~~~~~~~~~~~~~
+Options
+-------
 
 .. list-table::
-   :widths: 30 70
+   :widths: 40 60
    :header-rows: 1
 
-   * - Parameter
-     - Description
-   * - ``--output_dir``
-     - Directory containing the ``cgc.gff`` file and for output files. It is generated from the ``CGC_information_generation`` step.
-   * - ``--use_null_genes`` / ``--no-use_null_genes``
-     - Enable (default) or disable the null gene rule
-   * - ``--num_null_gene``
-     - Maximum number of consecutive non-signature genes allowed (default: 2)
-   * - ``--use_distance``
-     - Enable the distance-based rule (flag, off by default)
-   * - ``--base_pair_distance``
-     - Maximum distance (bp) between signature genes (default: 15000; only used with ``--use_distance``)
+   * - Option
+     - Description (default)
    * - ``--additional_genes``
-     - Types of additional genes required (default: ``TC``). Repeat the option for several types. Types written by
-       ``gff_process``: ``TC`` (transporter), ``TF`` (transcription factor), ``STP`` (signal transduction protein),
-       ``Sulfatase``, ``Peptidase``
+     - Required signature types besides CAZyme, matched against the Gene Type (any case); repeat for several:
+       ``TC``, ``TF``, ``STP``, ``Sulfatase``, ``Peptidase`` (``TC``)
    * - ``--additional_logic`` / ``--additional_min_categories``
-     - ``all`` (default): every listed type is required; ``any``: at least ``--additional_min_categories`` types
+     - ``all`` = every listed type, ``any`` = at least N types (``all`` / 1)
+   * - ``--num_null_gene``
+     - Maximum null genes between two signature genes (2)
+   * - ``--use_null_genes`` / ``--no-use_null_genes``
+     - Use the null-gene rule (on)
+   * - ``--use_distance`` / ``--base_pair_distance``
+     - Also require a maximum distance in bp (off / 15000)
    * - ``--min_core_cazyme`` / ``--min_cluster_genes``
-     - Minimum number of CAZymes (default: 1) and of genes (default: 2) in a CGC
+     - Minimum CAZymes (1) and genes (2) per CGC
+   * - ``--extend_mode none|bp|gene``
+     - Add flanking genes after detection, with ``--extend_bp`` or ``--extend_gene_count`` (``none``)
 
-.. hint::
-   **CAZyme Gene Pairs**
+.. code-block:: shell
 
-   You can set ``--additional_genes`` with `CAZyme` and it will generate CGCs that include CAZyme pairs. This is useful for cases where you want to ensure that certain CAZymes are always included in the same cluster. For example, if you want to include a glycoside hydrolase (GH) and a glycosyltransferase (GT) together, you can specify `CAZyme` in the `--additional_genes` parameter.
-
-   **Additional Gene Types**
-
-   You can specify multiple additional gene types using the ``--additional_genes`` parameter:
-
-   * Using multiple parameters: ``--additional_genes TC --additional_genes TF``
-
-   **Peptidases, Sulfatases and Custom Gene Types**
-
-   ``gff_process`` also annotates peptidases (MEROPS) and sulfatases (SulfAtlas), so ``--additional_genes Peptidase`` and
-   ``--additional_genes Sulfatase`` work without extra steps. Other gene types require:
-
-   1. Annotating these functions in your genome.
-   2. Manually updating the ``CGC_annotation`` attribute in ``cgc.gff`` to include these annotations.
-
-   **Non-coding Elements**
-
-   While tRNAs and other non-coding genes are included in the ``cgc.gff`` file, they are not considered formal components of CAZyme Gene Clusters (considered as null genes). You can include them using the ``--additional_genes`` parameter if needed for your analysis, but this deviates from standard CGC definitions.
-
-
-Output Files
--------------
-
-The CGC finder generates several output files:
-
-* ``cgc_standard_out.tsv`` - One row per gene in each identified CGC (CGC ID, gene type, contig, protein ID, coordinates, strand, annotation).
-* ``cgc_standard_out_summary.tsv`` - One row per CGC with gene counts per type and the CGC length.
-
-``cgc_finder`` reads ``cgc.gff`` (written by ``gff_process``) and does not modify it.
+   # looser: any of TC, TF, STP; up to 5 null genes; and at most 15 kb apart
+   run_dbcan cgc_finder --output_dir output_dir --num_null_gene 5 --use_distance --base_pair_distance 15000 \
+     --additional_genes TC --additional_genes TF --additional_genes STP --additional_logic any
 
 .. note::
 
-   ``--feature_type`` is deprecated: it is hidden from ``--help`` and ignored (a warning is logged when it is
-   given). ``cgc_finder`` uses every gene of ``cgc.gff``; the feature type (``CDS`` or ``gene``) of each GFF dialect
-   is chosen by ``gff_process`` from ``--gff_type``.
+   * **CAZyme pairs**: ``--additional_genes CAZyme`` (alone) reports clusters of >= 2 CAZymes; all other genes then
+     count as null genes. Next to other types, ``CAZyme`` asks for one CAZyme more than ``--min_core_cazyme``.
+   * **Extensions** (``--extend_mode``) are added after the CGCs are found and do not count for the rules. They stop
+     before the core of a neighbouring CGC; a gene both extensions would reach goes to the CGC whose core is nearer
+     (ties: upstream CGC), so no gene is in two CGCs.
+   * **Custom types**: add your own label to the ``CGC_annotation`` attribute of ``cgc.gff`` (``<Type>|<name>``)
+     and list it in ``--additional_genes``. tRNAs and other non-coding genes are null genes unless listed.
+   * ``--feature_type`` is deprecated and ignored: the GFF feature type is chosen by ``gff_process`` from
+     ``--gff_type``.
+
+No CGC found? See the checklist in :doc:`../FAQ/troubleshooting`.
 
 Annotating null genes with Pfam (optional)
--------------------------------------------
+------------------------------------------
 
-``Pfam_null_cgc`` searches Pfam-A domains with pyHMMER and adds them to genes that have no signature annotation
-(``null``) inside CGCs. It needs ``Pfam-A.hmm`` in ``--db_dir``; this file is **not** downloaded by
-``run_dbcan database`` (see :doc:`prepare_the_database`).
+``Pfam_null_cgc`` adds Pfam-A domains (pyHMMER) to the null genes of the CGCs. It needs ``Pfam-A.hmm`` in
+``--db_dir``, which ``run_dbcan database`` does **not** download (see :doc:`prepare_the_database`).
 
 .. code-block:: shell
 
    run_dbcan Pfam_null_cgc --output_dir output_dir --db_dir db --null_from_gff
 
-With ``--null_from_gff``, the proteins of all ``null`` genes in ``cgc.gff`` are written to ``null_proteins.faa``
-and only these are searched; without it, all proteins in ``uniInput.faa`` are searched, which is slower. The hits
-(``Pfam_hmm_results.tsv``) are then added to the null genes in new copies of the CGC files:
-``cgc_standard_out.pfam_annotated.tsv`` and ``cgc.pfam_annotated.gff``. ``Pfam_null_cgc`` always runs the Pfam
-search; the old ``--run_pfam`` flag is still accepted but ignored.
+* ``--null_from_gff`` searches only the proteins of all ``null`` genes of ``cgc.gff`` (``null_proteins.faa``);
+  without it all of ``uniInput.faa`` is searched (slower). ``--e_value_threshold_pfam`` (1e-4) and
+  ``--coverage_threshold_pfam`` (0.35 of the HMM) filter the hits.
+* Outputs: ``Pfam_hmm_results.tsv``, ``cgc_standard_out.pfam_annotated.tsv`` and ``cgc.pfam_annotated.gff``.
+* The old ``--run_pfam`` flag is accepted and ignored.
 
-.. admonition:: Next Steps
-
-   After identifying CAZyme gene clusters, you can proceed to substrate prediction for those CGCs :doc:`Substrate Prediction <predict_CGC_substrate>`. This step will help you understand the potential substrates that these clusters can act upon.
-   You can also proceed to :doc:`Visualizing CGCs <CGC_plots>` to create graphical visualization of your CGCs on the genome.
-
+Next: :doc:`predict_CGC_substrate` (step 4) or :doc:`CGC_plots`.

@@ -28,7 +28,7 @@ GFF_COLUMNS = base_constants.GFF_COLUMNS
 IS_CORE_COLUMN = 'is_core'
 IS_ADDITIONAL_COLUMN = 'is_additional'
 IS_SIGNATURE_COLUMN = 'is_signature'
-ADDITIONAL_CATEGORIES_COLUMN = 'additional_categories'
+GENE_ROLE_COLUMN = 'gene_role'   # the gene's final Gene Type: the only CGC role it can fill
 
 # GFF file attribute names
 CGC_ANNOTATION_ATTR = base_constants.CGC_ANNOTATION_COLUMN

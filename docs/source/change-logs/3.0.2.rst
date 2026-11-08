@@ -3,11 +3,11 @@
 
 .. rubric:: Feature
 
-#. Added the `eCAMI <https://academic.oup.com/bioinformatics/article/36/7/2068/5651014>`_ tool and removed `Hotpep`.
+#. Added the `eCAMI <https://academic.oup.com/bioinformatics/article/36/7/2068/5651014>`_ tool and removed ``Hotpep``.
 #. Changed the format of ``cgc.out`` to make it easy to read.
 #. Re-arranged the code. The command line is ``run_dbcan`` now without the suffix ``.py``.
 #. The database files under db folder is now hosted through ``Git-LFS``. To download the complete db files, please use the command ``git lfs pull``
-   (Note: To use git lfs, please check the installation guide at https://git-lfs.github.com/).
+   (to use Git LFS, see the `installation guide <https://git-lfs.github.com/>`_).
 #. ``Dockerfile`` is updated and we simplify the installation step.
 
 .. rubric:: BugFix

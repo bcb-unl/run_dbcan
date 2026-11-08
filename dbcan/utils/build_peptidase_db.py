@@ -9,13 +9,14 @@ Steps:
 1. Parse each pepunit.lib header. The MEROPS identifier is the bracketed token right before
    ``#<family>#{<type> unit: ...}`` (the *last* one: names and organisms can contain brackets,
    e.g. ``[misleading]`` or ``([Clostridium] irregulare)``).
-2. Leave out inhibitor units (``{inhibitor unit: ...}`` or an ``I`` family), entries whose
-   identifier does not match the Peptidase signature pattern
+2. Leave out entries whose identifier does not match the Peptidase signature pattern
    (``process_utils_constants.MEROPS_PEPTIDASE_ID_PATTERN``), entries without a valid
    ``MER`` accession or without sequence, and exact duplicates (same MEROPS identifier and
-   same sequence; the first accession is kept). ``--keep-inhibitors`` keeps inhibitor units with a
-   valid ``I`` identifier as decoys: run_dbcan drops hits to them, but with --max-target-seqs 1
-   they stop a protein whose best match is an inhibitor from taking a weaker peptidase hit.
+   same sequence; the first accession is kept). Inhibitor units (``{inhibitor unit: ...}`` or an
+   ``I`` family) with a valid ``I`` identifier are kept as decoys by default (CLI
+   ``--keep-inhibitors``; ``--drop-inhibitors`` leaves them out): run_dbcan drops hits to them, but
+   with --max-target-seqs 1 they stop a protein whose best match is an inhibitor from taking a
+   weaker peptidase hit.
 3. Write ``>MER0000001|S01.152`` records (PeptidaseDiamondProcessor reports the part after
    ``|`` as ``Peptidase ID``) and run ``diamond makedb`` (``--no-makedb`` skips it).
 """
@@ -250,8 +251,9 @@ def _log_summary(summary: BuildSummary, fasta_path: Path) -> None:
 
 @click.command(help=(
     "Rebuild peptidase_db.dmnd from MEROPS pepunit.lib: keep peptidase units with a valid MEROPS "
-    "identifier, drop inhibitor units, malformed entries and exact duplicates, then run "
-    "'diamond makedb'. See the 'Prepare the database' page of the documentation."
+    "identifier and inhibitor units as decoys (--drop-inhibitors leaves them out), drop malformed "
+    "entries and exact duplicates, then run 'diamond makedb'. See the 'Prepare the database' page "
+    "of the documentation."
 ))
 @build_peptidase_db_options
 def cli(**kwargs):
