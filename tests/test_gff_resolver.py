@@ -87,6 +87,10 @@ def test_isoform_annotated_as_cazyme_is_preferred():
     res = resolve_gff(FX / "braker.gff3", "BRAKER", ids,
                       annotations={"g75.t1": "TC|2.A.1.1.1", "g75.t2": "CAZyme|GH5"})
     assert [r.protein_id for r in res.rows if r.gene_id == "g75"] == ["g75.t2"]
+    # both isoforms are CAZymes: the longest CDS wins, even if the shorter one has an extra hit
+    res = resolve_gff(FX / "braker.gff3", "BRAKER", ids,
+                      annotations={"g75.t1": "CAZyme|GH5", "g75.t2": "CAZyme|GH5+TC|9.B.464.1.2"})
+    assert [r.protein_id for r in res.rows if r.gene_id == "g75"] == ["g75.t1"]
 
 
 def test_ncbi_euk_parity_cgc_gff_byte_identical(tmp_path):

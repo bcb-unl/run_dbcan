@@ -424,15 +424,17 @@ def _candidate_keys(tr: _Transcript, profile) -> List[Tuple[str, str]]:
 
 
 def _isoform_score(tr: _Transcript, pid: Optional[str], annotations: Optional[Dict[str, str]]):
-    has_cazyme, n_sig = 0, 0
+    """Isoform choice: has a protein > annotated as CAZyme > annotated as another CGC signature >
+    longest CDS > first in the file. The number of signatures is not counted: a shorter isoform
+    can pick up an extra (coverage-based) hit, which must not outweigh the longest CDS."""
+    has_cazyme = has_sig = 0
     if pid and annotations:
         ann = annotations.get(pid) or ""
         if ann and ann not in (G.GFF_NULL_ANNOTATION, G.GFF_UNKNOWN_ANNOTATION):
-            parts = [p for p in ann.split("+") if p]
-            n_sig = len(parts)
-            has_cazyme = int(any(p.startswith(G.GFF_CAZYME_PREFIX) for p in parts))
+            has_sig = 1
+            has_cazyme = int(any(p.startswith(G.GFF_CAZYME_PREFIX) for p in ann.split("+")))
     first = tr.cds[0].order if tr.cds else 0
-    return (1 if pid else 0, has_cazyme, n_sig, tr.cds_len, -first)
+    return (1 if pid else 0, has_cazyme, has_sig, tr.cds_len, -first)
 
 
 def _resolve_transcripts(path: Path, gff_type: str, idx: ProteinIndex,
