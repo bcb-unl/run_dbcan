@@ -3,6 +3,8 @@ from dataclasses import fields
 from typing import Any, Dict, Optional
 import psutil
 
+from dbcan.constants.base_constants import GFF_FORMAT_CHOICES, GFF_MIN_MATCH_DEFAULT
+
 
 
 # Utility to create config dataclass from kwargs with optional namespacing
@@ -88,7 +90,14 @@ methods_option = click.option(
 
 # Define group options
 INPUT_RAW_DATA_HELP = 'Path to input sequences (FASTA/FASTA.gz): nucleotide for prok/meta modes, proteins when --mode=protein.'
-MODE_HELP = 'Input type: prok (prokaryote DNA), meta (metagenome DNA), protein (amino-acid FASTA).'
+MODE_HELP = (
+    'Input type. prok: a bacterial/archaeal genome (DNA; genes predicted with pyrodigal). '
+    'meta: a metagenome assembly (DNA; pyrodigal in metagenome mode). '
+    'protein: any proteome (amino-acid FASTA), including fungi and other eukaryotes annotated with '
+    'funannotate, BRAKER, NCBI or JGI; for CGCs also pass that annotation with --input_gff and --gff_type. '
+    'pyrodigal is prokaryote-only: do not use prok/meta for fungal or other eukaryotic genomes.'
+)
+MODE_CHOICES = ('prok', 'meta', 'protein')
 
 
 def input_options(func):
@@ -103,6 +112,7 @@ def input_options(func):
         default='prok',
         required=True,
         show_default=True,
+        type=click.Choice(MODE_CHOICES, case_sensitive=False),
         help=MODE_HELP,
     )(func)
     return func
@@ -522,20 +532,46 @@ def pyhmmer_pfam(func):
     )(func)
     return func
 
+GFF_TYPE_CHOICES = GFF_FORMAT_CHOICES
+GFF_TYPE_HELP = (
+    "How genes of --input_gff are linked to protein IDs (case-insensitive). "
+    "prodigal: pyrodigal/Prodigal GFF (ID of each row). "
+    "NCBI_prok: NCBI prokaryote GFF3 (gene -> CDS protein_id). "
+    "NCBI_euk: NCBI eukaryote GFF3 (gene -> mRNA -> CDS protein_id). "
+    "JGI: JGI MycoCosm GFF3 (gene proteinId). "
+    "funannotate: funannotate/funannotate2 GFF3 (proteins named by mRNA ID, e.g. FUN_000001-T1). "
+    "BRAKER: BRAKER/AUGUSTUS GFF3 (gene -> mRNA or transcript -> CDS; proteins g1.t1). "
+    "GFF3: any other gene -> mRNA/transcript -> CDS GFF3 (Helixer, Ensembl, gffread, ...). "
+    "GTF: GTF with gene_id/transcript_id (AUGUSTUS/BRAKER .gtf, NCBI/Ensembl GTF). "
+    "Required with --mode protein; defaults to prodigal for the pyrodigal GFF of prok/meta mode."
+)
+
+
 def cgc_gff_option(func):
     func = click.option(
         '--input_gff',
         required=False,
         default=None,
         type=click.Path(),
-        help='Annotation GFF. Required when --mode=protein; otherwise defaults to <output_dir>/uniInput.gff.',
+        help='Annotation GFF3/GTF of the proteins. Required when --mode=protein; otherwise defaults to <output_dir>/uniInput.gff.',
     )(func)
     func = click.option(
         '--gff_type',
         required=False,
         default=None,
-        type=str,
-        help="GFF dialect label (e.g. prodigal, NCBI_prok). When --mode!=protein defaults to 'prodigal' if unset.",
+        type=click.Choice(GFF_TYPE_CHOICES, case_sensitive=False),
+        help=GFF_TYPE_HELP,
+    )(func)
+    func = click.option(
+        '--gff_min_match',
+        type=click.FloatRange(0.0, 1.0),
+        default=GFF_MIN_MATCH_DEFAULT,
+        show_default=True,
+        help=(
+            'Stop with an error when fewer than this fraction of the protein-coding genes of --input_gff '
+            'can be matched to a protein of the FASTA (wrong --gff_type or wrong file). Every gene is listed in '
+            '<output_dir>/gff_resolution.tsv. 0 disables the check.'
+        ),
     )(func)
     func = click.option(
         '--prodigal-gff-streaming',

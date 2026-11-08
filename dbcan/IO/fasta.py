@@ -6,13 +6,18 @@ import pyrodigal
 import contextlib
 import gzip
 from Bio import SeqIO
+from Bio.Seq import Seq
 import re
 import shutil
 import tempfile
 from io import StringIO
 
 from dbcan.configs.base_config import GeneralConfig
-from dbcan.constants.base_constants import INPUT_PROTEIN_NAME, INPUT_PRODIGAL_GFF_NAME
+from dbcan.constants.base_constants import (
+    INPUT_PROTEIN_NAME, INPUT_PRODIGAL_GFF_NAME,
+    EUK_WARN_MIN_GENES, EUK_WARN_MEDIAN_AA, EUK_WARN_SHORT_AA, EUK_WARN_SHORT_FRACTION,
+    PROTEIN_STOP_CHARS, PROTEIN_UNKNOWN_AA,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +152,7 @@ class ProkProcessor(BaseProcessor):
 
             # Second pass: process sequences streamingly
             genes_found = 0
+            complete_lengths = []  # protein lengths (aa) of complete genes, for the eukaryote check
             sequence_count = 0
             
             with self.output_faa_path.open('w') as prot_file, self.output_gff_path.open('w') as gff_file:
@@ -190,6 +196,7 @@ class ProkProcessor(BaseProcessor):
                                 else:
                                     prot_file.write(line)
                             genes_found += len(genes)
+                            _collect_complete_lengths(genes, complete_lengths)
                         
                         # Clear batch
                         batch = []
@@ -215,8 +222,10 @@ class ProkProcessor(BaseProcessor):
                             else:
                                 prot_file.write(line)
                         genes_found += len(genes)
+                        _collect_complete_lengths(genes, complete_lengths)
 
             logger.info(f"Processed {sequence_count} sequences, found {genes_found} genes")
+            warn_if_eukaryotic_proteome(complete_lengths)
 
             if not self._verify_output(self.output_faa_path):
                 return None, None
@@ -228,6 +237,55 @@ class ProkProcessor(BaseProcessor):
         except Exception as e:
             logger.exception(f"Error processing {processor_type} genome: {str(e)}")
             return None, None
+
+
+def _collect_complete_lengths(genes, out: list) -> None:
+    """Append the protein length (aa, without stop) of every gene with both ends on the contig."""
+    for g in genes:
+        if getattr(g, "partial_begin", False) or getattr(g, "partial_end", False):
+            continue
+        out.append((g.end - g.begin + 1) // 3 - 1)
+
+
+def warn_if_eukaryotic_proteome(lengths) -> bool:
+    """Log a WARNING when pyrodigal proteins look like a eukaryotic genome split at introns.
+
+    pyrodigal cannot model introns: on a fungal genome it predicts many short single-exon ORFs
+    (Xylona heveae: median 105 aa, 46% < 100 aa; E. coli: median 282 aa, 10% < 100 aa).
+    Returns True when the warning was logged. The run is not stopped.
+    """
+    n = len(lengths)
+    if n < EUK_WARN_MIN_GENES:
+        return False
+    ordered = sorted(lengths)
+    median = ordered[n // 2] if n % 2 else (ordered[n // 2 - 1] + ordered[n // 2]) / 2
+    short = sum(1 for x in ordered if x < EUK_WARN_SHORT_AA) / n
+    if median < EUK_WARN_MEDIAN_AA and short > EUK_WARN_SHORT_FRACTION:
+        logger.warning(
+            f"pyrodigal proteins look like a eukaryotic genome split at introns: median {median:.0f} aa, "
+            f"{100 * short:.0f}% shorter than {EUK_WARN_SHORT_AA} aa ({n} complete genes; bacteria are typically "
+            f"~250-300 aa and ~10%). --mode prok/meta (pyrodigal) is for bacteria, archaea and metagenomes only. "
+            "For a fungal or other eukaryotic genome, annotate it with funannotate/funannotate2 or BRAKER "
+            "(or use the NCBI/JGI annotation) and run --mode protein on its proteins, with --input_gff and "
+            "--gff_type funannotate/BRAKER/GFF3/GTF/NCBI_euk/JGI for CGCs."
+        )
+        return True
+    return False
+
+
+def clean_protein_sequence(seq: str):
+    """Make a protein sequence acceptable to DIAMOND: strip trailing stop symbols ('*' or '.',
+    as written by gffread -y) and replace internal ones with 'X'.
+
+    Returns (sequence, trailing_stripped, n_internal_replaced).
+    """
+    stripped = seq.rstrip(PROTEIN_STOP_CHARS)
+    trailing = len(stripped) != len(seq)
+    internal = sum(stripped.count(c) for c in PROTEIN_STOP_CHARS)
+    if internal:
+        for c in PROTEIN_STOP_CHARS:
+            stripped = stripped.replace(c, PROTEIN_UNKNOWN_AA)
+    return stripped, trailing, internal
 
 
 class MetaProcessor(ProkProcessor):
@@ -252,6 +310,8 @@ class ProteinProcessor(BaseProcessor):
             opener = gzip.open if input_path.suffix == '.gz' else open
 
             record_count = 0
+            n_trailing = 0
+            n_internal = 0
             logger.info(f"Reading protein sequences from {input_path}")
 
             with opener(input_path, "rt") as input_handle, self.output_faa_path.open("w") as output_handle:
@@ -263,6 +323,13 @@ class ProteinProcessor(BaseProcessor):
                         clean_id = raw_id
                     record.id = clean_id
                     record.description = ''
+                    seq, trailing, internal = clean_protein_sequence(str(record.seq))
+                    if trailing:
+                        n_trailing += 1
+                    if internal:
+                        n_internal += 1
+                    if trailing or internal:
+                        record.seq = Seq(seq)
                     SeqIO.write(record, output_handle, "fasta")
                     record_count += 1
 
@@ -270,6 +337,12 @@ class ProteinProcessor(BaseProcessor):
                 logger.warning(f"No valid protein sequences found in {input_path}")
                 return None
 
+            if n_trailing or n_internal:
+                logger.info(
+                    f"Protein FASTA cleaning: removed a trailing stop ('*' or '.') from {n_trailing} sequences; "
+                    f"replaced internal stops ('*' or '.') with 'X' in {n_internal} sequences "
+                    "(DIAMOND rejects '.', e.g. from gffread -y without -S)."
+                )
             logger.info(f"Processed {record_count} protein sequences to {self.output_faa_path}")
 
             if not self._verify_output(self.output_faa_path):

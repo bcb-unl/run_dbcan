@@ -48,10 +48,45 @@ def _resolve_tf_route(kwargs):
     )
 
 
+def _gff_type_choices() -> str:
+    from dbcan.constants.base_constants import GFF_FORMAT_CHOICES
+    return ", ".join(GFF_FORMAT_CHOICES)
+
+
 def _require_gff_for_protein_mode(kwargs):
-    """easy_* commands: protein input has no pyrodigal GFF, so --input_gff is needed for steps 2-3."""
-    if kwargs.get('mode') == 'protein' and not kwargs.get('input_gff'):
-        raise click.UsageError("--input_gff (and --gff_type) is required when --mode=protein")
+    """easy_* commands: protein input has no pyrodigal GFF, so --input_gff and --gff_type are
+    needed for steps 2-3 (no silent prodigal default: the GFF comes from another tool)."""
+    mode = str(kwargs.get('mode') or '').lower()
+    if mode == 'protein' and not kwargs.get('input_gff'):
+        raise click.UsageError(
+            "--input_gff and --gff_type are required when --mode=protein "
+            f"(--gff_type choices: {_gff_type_choices()})"
+        )
+    if kwargs.get('input_gff') and not kwargs.get('gff_type'):
+        raise click.UsageError(
+            f"--gff_type is required with --input_gff (--mode {mode or '?'}). "
+            f"Choose one of: {_gff_type_choices()}"
+        )
+
+
+def _precheck_protein_gff(kwargs):
+    """easy_* with --mode protein --input_gff: match the GFF genes to the input proteins before
+    step 1, so that a wrong --gff_type or GFF fails in seconds, not after the searches."""
+    if str(kwargs.get('mode') or '').lower() != 'protein' or not kwargs.get('input_gff'):
+        return
+    from dbcan.configs.base_config import GFFConfig
+    from dbcan.core import check_gff_protein_match
+    from dbcan.IO.gff_resolver import GffResolutionError
+
+    if not Path(kwargs['input_gff']).is_file():
+        raise click.UsageError(f"GFF file not found: {kwargs['input_gff']}")
+    if not Path(kwargs['input_raw_data']).is_file():
+        raise click.UsageError(f"Input file not found: {kwargs['input_raw_data']}")
+    cfg = create_config(GFFConfig, **kwargs)
+    try:
+        check_gff_protein_match(cfg, protein_fasta=kwargs['input_raw_data'], clean_ids=True)
+    except GffResolutionError as e:
+        raise click.ClickException(f"GFF check failed before step 1.\n{e}")
 
 
 def _invoke_subset(ctx, cmd, all_kwargs):
@@ -159,21 +194,20 @@ def gff_process_cmd(ctx, log_level, log_file, verbose, **kwargs):
     from dbcan.configs.base_config import GFFConfig
     from dbcan.core import run_dbCAN_CGCFinder_preprocess
 
-    mode = kwargs.get('mode', 'prok')
+    auto_gff = Path(kwargs['output_dir']).joinpath('uniInput.gff')
     if not kwargs.get('input_gff'):
-        if mode != 'protein':
-            auto_gff = Path(kwargs['output_dir']).joinpath('uniInput.gff')
-            kwargs['input_gff'] = str(auto_gff)
-            if not kwargs.get('gff_type'):
-                kwargs['gff_type'] = 'prodigal'
-            logging.info(f"[gff_process] Auto-set input_gff={kwargs['input_gff']} gff_type={kwargs['gff_type']} (mode={mode})")
+        kwargs['input_gff'] = str(auto_gff)
+        if not kwargs.get('gff_type'):
+            kwargs['gff_type'] = 'prodigal'
+        logging.info(f"[gff_process] Auto-set input_gff={kwargs['input_gff']} gff_type={kwargs['gff_type']}")
+    elif not kwargs.get('gff_type'):
+        if Path(kwargs['input_gff']).resolve() == auto_gff.resolve():
+            kwargs['gff_type'] = 'prodigal'  # the pyrodigal GFF of prok/meta mode
+            logging.info("[gff_process] Defaulting gff_type=prodigal for uniInput.gff")
         else:
-            raise click.UsageError("--input_gff is required when --mode=protein")
-
-    if not kwargs.get('gff_type'):
-        # Fallback if user gave a custom GFF in non-protein mode but forgot type
-        kwargs['gff_type'] = 'prodigal'
-        logging.info(f"[gff_process] Defaulting gff_type=prodigal")
+            raise click.UsageError(
+                f"--gff_type is required with --input_gff. Choose one of: {_gff_type_choices()}"
+            )
 
     # Fail before the TC/TF/STP/sulfatase/peptidase searches if there is no GFF to annotate.
     # gff_process has no --mode option, so a missing <output_dir>/uniInput.gff usually means
@@ -289,6 +323,7 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, and CGC identification in one step."""
     setup_logging(log_level, log_file, verbose)
     _require_gff_for_protein_mode(kwargs)
+    _precheck_protein_gff(kwargs)
     merged = {
         **kwargs,
         "log_level": log_level,
@@ -333,6 +368,7 @@ def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, CGC identification, and substrate prediction in one step."""
     setup_logging(log_level, log_file, verbose)
     _require_gff_for_protein_mode(kwargs)
+    _precheck_protein_gff(kwargs)
     merged = {
         **kwargs,
         "log_level": log_level,
