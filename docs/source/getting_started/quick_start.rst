@@ -157,8 +157,11 @@ Next, let's identify and analyze CAZyme gene clusters (CGCs).
 
 **Example 3: Eukaryotic Proteome with External GFF**
 
-There is no eukaryotic genome mode; use predicted proteins with ``--mode protein`` and a GFF whose IDs match the
-FASTA headers (see :doc:`../user_guide/CGC_information_generation`).
+There is no eukaryotic genome mode (pyrodigal, used by ``--mode prok``/``meta``, predicts prokaryotic genes only).
+Annotate fungal genomes with funannotate/funannotate2 or BRAKER, or use the NCBI/JGI annotation, and pass its
+proteins with ``--mode protein`` and its GFF with the matching ``--gff_type`` (``funannotate``, ``BRAKER``,
+``GFF3``, ``GTF``, ``NCBI_euk`` or ``JGI``; see :doc:`../user_guide/CGC_information_generation`). Add ``--fungi``
+for the fungal transcription factor HMMs.
 
 .. code-block:: shell
 
