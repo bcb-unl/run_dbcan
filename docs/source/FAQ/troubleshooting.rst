@@ -3,9 +3,8 @@
 Known Limitations and Troubleshooting
 =====================================
 
-This page collects questions that come up frequently on the issue tracker, together with known limitations of the
-current release. Run any command with ``-v`` (or ``--log-level INFO``) and ``--log-file run.log`` to get detailed logs
-when reporting a problem.
+Frequent questions from the issue tracker and known limitations of the current release. When you report a
+problem, add ``-v`` (or ``--log-level INFO``) and ``--log-file run.log`` to the command and attach the log.
 
 Input data
 ----------
@@ -17,6 +16,11 @@ Input data
    with funannotate/funannotate2 or BRAKER (or use the NCBI/JGI annotation), run its proteins with
    ``--mode protein``, and for CGCs pass its GFF3/GTF with ``--input_gff`` and ``--gff_type funannotate``,
    ``BRAKER``, ``GFF3``, ``GTF``, ``NCBI_euk`` or ``JGI``; see :ref:`cgc-information-generation`.
+
+**Do I need a GFF file for protein input?**
+   Only for CGCs. ``CAZyme_annotation --mode protein`` needs only the protein FASTA. For CGC prediction
+   (``gff_process``, ``easy_CGC``, ``easy_substrate``) from proteins, give the GFF of the same annotation with
+   ``--input_gff`` and its ``--gff_type``; DNA input (``prok``/``meta``) uses the pyrodigal GFF automatically.
 
 **cgc_standard_out.tsv is empty / gff_process stops with "protein-coding genes ... were matched".**
    The genes of ``--input_gff`` could not be linked to the protein IDs of the FASTA. ``gff_process`` (and
@@ -85,9 +89,8 @@ CGC prediction
 **No CGC is found (cgc_standard_out.tsv is empty).**
    Check, in this order:
 
-   1. ``cgc.gff`` exists. ``gff_process`` only logs an error when the input GFF is missing. It has no ``--mode``
-      option and defaults to ``<output_dir>/uniInput.gff``, which exists only after a ``prok``/``meta`` run; with
-      protein input always pass ``--input_gff`` and ``--gff_type``.
+   1. ``cgc.gff`` exists. ``gff_process`` has no ``--mode`` option and defaults to ``<output_dir>/uniInput.gff``,
+      which exists only after a ``prok``/``meta`` run; with protein input pass ``--input_gff`` and ``--gff_type``.
    2. Genes are matched to proteins. ``grep -c "protein_id=unknown" cgc.gff`` should be small and
       ``grep -c "CGC_annotation=CAZyme" cgc.gff`` should be greater than zero. Unmatched genes are written silently as
       ``protein_id=unknown``/``CGC_annotation=null``. The attribute used per ``--gff_type`` is listed in

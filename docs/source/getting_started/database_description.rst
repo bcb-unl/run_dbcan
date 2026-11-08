@@ -1,95 +1,56 @@
 Database Description
 ====================
 
-The built-in downloader uses the ``db_current`` HTTP snapshot from ``pro.unl.edu`` by default. This snapshot moves
-when the databases are updated. Use the ``--aws_s3`` flag with the ``run_dbcan database`` command to download the
-pinned S3 release instead, which is faster in many regions and reproducible
-(see :doc:`Preparing Databases <../user_guide/prepare_the_database>` for file sizes and how to record the database version).
-The databases are generally updated annually between July and September.
+``run_dbcan database --db_dir db`` downloads the files below (except the two optional ones) into one folder (see
+:doc:`../user_guide/prepare_the_database` for sizes, download sources and versions). The databases are usually
+updated once a year, between July and September.
 
-The databases used by run_dbCAN are described below.
+.. list-table::
+   :widths: 27 43 30
+   :header-rows: 1
 
-CAZyme Databases
-----------------
+   * - File
+     - Content
+     - Used by
+   * - ``CAZy.dmnd``
+     - CAZy proteins (DIAMOND)
+     - ``CAZyme_annotation``
+   * - ``dbCAN.hmm``
+     - dbCAN family HMMs
+     - ``CAZyme_annotation``
+   * - ``dbCAN-sub.hmm``
+     - dbCAN-sub subfamily HMMs (remote name ``dbCAN_sub.hmm``)
+     - ``CAZyme_annotation``
+   * - ``fam-substrate-mapping.tsv``
+     - CAZy family/EC to substrate table; fills the ``Substrate`` column of ``overview.tsv``
+     - ``CAZyme_annotation``
+   * - ``dbCAN-sub-substrate.tsv`` (optional)
+     - Per-subfamily (Subfamily, EC, Count, Substrate) table of the dbCAN-sub web server; used before
+       ``fam-substrate-mapping.tsv`` when present; not downloaded, copy it into ``--db_dir``
+     - ``CAZyme_annotation``
+   * - ``TCDB.dmnd``
+     - Transporters (TCDB)
+     - ``gff_process`` (TC)
+   * - ``TF.dmnd``
+     - Prokaryotic transcription factors (PRODORIC)
+     - ``gff_process`` (TF, default)
+   * - ``TF.hmm``
+     - Fungal transcription factor HMMs (MycoCosm)
+     - ``gff_process --fungi``
+   * - ``STP.hmm``
+     - Signal transduction protein HMMs
+     - ``gff_process`` (STP)
+   * - ``sulfatlas_db.dmnd``
+     - Sulfatases (SulfAtlas)
+     - ``gff_process`` (Sulfatase)
+   * - ``peptidase_db.dmnd``
+     - MEROPS peptidase units (see :ref:`rebuild-peptidase-db`)
+     - ``gff_process`` (Peptidase)
+   * - ``PUL.dmnd``, ``dbCAN-PUL.xlsx``, ``dbCAN-PUL/``
+     - dbCAN-PUL proteins, their substrates and their gene maps (synteny plots)
+     - ``substrate_prediction``
+   * - ``Pfam-A.hmm`` (optional)
+     - Pfam domains; **not** downloaded by ``run_dbcan database``
+     - ``Pfam_null_cgc``
 
-- DIAMOND database
-
-  - Description: Fast protein alignment database used to identify CAZyme sequences.
-  - Filename: ``CAZy.dmnd``
-
-- dbCAN HMM database
-
-  - Description: HMM profiles for CAZyme families; sensitive identification.
-  - Filename: ``dbCAN.hmm``
-
-- dbCAN-sub HMM database
-
-  - Description: Subfamily-level HMM profiles for fine-grained CAZyme subfamily identification.
-  - Filename: ``dbCAN-sub.hmm`` (published remotely as ``dbCAN_sub.hmm``)
-
-
-CGC Databases
--------------
-
-- Transporter DIAMOND database (from TCDB)
-
-  - Description: Transporter proteins used to identify transporters in CGCs.
-  - Filename: ``TCDB.dmnd``
-
-- Transcription Factor HMM database (fungi, from MycoCosm)
-
-  - Description: HMM profiles for transcription factors used in fungal datasets.
-  - Filename: ``TF.hmm``
-
-- Transcription Factor DIAMOND database (prokaryotes, from PRODORIC)
-
-  - Description: TF protein database used to identify TFs in prokaryotic CGCs.
-  - Filename: ``TF.dmnd``
-
-- Signal Transduction Protein HMM database
-
-  - Description: HMM profiles for signal transduction proteins.
-  - Filename: ``STP.hmm``
-
-- Sulfatase DIAMOND database (from SulfAtlas)
-
-  - Description: Sulfatase protein database used to identify sulfatases.
-  - Filename: ``sulfatlas_db.dmnd``
-
-- Peptidase DIAMOND database (from MEROPS)
-
-  - Description: Peptidase protein database used to identify peptidases.
-  - Filename: ``peptidase_db.dmnd``
-
-- dbCAN-PUL DIAMOND database
-
-  - Description: Polysaccharide Utilization Loci (PUL) protein database for PUL identification.
-  - Filename: ``PUL.dmnd``
-
-- Pfam-A HMM database (optional)
-
-  - Description: Pfam domain HMMs used by ``Pfam_null_cgc`` to annotate null genes inside CGCs.
-  - Filename: ``Pfam-A.hmm``
-  - Not downloaded by ``run_dbcan database``; see :doc:`../user_guide/prepare_the_database`.
-
-
-Substrate Prediction Databases
-------------------------------
-
-- Substrate mapping table
-
-  - Description: Mapping from CAZyme family/EC to known substrates. Used during ``CAZyme_annotation`` to fill the
-    ``Substrate`` column of ``overview.tsv`` and ``dbCANsub_hmm_results.tsv``.
-  - Filename: ``fam-substrate-mapping.tsv``
-
-- dbCAN-sub per-subfamily substrate table (optional)
-
-  - Description: (Subfamily, EC, Count, Substrate) rows exported from the dbCAN-sub web server. When the file is
-    present, it is used before ``fam-substrate-mapping.tsv`` so that substrates match the web server.
-  - Filename: ``dbCAN-sub-substrate.tsv``
-
-- dbCAN-PUL substrate table
-
-  - Description: Substrate mapping associated with PULs from the dbCAN-PUL database.
-  - Directory: ``dbCAN-PUL/``
-  - Spreadsheet: ``dbCAN-PUL.xlsx``
+``--no-cgc`` downloads only the first four files (CAZyme annotation).
