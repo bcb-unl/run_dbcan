@@ -193,7 +193,7 @@ class SignalPTMHMMProcessor:
         faa_abs = faa.expanduser().resolve()
         out_dir_abs = out_dir.expanduser().resolve()
         cmd = [
-            "signalp6",
+            C.SIGNALP_EXECUTABLE,
             "--fastafile", str(faa_abs),
             "--output_dir", str(out_dir_abs),
             "--mode", self.signalp_mode,

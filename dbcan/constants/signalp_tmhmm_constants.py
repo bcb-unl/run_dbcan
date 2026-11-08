@@ -27,6 +27,8 @@ DEFAULT_DEEPTMHMM_PYTHON = "python"
 SIGNALP_OUT_DIR = "signalp6_out"
 DEEPTMHMM_OUT_DIR = "deeptmhmm_out"
 
+SIGNALP_EXECUTABLE = "signalp6"   # looked up on PATH before CAZyme_annotation starts
+
 # SignalP parameters (must be sequences for "x in CONSTANT" validation)
 SIGNALP_ORGANISMS = ("other", "euk")
 SIGNALP_MODES = ("fast",)

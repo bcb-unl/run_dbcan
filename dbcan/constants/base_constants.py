@@ -82,6 +82,8 @@ GENE_LABELS = list(CGC_FEATURE_COLORS.keys())
 CGC_GENE_TYPE_PRIORITY = {'CAZyme': 0, 'TC': 1, 'TF': 2, 'STP': 3, 'Sulfatase': 4, 'Peptidase': 5}
 # Spellings of the signature types found in cgc.gff / cgc_standard_out.tsv and in the
 # dbCAN-PUL reference gffs (SULFATLAS, PEPTIDASE), mapped to the palette keys.
+CGC_QUERY_TC_LEVELS = 3   # TC IDs in CGC.faa / PUL_blast.out query IDs: 1.A.1.1.3 -> 1.A.1
+CGC_OTHER_GENE_TYPE = "Other"   # genes without a signature role (null, tRNA, ...)
 CGC_GENE_TYPE_ALIASES = {
     "cazyme": "CAZyme", "tc": "TC", "tf": "TF", "stp": "STP",
     "sulfatase": "Sulfatase", "sulfatlas": "Sulfatase",

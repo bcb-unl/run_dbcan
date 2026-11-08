@@ -83,7 +83,12 @@ def test_cazyme_annotation_passes_methods_to_overview(tmp_path):
     _write_all_results(tmp_path)
     cfg = OverviewGeneratorConfig(output_dir=str(tmp_path))
     hmm_cfg = SimpleNamespace(output_dir=str(tmp_path), output_file="dbCAN_hmm_results.tsv")
-    with patch.object(core, "run_dbCAN_hmmer"):
+    hmm_table = (tmp_path / "dbCAN_hmm_results.tsv").read_text()
+
+    def fake_hmmer(_cfg):   # the selected method rewrites its result file
+        (tmp_path / "dbCAN_hmm_results.tsv").write_text(hmm_table)
+
+    with patch.object(core, "run_dbCAN_hmmer", side_effect=fake_hmmer):
         core.run_dbCAN_CAZyme_annotation(
             SimpleNamespace(output_dir=str(tmp_path), output_file="diamond.out"),
             hmm_cfg,
@@ -98,3 +103,37 @@ def test_cazyme_annotation_passes_methods_to_overview(tmp_path):
 def test_unknown_method_is_an_error(tmp_path):
     with pytest.raises(ValueError):
         OverviewGenerator(OverviewGeneratorConfig(output_dir=str(tmp_path), methods=("blast",))).run()
+
+
+def test_failed_selected_method_does_not_merge_its_stale_file(tmp_path, caplog):
+    """DIAMOND is selected but fails now: its diamond.out from an earlier run must not be merged."""
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    import dbcan.core as core
+
+    _write_all_results(tmp_path)
+    hmm_table = (tmp_path / "dbCAN_hmm_results.tsv").read_text()
+    cfg = OverviewGeneratorConfig(output_dir=str(tmp_path))
+    with patch.object(core, "run_dbCAN_cazy_diamond", side_effect=RuntimeError("diamond crashed")), \
+         patch.object(core, "run_dbCAN_hmmer",
+                      side_effect=lambda c: (tmp_path / "dbCAN_hmm_results.tsv").write_text(hmm_table)):
+        with pytest.raises(RuntimeError, match="DIAMOND CAZy: diamond crashed"):
+            core.run_dbCAN_CAZyme_annotation(
+                SimpleNamespace(output_dir=str(tmp_path), output_file="diamond.out", column_names=None),
+                SimpleNamespace(output_dir=str(tmp_path), output_file="dbCAN_hmm_results.tsv"),
+                SimpleNamespace(output_dir=str(tmp_path)),
+                cfg,
+                ("diamond", "hmm"),
+            )
+    row = read_tsv(tmp_path / "overview.tsv").set_index("Gene ID").loc["p1"]
+    assert row["DIAMOND"] == "-"
+    assert row["#ofTools"] == 1
+    # the earlier run's diamond.out was replaced by an empty table
+    assert len(read_tsv(tmp_path / "diamond.out")) == 0
+
+
+def test_ignoring_unselected_method_is_a_warning(tmp_path, caplog):
+    _write_all_results(tmp_path)
+    caplog.set_level(logging.WARNING, logger="dbcan.IO.OverviewGenerator")
+    OverviewGenerator(OverviewGeneratorConfig(output_dir=str(tmp_path), methods=("hmm",))).run()
+    assert any(r.levelno == logging.WARNING and "Ignoring diamond.out" in r.getMessage() for r in caplog.records)

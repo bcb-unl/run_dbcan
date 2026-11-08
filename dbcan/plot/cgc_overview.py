@@ -65,7 +65,7 @@ def plot_overview(cgcs: Dict[str, List[V.Gene]], sizes: Dict[str, int], calls: D
         for cid in by_contig[c]:
             a, b = _cgc_span(cgcs[cid])
             names = calls[cid].names() if cid in calls else []
-            name = V.split_cgc_id(cid)[1] if V.split_cgc_id(cid) else cid
+            name = V.split_cgc_key(cid)[1] if V.split_cgc_key(cid) else cid
             items.append(dict(cid=cid, a=a, b=b, pred=bool(names),
                               text=f"{name} {', '.join(names)}" if names else name))
         rows.append(items)

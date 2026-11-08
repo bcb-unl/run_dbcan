@@ -88,11 +88,22 @@ For ``funannotate``, ``BRAKER``, ``GFF3`` and ``GTF`` (the resolver):
   (``XP_1`` for ``XP_1.1``) or a JGI ``proteinId`` is used only if it points to a single FASTA protein;
 * identifiers go through the same ID cleaning as the FASTA headers in ``--mode protein`` (first word, ``|`` → ``-``
   for JGI IDs, at most 80 characters);
+* exact identifiers win over weak ones whatever the order of the genes in the file: proteins are first assigned
+  through ``ID``-like attributes (``CDS`` ``protein_id``/``proteinId``/``ID``, transcript ``ID``/``transcript_id``)
+  that equal a FASTA ID, and only then through ``Name``/``locus_tag``, gene-level IDs and version-less/JGI aliases;
+* transcripts without a gene parent (gffread output without gene rows) are grouped into genes by their ``geneID``,
+  ``gene_id`` or ``gene`` attribute, so that their isoforms give one gene. Only transcripts on the same contig and
+  strand that overlap are grouped: ``gene=`` often holds a gene symbol, and two copies of ``tnpA`` or two ``trnL``
+  tRNAs stay two genes. A repeated value names each locus after its first transcript; a gene's coordinates span all
+  its transcripts;
 * one protein is kept per gene. When a gene has several transcripts (isoforms), the one annotated as a CAZyme
   (else as another CGC signature) is kept, otherwise the one with the longest CDS. All isoform proteins of the gene
   are listed in ``gff_resolution.tsv``;
 * genes without a CDS (tRNA, rRNA, ncRNA, pseudogenes) are kept as ``protein_id=NA`` rows, as with ``NCBI_euk``,
-  so that they count as null genes between signature genes;
+  so that they count as null genes between signature genes. Pseudogenes (a ``pseudogene`` row, or a gene whose
+  ``CDS`` rows carry ``pseudo=true`` and no ``protein_id``) are such rows too (``CGC_annotation=Other|pseudogene``)
+  and do not count as unmatched protein-coding genes: on the NCBI GFF3 of *E. coli* K-12, ``--gff_type GFF3``
+  matches 4140/4140 protein-coding genes, as ``NCBI_prok`` does;
 * ``cgc.gff`` has one ``gene`` row per gene, contigs in file order, genes sorted by position. On the NCBI GFF3 of
   *Xylona heveae*, ``--gff_type GFF3`` writes a ``cgc.gff`` identical to ``--gff_type NCBI_euk``.
 

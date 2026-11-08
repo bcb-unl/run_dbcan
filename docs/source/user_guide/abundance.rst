@@ -49,6 +49,28 @@ where proteins are called after the mRNA ``ID``), count the CDS rows under their
 ``--id-attr Parent --feature-type CDS``. Prodigal GFFs (``ID=1_1``) need ``dbcan_utils gff_fix``
 first so that the IDs match the protein FASTA.
 
+Which GFF to use:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - run_dbcan input
+     - GFF for ``cal_coverage``
+   * - prokaryote / metagenome (``--mode prok`` / ``meta``, ``NCBI_prok``, ``prodigal``)
+     - ``cgc.gff`` of the run_dbcan output directory (one row per gene = its CDS).
+   * - eukaryote with an NCBI, funannotate, BRAKER, GFF3 or GTF annotation
+     - the **original annotation GFF** (NCBI: default ``--id-attr auto``, which uses the
+       ``protein_id`` of the CDS rows; funannotate/BRAKER: ``--id-attr Parent --feature-type CDS``).
+       The CDS exons of a protein are merged, so introns and UTRs are not counted. Do **not** use
+       ``cgc.gff`` here: its eukaryotic ``gene`` rows span the whole gene, introns and UTRs
+       included (on *Xylona heveae* the median ``cgc.gff`` gene is 1.37 times longer than its
+       CDS), which lowers FPKM/TPM and counts intronic reads.
+   * - eukaryote with a JGI annotation (``--gff_type JGI``)
+     - ``cgc.gff``: the raw ``proteinId`` values of the JGI GFF (``242238``) are not the protein
+       IDs that run_dbcan uses (``jgi-Xylhe1-242238-...``), so the original GFF matches no gene.
+       The gene lengths then include introns (see above).
+
 Which alignments are counted
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -60,14 +82,18 @@ An alignment counts for a gene when all of the following hold:
 * at least ``--overlap-base-ratio`` (default 0.2) of the read length lies inside the gene
   (with ``--hifi``: of the shorter of read and gene);
 * its identity is at least ``--identity`` (default 0.98). Identity is ``1 - edits / alignment
-  columns`` with the edits taken from the ``NM`` tag, else from ``MD`` plus insertions, else from
-  ``=``/``X`` CIGAR operations. Alignments without any of these are counted (the filter cannot be
+  columns`` (aligned columns = matches, mismatches, inserted and deleted bases) with the edits
+  taken from the ``NM`` tag (mismatches, inserted and deleted bases), else from ``MD`` plus
+  insertions, else from ``=``/``X`` CIGAR operations. Inserted bases count as edits, so this is
+  slightly stricter than run_dbcan 5.2.9, which used the ``MD`` tag only and ignored insertions. Alignments without any of these are counted (the filter cannot be
   applied) and a warning reports how many; add tags with ``samtools calmd`` to filter them.
   ``--identity 0`` turns the filter off.
 
 ``--count-mode fragments`` (default) counts each read pair once per gene, when either mate
 passes the filters; ``--count-mode reads`` counts every read (the behaviour of run_dbcan 5.2.9
-and earlier, which doubled paired-end counts). Single-end reads are counted the same way in both
+and earlier, which doubled paired-end counts). Each gene is counted on its own: a fragment whose
+two mates fall in two different genes (or whose read overlaps two genes) counts once for **each**
+of them, so the sum of the gene counts can exceed the number of fragments. Single-end reads are counted the same way in both
 modes. RPM, FPKM/RPKM and TPM are ratios of counts, so the mode does not change TPM and RPM; it only
 changes the raw counts (use ``fragments`` for count-based tools such as DESeq2 or edgeR).
 
@@ -85,10 +111,15 @@ the overlap of two genes on opposite strands counts for both. For stranded RNA-s
 
 The output is a tab-separated table without header: gene ID, gene length (bp), count.
 
+The log reports the alignments that were not counted, each alignment once whatever the number of
+genes or exons it overlaps (``secondary_or_supplementary``, ``qc_fail``, ``duplicate``,
+``low_mapq``, ``low_identity``), and separately the alignment/gene pairs rejected for one gene
+(``wrong_strand``, ``low_overlap``); such an alignment can still count for another gene.
+
 Abundance: ``*_abund``
 ----------------------
 
-``-i`` is the run_dbcan output directory, ``-bt`` the ``cal_coverage`` table and ``-o`` the output
+``-i`` is the run_dbcan output directory (it must exist), ``-bt`` the ``cal_coverage`` table and ``-o`` the output
 directory (created if needed; default: current directory). ``-a`` chooses the normalisation, where
 *count* is the ``cal_coverage`` count of a gene and *N* the sum of the counts of all genes in the
 table:
@@ -116,11 +147,16 @@ table:
    * - ``CGC_abund``
      - ``CGC_abund.out``
      - Mean abundance of the protein-coding genes of each CGC, with their IDs, abundances and
-       families in the same order. Non-coding members (tRNA, ...) have no protein and are left out.
+       families in the same order (``Fams``: the CAZy family of CAZymes, ``<type>|<ID>`` such as
+       ``TC|3.A.1.1.27`` or ``STP|HTH_1+LysR_substrate`` for the other signature genes, the role
+       chosen by the Gene Type priority for multi-role genes; ``null`` for genes without a
+       signature). Non-coding members (tRNA, ...) have no protein and are left out.
    * - ``CGC_substrate_abund``
      - ``CGC_substrate_PUL_homology.out``, ``CGC_substrate_majority_voting.out``
      - Sum of the CGC abundances per substrate predicted by dbCAN-PUL homology and by dbCAN-sub
-       majority voting.
+       majority voting. A CGC whose prediction names several substrates (``arabinan,galactan``)
+       counts for each of them, in both files (``,`` inside a chemical name such as
+       ``alpha-1,4-glucan`` is not a separator).
 
 Options that no longer have an effect (``-1/--r1``, ``-2/--r2``, ``--db-dir``) are still accepted
 and print a warning.

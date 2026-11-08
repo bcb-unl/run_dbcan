@@ -283,3 +283,125 @@ def test_prodigal_report_is_streamed(tmp_path):
     assert len(lines) == 4 and lines[3].split("\t")[7] == "unmatched"
     with pytest.raises(GffResolutionError, match="1 FASTA proteins not placed|Only 2/3"):
         check_gff_resolution(gff, "prodigal", ["c1_1", "c1_2", "x"], 0.9)
+
+
+def test_gffread_transcripts_without_gene_rows_are_grouped_by_gene_id(tmp_path):
+    """gffread -E/--keep-genes off: mRNA rows have no Parent; geneID=/gene_id=/gene= name the gene."""
+    gff = tmp_path / "x.gff3"
+    gff.write_text(
+        "##gff-version 3\n"
+        "c1\tgffread\tmRNA\t100\t900\t.\t+\t.\tID=t1;geneID=G1\n"
+        "c1\tgffread\tCDS\t100\t900\t.\t+\t0\tParent=t1\n"
+        "c1\tgffread\tmRNA\t50\t600\t.\t+\t.\tID=t2;geneID=G1\n"
+        "c1\tgffread\tCDS\t150\t600\t.\t+\t0\tParent=t2\n"
+        "c1\tgffread\ttranscript\t40\t950\t.\t+\t.\tID=t3;geneID=G1\n"          # non-coding isoform
+        "c1\tgffread\tmRNA\t2000\t2600\t.\t-\t.\tID=t4;gene_id=G2\n"
+        "c1\tgffread\tCDS\t2000\t2600\t.\t-\t0\tParent=t4\n"
+        "c1\tgffread\tmRNA\t3000\t3600\t.\t-\t.\tID=t5;gene=abcD\n"
+        "c1\tgffread\tCDS\t3000\t3600\t.\t-\t0\tParent=t5\n"
+        "c1\tgffread\ttranscript\t4000\t4100\t.\t+\t.\tID=t6;geneID=G4\n"
+        "c1\tgffread\ttranscript\t4000\t4120\t.\t+\t.\tID=t7;geneID=G4\n")
+    faa = tmp_path / "x.faa"
+    faa.write_text(">t1\nMK\n>t2\nMK\n>t4\nMK\n>t5\nMK\n")
+    res = resolve_gff(gff, "GFF3", read_fasta_ids(faa))
+    assert [(r.gene_id, r.protein_id, r.status, r.n_transcripts, r.start, r.end) for r in res.rows] == [
+        ("G1", "t1", "matched", 2, 50, 900),
+        ("G2", "t4", "matched", 1, 2000, 2600),
+        ("abcD", "t5", "matched", 1, 3000, 3600),
+        ("G4", "NA", "noncoding", 0, 4000, 4120),        # union of t6 and t7, like coding genes
+    ]
+    assert res.rows[0].isoform_proteins == ("t1", "t2")
+
+
+def test_gffread_repeated_gene_symbol_keeps_each_locus(tmp_path):
+    """'gene=' holds a symbol, and symbols repeat (tnpA copies, trnL tRNAs): transcripts are one
+    gene only when they share contig, strand and value and overlap."""
+    gff = tmp_path / "x.gff3"
+    gff.write_text(
+        "##gff-version 3\n"
+        "c1\tgffread\tmRNA\t100\t900\t.\t+\t.\tID=t1;gene=tnpA\n"
+        "c1\tgffread\tCDS\t100\t900\t.\t+\t0\tParent=t1\n"
+        "c1\tgffread\ttRNA\t2000\t2080\t.\t+\t.\tID=r1;gene=trnL\n"
+        "c1\tgffread\ttRNA\t3000\t3080\t.\t+\t.\tID=r2;gene=trnL\n"
+        "c1\tgffread\tmRNA\t50000\t50900\t.\t-\t.\tID=t2;gene=tnpA\n"     # other strand
+        "c1\tgffread\tCDS\t50000\t50900\t.\t-\t0\tParent=t2\n"
+        "c1\tgffread\tmRNA\t60000\t60900\t.\t+\t.\tID=t3;gene=tnpA\n"     # same strand, no overlap
+        "c1\tgffread\tCDS\t60000\t60900\t.\t+\t0\tParent=t3\n"
+        "c2\tgffread\tmRNA\t100\t900\t.\t+\t.\tID=t4;gene=tnpA\n"         # other contig
+        "c2\tgffread\tCDS\t100\t900\t.\t+\t0\tParent=t4\n"
+        "c2\tgffread\tmRNA\t200\t800\t.\t+\t.\tID=t5;gene=tnpA\n"         # isoform of t4
+        "c2\tgffread\tCDS\t200\t800\t.\t+\t0\tParent=t5\n"
+        "c2\tgffread\tmRNA\t5000\t5900\t.\t+\t.\tID=t6;gene=xylA\n"       # unique symbol
+        "c2\tgffread\tCDS\t5000\t5900\t.\t+\t0\tParent=t6\n")
+    faa = tmp_path / "x.faa"
+    faa.write_text("".join(f">t{i}\nMK\n" for i in range(1, 7)))
+    res = resolve_gff(gff, "GFF3", read_fasta_ids(faa))
+    assert [(r.gene_id, r.contig, r.start, r.end, r.strand, r.protein_id, r.status) for r in res.rows] == [
+        ("t1", "c1", 100, 900, "+", "t1", "matched"),
+        ("r1", "c1", 2000, 2080, "+", "NA", "noncoding"),
+        ("r2", "c1", 3000, 3080, "+", "NA", "noncoding"),
+        ("t2", "c1", 50000, 50900, "-", "t2", "matched"),
+        ("t3", "c1", 60000, 60900, "+", "t3", "matched"),
+        ("t4", "c2", 100, 900, "+", "t4", "matched"),
+        ("xylA", "c2", 5000, 5900, "+", "t6", "matched"),
+    ]
+    assert res.rows[5].isoform_proteins == ("t4", "t5")
+    assert res.n_matched == res.n_coding == 5
+    assert res.fasta_placed == 6
+
+
+def test_pseudogenes_are_noncoding_rows(tmp_path):
+    gff = tmp_path / "x.gff3"
+    gff.write_text(
+        "##gff-version 3\n"
+        "c1\tRefSeq\tgene\t1\t300\t.\t+\t.\tID=gene1;Name=aaa\n"
+        "c1\tRefSeq\tCDS\t1\t300\t.\t+\t0\tID=cds1;Parent=gene1;protein_id=WP_1.1\n"
+        "c1\tRefSeq\tpseudogene\t400\t900\t.\t+\t.\tID=gene2;Name=bbb;pseudo=true\n"
+        "c1\tRefSeq\tCDS\t400\t900\t.\t+\t0\tID=cds2;Parent=gene2;pseudo=true\n"
+        "c1\tRefSeq\tgene\t1000\t1300\t.\t-\t.\tID=gene3;Name=ccc\n"
+        "c1\tRefSeq\tCDS\t1000\t1300\t.\t-\t0\tID=cds3;Parent=gene3;pseudo=true\n"
+        "c1\tRefSeq\tpseudogene\t1400\t1500\t.\t-\t.\tID=gene4;Name=ddd\n")
+    faa = tmp_path / "x.faa"
+    faa.write_text(">WP_1.1\nMK\n>bbb\nMK\n")     # 'bbb' must not be taken through the Name of a pseudogene
+    res = resolve_gff(gff, "GFF3", read_fasta_ids(faa))
+    assert [(r.gene_id, r.protein_id, r.status, r.feature_type) for r in res.rows] == [
+        ("gene1", "WP_1.1", "matched", "gene"),
+        ("gene2", "NA", "noncoding", "pseudogene"),
+        ("gene3", "NA", "noncoding", "pseudogene"),
+        ("gene4", "NA", "noncoding", "pseudogene"),
+    ]
+    assert res.match_rate == 1.0
+    out = tmp_path / "cgc.gff"
+    write_cgc_gff(res, out)
+    assert out.read_text().count("CGC_annotation=Other|pseudogene") == 3
+
+
+def test_ecoli_ncbi_gff_with_generic_gff3_type_matches_every_coding_gene():
+    ids = read_fasta_ids(DATA / "EscheriaColiK12MG1655.faa")
+    res = resolve_gff(DATA / "EscheriaColiK12MG1655.gff", "GFF3", ids)
+    assert res.n_matched == res.n_coding == 4140
+    assert sum(r.feature_type == "pseudogene" for r in res.rows) == 184
+
+
+def test_exact_protein_id_wins_over_an_earlier_weak_key(tmp_path):
+    """gene A's Name equals the protein_id of gene B (later in the file): B keeps its protein."""
+    gff = tmp_path / "x.gff3"
+    gff.write_text(
+        "##gff-version 3\n"
+        "c1\tt\tgene\t1\t300\t.\t+\t.\tID=gA;Name=PB\n"
+        "c1\tt\tmRNA\t1\t300\t.\t+\t.\tID=mA;Parent=gA;Name=PB\n"
+        "c1\tt\tCDS\t1\t300\t.\t+\t0\tID=cA;Parent=mA;protein_id=PA\n"
+        "c1\tt\tgene\t400\t900\t.\t+\t.\tID=gB\n"
+        "c1\tt\tmRNA\t400\t900\t.\t+\t.\tID=mB;Parent=gB\n"
+        "c1\tt\tCDS\t400\t900\t.\t+\t0\tID=cB;Parent=mB;protein_id=PB\n"
+        "c1\tt\tgene\t1000\t1300\t.\t+\t.\tID=gC;Name=QC\n"
+        "c1\tt\tmRNA\t1000\t1300\t.\t+\t.\tID=mC;Parent=gC\n"
+        "c1\tt\tCDS\t1000\t1300\t.\t+\t0\tID=cC;Parent=mC\n")
+    faa = tmp_path / "x.faa"
+    faa.write_text(">PB\nMK\n>QC\nMK\n")     # PA is missing from the FASTA
+    for gff_type in ("GFF3", "funannotate", "BRAKER"):
+        res = resolve_gff(gff, gff_type, read_fasta_ids(faa))
+        got = {r.gene_id: (r.protein_id, r.matched_by) for r in res.rows}
+        assert got["gB"] == ("PB", "CDS.protein_id")
+        assert got["gA"][0] == "unknown"
+        assert got["gC"][0] == "QC"           # weak keys still match in the second pass

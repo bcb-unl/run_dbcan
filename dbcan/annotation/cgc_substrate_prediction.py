@@ -11,7 +11,9 @@ import json
 import re
 import time
 from dbcan.configs.cgc_substrate_config import CGCSubstrateConfig
-import dbcan.constants.cgc_substrate_prediction_constants as CSP  
+import dbcan.constants.cgc_substrate_prediction_constants as CSP
+# One parser for CGC protein query IDs (CGC.faa, PUL_blast.out), shared with the synteny plots.
+from dbcan.IO.cgc_ids import QueryID, cgc_query_id, parse_query_id, role_family, split_cgc_key  # noqa: F401
 # from dbcan.constants import (
 #     CAZYME, TC, TF, STP, PUL, NULL, CGC_RESULT_FILE,
 #     DBCAN_SUB_OUT_FILE, OVERVIEW_FILE, INPUT_PROTEIN_NAME,
@@ -67,33 +69,12 @@ class blastp_hit(object):
                           str(self.qlen), str(self.slen)])
 
 
-class QueryID(NamedTuple):
-    """Parts of a CGC protein's DIAMOND query ID, ``<contig>|<CGC#>|<protein>|<type>|<family>``."""
-    contig: str
-    cgc: str
-    protein: str
-    type: str
-    family: str
-
-    @property
-    def cgc_id(self) -> str:
-        return f"{self.contig}|{self.cgc}"
-
-
-# Contig and protein IDs may themselves contain '|' (e.g. 'gi|1234|ref|NC_000913.3|'), so the
-# query ID is not split by position. Type and family never contain '|' (see Gene).
-_QUERY_ID_RE = re.compile(r"^(?P<contig>.+?)\|(?P<cgc>CGC\d+)\|(?P<protein>.+)\|(?P<type>[^|]+)\|(?P<family>[^|]*)$")
-
-
-def parse_query_id(qseqid: str, known: Optional[Dict[str, "QueryID"]] = None) -> Optional["QueryID"]:
-    """Parse a CGC protein query ID; ``known`` (query ID -> QueryID, built from cgc_standard_out.tsv)
-    is used first, the regular expression only for IDs that are not in it."""
-    if known and qseqid in known:
-        return known[qseqid]
-    m = _QUERY_ID_RE.match(qseqid)
-    if not m:
-        return None
-    return QueryID(m["contig"], m["cgc"], m["protein"], m["type"], m["family"])
+def cgc_sort_key(cgcid: str):
+    """Row order of substrate_prediction.tsv: contig, then CGC number numerically."""
+    parts = split_cgc_key(cgcid)
+    if not parts:
+        return (cgcid, -1)
+    return (parts[0], int(parts[1][3:]))
 
 
 class Gene(object):
@@ -105,12 +86,11 @@ class Gene(object):
         self.start =    int(lines[4])
         self.end =      int(lines[5])
         self.strand =   lines[6]
-        if self.type == CSP.TC:
-            self.Protein_Fam = ".".join(lines[7].split("|")[1].split(".")[0:3])
-        elif self.type == CSP.NULL:
-            self.Protein_Fam = CSP.NULL
-        else:
-            self.Protein_Fam = lines[7].split("|")[1]
+        # Family of the role named by Gene Type (the CGCFinder priority role) of a possibly
+        # multi-role annotation ('CAZyme|GH32_e132+Sulfatase|S1_7' -> 'GH32_e132'); TC IDs are
+        # cut to the subfamily level (1.A.1.1.3 -> 1.A.1). Never contains '|' (query IDs).
+        self._query = cgc_query_id(self.contig, self.clusterid, self.Protein_ID, self.type, lines[7])
+        self.Protein_Fam = self._query.family
         self.CGC_ID = self.contig + "|" + self.clusterid
 
     def format_out(self):
@@ -120,7 +100,7 @@ class Gene(object):
         return "-"
 
     def Get_CAzyID(self):
-        return self.contig+"|"+self.clusterid+"|"+self.Protein_ID+"|"+self.type+"|"+self.Protein_Fam
+        return self.query_id().format()
 
     def query_id(self) -> QueryID:
         return QueryID(self.contig, self.clusterid, self.Protein_ID, self.type, self.Protein_Fam)
@@ -604,7 +584,7 @@ class dbCAN_substrate_prediction:
         logger.info(f"Writing substrate prediction result to file: {self.out}")
         with open(self.out, 'w') as f:
             f.write("#cgcid\tPULID\tdbCAN-PUL substrate\tbitscore\tsignature pairs\tdbCAN-sub substrate\tdbCAN-sub substrate score\n")
-            for cgcid in shared_cgcids:
+            for cgcid in sorted(shared_cgcids, key=cgc_sort_key):
                 dbcan_pul_part = self.queryCGC2hit.get(cgcid, "")
                 dbcan_sub_substate = self.dbcan_sub_CGC2substrates.get(cgcid, "")
                 PULID = dbcan_pul_part.pulid if dbcan_pul_part else ""

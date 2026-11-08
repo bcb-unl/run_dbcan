@@ -124,9 +124,15 @@ Output Files
 
 Substrate prediction generates the following output files:
 
-* ``substrate_prediction.tsv`` - Main output, one row per CGC with a prediction. Columns: ``#cgcid``, ``PULID``,
+* ``substrate_prediction.tsv`` - Main output, one row per CGC with a prediction, sorted by contig and then by CGC
+  number (``CGC2`` before ``CGC10``). Columns: ``#cgcid``, ``PULID``,
   ``dbCAN-PUL substrate``, ``bitscore``, ``signature pairs``, ``dbCAN-sub substrate``, ``dbCAN-sub substrate score``
-* ``CGC.faa`` - Protein sequences of all CGC genes used as DIAMOND queries
+* ``CGC.faa`` - Protein sequences of all CGC genes used as DIAMOND queries, named
+  ``<contig>|<CGC#>|<protein>|<Gene Type>|<family>``. The family is that of the Gene Type role (the CAZyme > TC > TF >
+  STP > Sulfatase > Peptidase priority role of a multi-role gene: ``CAZyme|GH32_e132+Sulfatase|S1_7`` gives
+  ``CAZyme|GH32_e132``); several families of that role are joined by ``+`` and TC IDs are cut to three levels
+  (``1.A.1``). Contig and protein IDs may contain ``|``: substrate_prediction and the synteny plots read these IDs
+  back with the same parser.
 * ``PUL_blast.out`` - Raw DIAMOND search results
 * ``synteny_pdf/`` - One synteny plot per CGC with a dbCAN-PUL hit (``<contig>_<CGC>_<PUL>-syntenic.pdf``): the CGC
   above its best dbCAN-PUL match, homologous genes linked by grey ribbons (darker = higher identity; only the DIAMOND

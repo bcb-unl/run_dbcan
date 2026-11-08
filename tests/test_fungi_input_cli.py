@@ -99,11 +99,19 @@ def test_gff_process_fails_before_searches(runner, tmp_path):
     # BRAKER key order still finds funannotate IDs (generic fallback): the check passes, the
     # (mocked) TC search runs and the next search fails on the empty database directory.
     tc.assert_called_once()
+    assert result.exit_code != 0
+    assert not isinstance(result.exception, GffResolutionError)
+    assert "GFF check failed" not in result.output
+    assert (tmp_path / "gff_resolution.tsv").read_text().count("\tmatched\t") == 5
     with patch("dbcan.core.run_dbCAN_tcdb_diamond") as tc:
         result = runner.invoke(cli, ["gff_process", "--output_dir", str(tmp_path), "--db_dir", str(tmp_path),
                                      "--input_gff", str(FX / "funannotate2.gff3"), "--gff_type", "JGI"])
-    assert result.exit_code != 0
-    assert isinstance(result.exception, GffResolutionError)
+    # a failed match check is a clean click error: exit 1, message, no traceback
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "GFF check failed before the signature searches" in result.output
+    assert "Suggested: --gff_type" in result.output
+    assert "Traceback" not in result.output
     tc.assert_not_called()
 
 

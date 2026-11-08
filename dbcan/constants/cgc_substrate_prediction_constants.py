@@ -14,6 +14,7 @@ TF=base_constants.TF
 STP=base_constants.STP
 PUL=base_constants.PUL
 NULL=base_constants.NULL
+TC_FAMILY_LEVELS = base_constants.CGC_QUERY_TC_LEVELS
 
 
 

@@ -33,7 +33,7 @@ def substrate_text(names: Optional[Sequence[str]]) -> str:
 
 
 def cgc_title(cgcid: str, genes: Sequence[V.Gene]) -> str:
-    parts = V.split_cgc_id(cgcid)
+    parts = V.split_cgc_key(cgcid)
     name = parts[1] if parts else cgcid
     lo, hi = min(g.start for g in genes), max(g.end for g in genes)
     return f"{name}  {genes[0].contig}:{lo:,}–{hi:,}"

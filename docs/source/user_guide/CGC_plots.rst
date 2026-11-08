@@ -95,7 +95,12 @@ in their gene-type colour; all CAZyme genes of the genome. A gene is placed on t
 and end match a row of ``cgc_standard_out.tsv``. With more than 60 CGCs only the CGCs with a predicted substrate are
 labelled. When ``DEG.tsv`` (protein ID and log2 fold change, tab-separated, no header) exists in the output directory,
 two inner rings show up-/down-regulated genes (red / blue) and the log2FC profile; genes without a numeric value
-(``NA``) are not drawn as regulated.
+(``NA``) are not drawn as regulated. The figure is sized to the circle and the room its labels take, so a small genome with few
+labels has no empty band around the rings. With ``--layout circos`` on several contigs, each contig is one sector
+named radially inside the innermost ring, the name ending just below that ring and running towards the centre
+(sectors narrower than 2.5 degrees, or too narrow for the height of their name, stay unnamed; names too long for the
+room are shortened with ``…``); every sector starts at 0, so the tick marks
+are drawn on all sectors but labelled on the largest one only, and the subtitle gives the tick interval.
 
 **Overview layout** (``cgc_circos/cgc_overview.png`` and ``.pdf``). One row per contig that carries a CGC (longest
 first, up to 60 rows; all rows share one bp scale), the contig name on the left and its length at the end of the

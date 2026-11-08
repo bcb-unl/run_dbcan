@@ -11,8 +11,9 @@ present, DEG markers and a log2FC line.
 from __future__ import annotations
 
 import logging
+import math
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
@@ -40,6 +41,26 @@ def read_deg(path: Path) -> Dict[str, float]:
             if value == value:      # not NaN
                 out[f[0].strip()] = value
     return out
+
+
+def _text_len_r(text: str, size: float, height: bool = False) -> float:
+    """Width (or height) of ``text`` at ``size`` pt in circos radius units (r = 100 is the outer ring)."""
+    from matplotlib.font_manager import FontProperties
+    from matplotlib.textpath import TextPath
+
+    ext = TextPath((0, 0), text, size=size, prop=FontProperties()).get_extents()
+    pts = ext.height if height else ext.width
+    return pts / 72.0 / (C.CGC_CIRCLE_DIAMETER_IN / 2) * 100.0
+
+
+def _fit_radial_text(text: str, size: float, room_r: float) -> str:
+    """``text``, shortened with '…' until it fits in ``room_r`` radius units."""
+    if _text_len_r(text, size) <= room_r:
+        return text
+    keep = len(text)
+    while keep > 1 and _text_len_r(text[:keep] + "…", size) > room_r:
+        keep -= 1
+    return text[:keep] + "…"
 
 
 class CGCCircosPlot:
@@ -96,7 +117,7 @@ class CGCCircosPlot:
         return [g for g in self.genes_by_contig.get(contig, []) if (g.contig, g.start, g.end) in members]
 
     def _cgc_label(self, cid: str) -> str:
-        parts = V.split_cgc_id(cid)
+        parts = V.split_cgc_key(cid)
         name = parts[1] if parts else cid
         call = self.calls.get(cid)
         names = call.names() if call else []
@@ -111,8 +132,13 @@ class CGCCircosPlot:
         circos = Circos(sectors=sizes, space=space)
         cgc_genes = []
         total = sum(sizes.values())
-        major = V.nice_step(total, 10 if len(sizes) == 1 else 24)    # one tick interval for all contigs
+        multi = len(sizes) > 1
+        major = V.nice_step(total, 10 if not multi else 24)    # one tick interval for all contigs
+        # several contigs: tick marks on every sector but labels on the largest one only (each
+        # sector starts at 0, so every sector would repeat the same labels), plus contig names
+        labelled = max(sizes, key=sizes.get)
         label_all = len(self.cgcs) <= C.CGC_CIRCOS_MAX_ID_LABELS
+        deg_per_bp = (360.0 - space * len(sizes)) / total
         for sector in circos.sectors:
             genes = self.genes_by_contig.get(sector.name, [])
             size = sizes[sector.name]
@@ -120,11 +146,14 @@ class CGCCircosPlot:
             axis = sector.add_track(C.CGC_AXIS_TRACK_RANGE)
             axis.axis(fc="black", ec="none")
             if size > major:
-                multi = len(sizes) > 1            # several contigs: no '0' at every sector start
-                axis.xticks_by_interval(major, outer=False, tick_length=1.5, label_size=C.CGC_TICK_LABEL_SIZE,
-                                        label_orientation="horizontal",
+                show = not multi or sector.name == labelled
+                axis.xticks_by_interval(major, outer=False, tick_length=C.CGC_TICK_LENGTH,
+                                        label_margin=C.CGC_TICK_LABEL_MARGIN, label_size=C.CGC_TICK_LABEL_SIZE,
+                                        label_orientation="horizontal", show_label=show,
                                         label_formatter=lambda v, s=major, m=multi: (
                                             "" if (m and v == 0) else V.fmt_axis_tick(v, s, total)))
+            if multi:
+                self._contig_name(sector, size * deg_per_bp)
 
             rng = sector.add_track(C.CGC_RANGE_TRACK_RANGE)
             rng.axis(fc=C.CGC_TRACK_BG_COLOR, ec="none")
@@ -165,22 +194,77 @@ class CGCCircosPlot:
                 self._deg_tracks(sector, genes, size)
 
         circos_config.ann_adjust.enable = True
-        W, H = C.CGC_FIGURE_SIZE, C.CGC_FIGURE_SIZE - 0.3
-        fig = plt.figure(figsize=(W, H))
-        side = 0.72                      # circle diameter as a fraction of the width
-        ax = fig.add_axes([(1 - side) / 2, 0.095, side, side * W / H], projection="polar")
-        circos.plotfig(ax=ax)
+        fig, ax = self._draw_fitted(circos)
 
-        name = next(iter(sizes)) if len(sizes) == 1 else f"{len(sizes)} contigs"
-        fig.text(0.04, 0.985, f"CGCs of {name}", ha="left", va="top", fontsize=P.PLOT_TITLE_FONT_SIZE + 1,
-                 fontweight="bold", color=P.PLOT_INK)
+        W, H = fig.get_size_inches()
+        name = next(iter(sizes)) if not multi else f"{len(sizes)} contigs"
+        fig.text(0.36 / W, 1 - 0.2 / H, f"CGCs of {name}", ha="left", va="top",
+                 fontsize=P.PLOT_TITLE_FONT_SIZE + 1, fontweight="bold", color=P.PLOT_INK)
         n_pred = sum(1 for cid in self.cgcs if self.calls.get(cid) and self.calls[cid].names())
-        fig.text(0.04, 0.958, f"{V.plural(len(self.cgcs), 'CGC')} · {n_pred} with substrate prediction · "
-                 f"{V.fmt_bp(sum(sizes.values()))}", ha="left", va="top", fontsize=P.PLOT_SUBTITLE_FONT_SIZE,
+        sub = (f"{V.plural(len(self.cgcs), 'CGC')} · {n_pred} with substrate prediction · "
+               f"{V.fmt_bp(sum(sizes.values()))}")
+        if multi:
+            sub += f" · ticks every {V.fmt_axis_tick(major, major, total)}"
+        fig.text(0.36 / W, 1 - 0.47 / H, sub, ha="left", va="top", fontsize=P.PLOT_SUBTITLE_FONT_SIZE,
                  color=P.PLOT_INK_MUTED)
         self._legend(fig, cgc_genes)
         return V.save_figure(fig, self.output_dir, C.CGC_CIRCOS_FILE_TEMPLATE, {}, C.CGC_PLOT_FORMATS,
                              P.PLOT_DEFAULT_DPI)
+
+    def _contig_name(self, sector, sector_deg: float) -> None:
+        """Radial contig name inside the innermost ring. Its OUTER end is anchored a gap below that
+        ring and the text runs towards the centre (pycirclize's own vertical text starts at r and
+        runs outwards, across the rings). Too long names are shortened with '…'; sectors too narrow
+        for the text height at the name's inner end stay unnamed."""
+        from pycirclize.utils.plot import get_label_params_by_rad
+
+        inner_ring = C.DEG_LOG2FC_RANGE[0] if self.deg is not None else C.CGC_CAZYME_TRACK_RANGE[0]
+        r_out = inner_ring - C.CGC_CONTIG_LABEL_GAP
+        label = _fit_radial_text(sector.name, C.CGC_CONTIG_LABEL_SIZE, r_out - C.CGC_CONTIG_LABEL_MIN_R)
+        r_in = r_out - _text_len_r(label, C.CGC_CONTIG_LABEL_SIZE)
+        need_deg = math.degrees(_text_len_r("Hg", C.CGC_CONTIG_LABEL_SIZE, height=True) / max(r_in, 1.0))
+        if sector_deg < max(C.CGC_CONTIG_LABEL_MIN_DEG, need_deg):
+            return
+        params = get_label_params_by_rad(sector.x_to_rad(sector.center), "vertical", outer=False)
+        sector.text(label, r=r_out, adjust_rotation=False, size=C.CGC_CONTIG_LABEL_SIZE,
+                    color=P.PLOT_INK_MUTED, **params)
+
+    def _legend_rows(self) -> int:
+        n = len(V.types_present([g for gs in self.cgcs.values() for g in gs])) + 2
+        n += 2 if self.deg is not None else 0
+        return max(1, math.ceil(n / 5))
+
+    def _draw_fitted(self, circos) -> Tuple["plt.Figure", "plt.Axes"]:
+        """Draw the circos and size the figure to it: header, the circle plus the room its labels
+        really take (measured after drawing), legend. No empty band for a figure with few labels."""
+        from pycirclize import config as circos_config
+        D = C.CGC_CIRCLE_DIAMETER_IN
+        s = D * (circos_config.MAX_R + circos_config.R_PLOT_MARGIN) / circos_config.MAX_R  # polar axes side
+        W0 = H0 = s + 8.0                      # provisional canvas with room for any label
+        fig = plt.figure(figsize=(W0, H0))
+        ax = fig.add_axes([(W0 - s) / 2 / W0, (H0 - s) / 2 / H0, s / W0, s / H0], projection="polar")
+        circos.plotfig(ax=ax)
+        renderer = fig.canvas.get_renderer()
+        dpi = fig.dpi
+        cx, cy = W0 / 2, H0 / 2
+        R = D / 2
+        ext = {"l": R, "r": R, "t": R, "b": R}
+        for t in ax.texts:
+            if not t.get_visible() or not t.get_text().strip():
+                continue
+            bb = t.get_window_extent(renderer)
+            x0, x1, y0, y1 = bb.x0 / dpi, bb.x1 / dpi, bb.y0 / dpi, bb.y1 / dpi
+            ext["l"], ext["r"] = max(ext["l"], cx - x0), max(ext["r"], x1 - cx)
+            ext["b"], ext["t"] = max(ext["b"], cy - y0), max(ext["t"], y1 - cy)
+        m = C.CGC_MARGIN_IN
+        legend_in = 0.15 + C.CGC_LEGEND_ROW_IN * self._legend_rows()
+        W = max(C.CGC_FIGURE_SIZE, ext["l"] + ext["r"] + 2 * m)
+        H = C.CGC_HEADER_IN + m + ext["t"] + ext["b"] + m + legend_in
+        ccx = W / 2 + (ext["l"] - ext["r"]) / 2          # content centred horizontally
+        ccy = legend_in + m + ext["b"]
+        fig.set_size_inches(W, H)
+        ax.set_position([(ccx - s / 2) / W, (ccy - s / 2) / H, s / W, s / H])
+        return fig, ax
 
     def _deg_tracks(self, sector, genes, size):
         marks = sector.add_track(C.DEG_TRACK_RANGE)

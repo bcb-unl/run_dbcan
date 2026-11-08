@@ -26,6 +26,7 @@ from matplotlib.patches import PathPatch
 
 import dbcan.constants.cgc_substrate_prediction_constants as CSP
 import dbcan.constants.plots_constants as P
+from dbcan.IO.cgc_ids import cgc_query_id, parse_query_id, split_cgc_key
 from dbcan.plot import cgc_viz as V
 from dbcan.plot.cgc_map import draw_depth_panels, load_depth_tracks, substrate_text, PANEL_IN, PANEL_GAP_IN
 
@@ -71,38 +72,38 @@ class Link:
     bitscore: float
 
 
-def _match_protein(rest: str, by_pid: Dict[str, V.Gene]) -> Optional[V.Gene]:
-    """'NP_1.1|TC|2.A.1' -> gene NP_1.1 (protein ids may contain '|': longest match wins)."""
-    if rest in by_pid:
-        return by_pid[rest]
-    best = None
-    for pid, g in by_pid.items():
-        if rest.startswith(pid + "|") and (best is None or len(pid) > len(best.pid)):
-            best = g
-    return best
-
-
 def read_pul_links(blast_path: Path, cgcid: str, pul: str, cgc_genes: Sequence[V.Gene],
                    pul_genes: Sequence[V.Gene], cutoffs: HomologyCutoffs) -> List[Link]:
-    """Best hit per (CGC gene, PUL gene) pair passing the cut-offs."""
+    """Best hit per (CGC gene, PUL gene) pair passing the cut-offs.
+
+    Query IDs are read with the parser of substrate_prediction (dbcan.IO.cgc_ids): first the
+    exact IDs that substrate_prediction writes to CGC.faa for the genes of this CGC, then the
+    ``<contig>|<CGC#>|<protein>|<type>|<family>`` pattern; contigs and proteins may contain '|'.
+    """
     blast_path = Path(blast_path)
     if not blast_path.exists():
         return []
     qby = {g.pid: g for g in cgc_genes}
     sby = {g.pid: g for g in pul_genes}
+    cgc_parts = split_cgc_key(cgcid)
+    known = {}
+    if cgc_parts:
+        for g in cgc_genes:
+            q = cgc_query_id(g.contig, cgc_parts[1], g.pid, g.gene_type or "null", g.annotation)
+            known[q.format()] = q
     best: Dict[Tuple[str, str], Link] = {}
     with blast_path.open() as fh:
         for line in fh:
             f = line.rstrip("\n").split("\t")
             if len(f) < 12:
                 continue
-            parsed = V.split_cgc_id(f[0])
-            if not parsed or f"{parsed[0]}|{parsed[1]}" != cgcid:
+            query = parse_query_id(f[0], known)
+            if query is None or query.cgc_id != cgcid:
                 continue
             sp = f[1].split(":")
             if len(sp) < 3 or sp[1] != pul:
                 continue
-            q, s = _match_protein(parsed[2], qby), sby.get(sp[2])
+            q, s = qby.get(query.protein), sby.get(sp[2])
             if q is None or s is None:
                 continue
             try:
@@ -181,7 +182,7 @@ def plot_synteny(cgc_genes: Sequence[V.Gene], cgcid: str, pul_genes: Sequence[V.
     xlo, xhi = xmin - 0.012 * span, xmax + 0.012 * span
     head = 0.014 * span
 
-    parsed = V.split_cgc_id(cgcid)
+    parsed = V.split_cgc_key(cgcid)
     cgc_name = parsed[1] if parsed else cgcid
     fs = P.PLOT_LABEL_FONT_SIZE
     name_w = max(V.text_width_data_in(t, P.PLOT_SUBTITLE_FONT_SIZE, fontweight="bold") for t in (cgc_name, pul))
@@ -293,6 +294,9 @@ def draw_cgc_vs_pul(run_dir: Path, db_dir: Path, cgcid: str, out_dir: Path, *, p
     pul_genes = load_pul_genes(db_dir, pul)
     links = read_pul_links(run_dir / P.PUL_DIAMOND_FILE, cgcid, pul, cgcs[cgcid], pul_genes,
                            cutoffs or HomologyCutoffs())
+    logger.debug(f"Synteny {cgcid} vs {pul}: {len(links)} homology link(s) drawn")
+    if not links:
+        logger.warning(f"Synteny {cgcid} vs {pul}: no homology link passes the cut-offs in {P.PUL_DIAMOND_FILE}")
     return plot_synteny(cgcs[cgcid], cgcid, pul_genes, pul, links, out_dir, substrates=substrates,
                         revcomp=revcomp, depth_files=depth_files, formats=formats, dpi=dpi, template=template)
 

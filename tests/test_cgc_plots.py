@@ -432,3 +432,89 @@ def test_heatmap_show_fig_without_display_saves_and_fails(tmp_path, monkeypatch)
     assert res.exit_code == 1
     assert "--show-fig" in res.output
     assert (tmp_path / "heatmap.pdf").exists()
+
+
+def _circos_figure(run_dir, layout="circos"):
+    """Draw the circos and return the matplotlib figure (save_figure captured)."""
+    from unittest.mock import patch
+    from dbcan.plot.plot_cgc_circle import CGCCircosPlot
+    got = {}
+
+    def keep(fig, *a, **k):
+        got["fig"] = fig
+        return []
+    with patch.object(V, "save_figure", side_effect=keep):
+        CGCCircosPlot(SimpleNamespace(output_dir=str(run_dir), layout=layout)).plot()
+    return got["fig"]
+
+
+def test_circos_figure_is_sized_to_its_labels(run_dir):
+    """Single small contig: no empty band between the subtitle and the rings."""
+    pytest.importorskip("pycirclize")
+    _single_contig(run_dir)
+    fig = _circos_figure(run_dir)
+    W, H = fig.get_size_inches()
+    polar = [a for a in fig.axes if a.name == "polar"][0]
+    box = polar.get_position()
+    ring_top_in = (box.y0 + box.height / 2) * H + CC.CGC_CIRCLE_DIAMETER_IN / 2
+    subtitle_in = H - 0.47
+    gap = subtitle_in - ring_top_in
+    assert 0.2 < gap < 1.0, gap                 # was ~1.2 in with the fixed layout
+    assert H < W + 0.5
+
+
+def test_forced_circos_names_contigs_and_labels_ticks_once(run_dir):
+    pytest.importorskip("pycirclize")
+    fig = _circos_figure(run_dir)
+    polar = [a for a in fig.axes if a.name == "polar"][0]
+    texts = [t.get_text() for t in polar.texts if t.get_text().strip()]
+    assert "ctgA" in texts and "ctgB|x" in texts
+    tick_labels = [t for t in texts if t.endswith("kb") or t.endswith("Mb")]
+    assert len(tick_labels) == len(set(tick_labels))
+    assert any("ticks every" in t.get_text() for t in fig.texts)
+
+
+def _text_r_range(ax, t, renderer):
+    """Radius range (ring units) covered by a drawn polar-axes text: the corners of its
+    unrotated box, rotated about the anchor (rotation_mode 'anchor', as pycirclize sets)."""
+    import numpy as np
+    from matplotlib.transforms import Affine2D
+    rot = t.get_rotation()
+    t.set_rotation(0)
+    bb = t.get_window_extent(renderer)
+    t.set_rotation(rot)
+    x, y = ax.transData.transform(t.get_position())
+    corners = np.array([[bb.x0, bb.y0], [bb.x1, bb.y0], [bb.x0, bb.y1], [bb.x1, bb.y1],
+                        [(bb.x0 + bb.x1) / 2, bb.y0], [(bb.x0 + bb.x1) / 2, bb.y1]])
+    pts = Affine2D().rotate_deg_around(x, y, rot).transform(corners)
+    r = np.hypot(*(pts - ax.transData.transform((0, 0))).T) / (
+        np.hypot(*(ax.transData.transform((0, 100)) - ax.transData.transform((0, 0)))) / 100)
+    return r.min(), r.max()
+
+
+@pytest.mark.parametrize("with_deg", [True, False])
+def test_circos_text_never_crosses_the_rings(run_dir, with_deg):
+    """Contig names stay inside the innermost ring (their outer end is anchored, the text runs
+    inwards) and tick labels stay above the CGC ring, with and without the DEG rings."""
+    pytest.importorskip("pycirclize")
+    if not with_deg:
+        (run_dir / "DEG.tsv").unlink()
+    long_name = "NZ_JAAXYZ010000001.1_a_very_long_contig_name_from_an_assembler"
+    for name in ("cgc.gff", "cgc_standard_out.tsv", "substrate_prediction.tsv"):
+        p = run_dir / name
+        p.write_text(p.read_text().replace("ctgA", long_name))
+    fig = _circos_figure(run_dir)
+    ax = [a for a in fig.axes if a.name == "polar"][0]
+    renderer = fig.canvas.get_renderer()
+    inner_ring = CC.DEG_LOG2FC_RANGE[0] if with_deg else CC.CGC_CAZYME_TRACK_RANGE[0]
+    names = [t for t in ax.texts if t.get_text().startswith(("NZ_JAAXYZ", "ctgB"))]
+    assert {t.get_text()[:4] for t in names} == {"NZ_J", "ctgB"}
+    assert any(t.get_text().endswith("…") for t in names)          # the long name is shortened
+    for t in names:
+        lo, hi = _text_r_range(ax, t, renderer)
+        assert hi <= inner_ring - 1 and lo >= CC.CGC_CONTIG_LABEL_MIN_R - 1, (t.get_text(), lo, hi)
+    ticks = [t for t in ax.texts if re.fullmatch(r"[\d.]+ (bp|kb|Mb)", t.get_text())]
+    assert ticks
+    for t in ticks:
+        lo, hi = _text_r_range(ax, t, renderer)
+        assert lo >= CC.CGC_RANGE_TRACK_RANGE[1] + 0.3 and hi <= CC.CGC_AXIS_TRACK_RANGE[0], (t.get_text(), lo, hi)
