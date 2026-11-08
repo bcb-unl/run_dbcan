@@ -1,184 +1,164 @@
 .. _cgc_visualization:
 
-CAZyme Gene Cluster Visualization
-===================================
+CGC Figures
+===========
 
-run_dbcan draws four kinds of CGC figures from the files of a run directory
-(``cgc.gff``, ``cgc_standard_out.tsv`` and, when present, ``substrate_prediction.tsv``,
-``PUL_blast.out`` and ``DEG.tsv``):
+Four kinds of figures are drawn from a run_dbcan output directory (``cgc.gff``, ``cgc_standard_out.tsv`` and,
+when present, ``substrate_prediction.tsv``, ``PUL_blast.out``, ``DEG.tsv``). This page explains how to make and
+read each one; the :ref:`figure_gallery` shows every figure with the exact command that made it.
 
 .. list-table::
-   :widths: 28 32 40
+   :widths: 26 36 38
    :header-rows: 1
 
    * - Figure
      - Command
      - Shows
-   * - Genome view (circos or overview)
+   * - :ref:`Genome view <cgc-genome-view>`
      - ``run_dbcan cgc_circle_plot``
-     - Where the CGCs are on the genome / assembly and which have a predicted substrate
-   * - CGC map
+     - All CGCs on the genome or assembly
+   * - :ref:`CGC map <cgc-map>`
      - ``dbcan_plot CGC_plot``
      - The genes of one CGC
-   * - CGC map with read depth
+   * - :ref:`CGC map + read depth <cgc-coverage>`
      - ``dbcan_plot CGC_coverage_plot``
-     - The same map under one read-depth panel per sample
-   * - Synteny with dbCAN-PUL
-     - ``run_dbcan substrate_prediction`` (all CGCs), ``dbcan_plot CGC_synteny_plot`` /
-       ``CGC_synteny_coverage_plot`` (one CGC)
-     - One CGC above its best (or a chosen) dbCAN-PUL, homologous genes linked
+     - The same map under one depth panel per sample
+   * - :ref:`Synteny with dbCAN-PUL <cgc-synteny>`
+     - ``substrate_prediction`` (all CGCs); ``dbcan_plot CGC_synteny_plot`` / ``CGC_synteny_coverage_plot``
+     - One CGC above its best (or a chosen) dbCAN-PUL
 
-The :ref:`figure_gallery` shows one example of each figure (and of the abundance charts of ``dbcan_plot``) with the
-command that made it.
+Abundance charts (``dbcan_plot bar_plot`` / ``heatmap_plot``) are described in :ref:`abundance-charts`.
 
-Colours and labels (all figures)
----------------------------------
+Colours
+-------
 
-Every figure uses the same gene-type colours:
+All figures share one palette. A gene with several roles (``CAZyme|GH13_31+TC|8.A.9.1.1``) gets **one** colour,
+by the ``Gene Type`` priority CAZyme > TC > TF > STP > Sulfatase > Peptidase; its other roles appear only in its
+label (``GH13_31 + TC 8.A.9.1.1``).
 
 .. list-table::
-   :widths: 30 30
+   :widths: 30 30 40
    :header-rows: 1
 
    * - Gene type
      - Colour
+     - Note
    * - CAZyme
      - orange ``#E67E22``
+     -
    * - TC (transporter)
      - green ``#2ECC71``
+     -
    * - TF (transcription factor)
      - purple ``#9B59B6``
+     - TF number + family name: the family is shown (``HTH_AraC``)
    * - STP (signal transduction)
      - yellow ``#F1C40F``
+     -
    * - Peptidase
      - teal ``#16A085``
+     - also ``PEPTIDASE`` in dbCAN-PUL files
    * - Sulfatase
      - dark blue ``#010E1B``
-   * - Other (no signature hit, RNA)
+     - also ``SULFATLAS`` in dbCAN-PUL files
+   * - Other (no signature, RNA)
      - grey ``#95A5A6``
+     -
+   * - CGC extent (genome views)
+     - slate ``#34495E`` / cool grey ``#ABB2B9``
+     - with / without a substrate prediction
 
-A gene with several signature roles (for example ``CAZyme|GH13_31+TC|8.A.9.1.1`` in ``cgc_standard_out.tsv``) gets
-**one** colour, chosen with the same priority as the ``Gene Type`` column of CGCFinder:
-CAZyme > TC > TF > STP > Sulfatase > Peptidase. Its other roles appear only in its text label
-(``GH13_31 + TC 8.A.9.1.1``). The ``SULFATLAS`` and ``PEPTIDASE`` spellings of the dbCAN-PUL reference files are
-treated as Sulfatase and Peptidase. Legends list only the types present in the figure. When a dbCAN-PUL
-reference gene carries both a TF number and a TF family name (``TF|0036286+TF|HTH_AraC``), the label shows the
-family name (``HTH_AraC``).
+Legends list only the types present.
 
-The **CGC extents** of the genome views use two colours that are not gene-type colours, so that they cannot be
-mistaken for genes: slate ``#34495E`` for a CGC with a substrate prediction and cool grey ``#ABB2B9`` for a CGC
-without one.
+.. _cgc-genome-view:
 
 Genome view: ``cgc_circle_plot``
----------------------------------
-
-Run it after ``cgc_finder`` (and after ``substrate_prediction`` if you want substrate labels):
+--------------------------------
 
 .. code-block:: shell
 
-   run_dbcan cgc_circle_plot --output_dir output_EscheriaColiK12MG1655_fna
-   run_dbcan cgc_circle_plot --output_dir output_Xylona_heveae_TC161_faa            # 23 scaffolds -> overview
+   run_dbcan cgc_circle_plot --output_dir output_EscheriaColiK12MG1655_fna       # 1 contig  -> circos
+   run_dbcan cgc_circle_plot --output_dir output_Xylona_heveae_TC161_faa         # 23 contigs -> overview
    run_dbcan cgc_circle_plot --output_dir output_Xylona_heveae_TC161_faa --layout circos
 
-.. list-table::
-   :widths: 30 70
-   :header-rows: 1
-
-   * - Parameter
-     - Description
-   * - ``--output_dir``
-     - run_dbcan output directory; the figures are written to its ``cgc_circos/`` folder
-   * - ``--layout auto|circos|overview``
-     - ``auto`` (default): a circos plot when ``cgc.gff`` has exactly one contig (a complete circular genome), the
-       overview otherwise. ``circos`` / ``overview`` force one layout.
-
-**Circos layout** (``cgc_circos/cgc_circos_plot.png`` and ``.pdf``). Rings, from the outside in: coordinate axis;
-CGC extents (slate = substrate predicted, cool grey = no prediction) labelled ``CGCn substrate``; the genes of the CGCs
-in their gene-type colour; all CAZyme genes of the genome. A gene is placed on the CGC ring when its contig, start
-and end match a row of ``cgc_standard_out.tsv``. With more than 60 CGCs only the CGCs with a predicted substrate are
-labelled. When ``DEG.tsv`` (protein ID and log2 fold change, tab-separated, no header) exists in the output directory,
-two inner rings show up-/down-regulated genes (red / blue) and the log2FC profile; genes without a numeric value
-(``NA``) are not drawn as regulated. The figure is sized to the circle and the room its labels take, so a small genome with few
-labels has no empty band around the rings. With ``--layout circos`` on several contigs, each contig is one sector
-named radially inside the innermost ring, the name ending just below that ring and running towards the centre
-(sectors narrower than 2.5 degrees, or too narrow for the height of their name, stay unnamed; names too long for the
-room are shortened with ``…``); every sector starts at 0, so the tick marks
-are drawn on all sectors but labelled on the largest one only, and the subtitle gives the tick interval.
+Run it after ``cgc_finder`` (after ``substrate_prediction`` for substrate labels). Figures go to
+``<output_dir>/cgc_circos/``. ``--layout auto`` (default) draws a circos plot when ``cgc.gff`` has one contig,
+otherwise the overview; ``circos`` or ``overview`` force one.
 
 .. figure:: ../_static/img/figures/cgc_circos_ecoli.png
-   :width: 80%
+   :width: 70%
    :alt: Circos plot of the CGCs of E. coli K-12 MG1655
 
-   Circos layout: the 52 CGCs of *E. coli* K-12 MG1655, 16 of them with a substrate prediction. The
-   :ref:`figure_gallery` also shows the same plot with ``DEG.tsv``.
+   Circos layout (``cgc_circos_plot.png``/``.pdf``), *E. coli* K-12: 52 CGCs, 16 with a substrate.
 
-**Overview layout** (``cgc_circos/cgc_overview.png`` and ``.pdf``). One row per contig that carries a CGC (longest
-first, up to 60 rows; all rows share one bp scale), the contig name on the left and its length at the end of the
-bar. CGCs are blocks on the bar, slate with a ``CGCn substrate`` label when a substrate was predicted and cool
-grey otherwise (when no substrate prediction exists the CGC ids are shown where they fit). Contigs without CGCs are not
-drawn.
+**Circos rings**, outside in: axis; CGC extents labelled ``CGCn substrate`` (with more than 60 CGCs only those with
+a substrate are labelled); the genes of the CGCs in their colour; all CAZyme genes of the genome. If
+``<output_dir>/DEG.tsv`` exists (protein ID and log2 fold change, tab-separated, no header), two inner rings show
+up-/down-regulated genes (red/blue; ``NA`` values are skipped) and the log2FC profile. With ``--layout circos`` on
+several contigs, each contig is a sector named inside the innermost ring (narrow sectors stay unnamed, long names are
+shortened); the ticks are labelled on the largest sector only and the subtitle gives their interval.
 
 .. figure:: ../_static/img/figures/cgc_overview_xylona.png
    :width: 80%
    :alt: Overview of the CGCs on the scaffolds of Xylona heveae
 
-   Overview layout: the 110 CGCs of *Xylona heveae* TC161 on 15 of its 23 scaffolds.
+   Overview layout (``cgc_overview.png``/``.pdf``), *Xylona heveae*: 110 CGCs on 15 of 23 scaffolds.
 
-Contig lengths are taken from ``##sequence-region`` lines of ``cgc.gff`` when present, otherwise from the last
-annotated feature of each contig.
+**Overview**: one bar per contig with a CGC (longest first, at most 60, one shared bp scale), its length at the end;
+CGCs are blocks labelled ``CGCn substrate`` when predicted (CGC ids where they fit when no prediction exists).
+Contig lengths come from ``##sequence-region`` lines of ``cgc.gff``, else from the last gene.
+
+.. _cgc-map:
 
 CGC map: ``dbcan_plot CGC_plot``
----------------------------------
+--------------------------------
 
 .. code-block:: shell
 
    dbcan_plot CGC_plot -i output_EscheriaColiK12MG1655_fna --cgcid 'NC_000913.3|CGC7' -o figures --format pdf,png
 
-The title gives the CGC and its location (``CGC7  NC_000913.3:352,706–366,305``) and one line the predicted
-substrate(s) (names only, from ``substrate_prediction.tsv``). Genes are arrows drawn to scale and pointing in the
-direction of their strand, with a short family label above each gene. When labels would overlap they are stacked
-in tiers and joined to their gene by a thin leader line; labels and leader lines never cross each other's text (a
-lifted label may start or end at its leader instead of being centred on it).
-A kb ruler and a scale bar are drawn below the genes and the gene-type legend at the bottom. Only the genes of the
-CGC are drawn (no flanking genes). ``--show-protein-ids`` also prints the protein IDs under the genes.
-Output: ``<contig>_<CGC>.cgc.<format>``.
-
 .. figure:: ../_static/img/figures/cgc_map_ecoli_CGC7.png
    :width: 100%
    :alt: Gene map of E. coli CGC7
 
-   ``CGC_plot`` of *E. coli* CGC7 (the *lac* genes next to the *cyn* operon).
+   *E. coli* CGC7: the *lac* genes (``GH2_10`` = LacZ, ``TC 2.A.1.5.1`` = LacY) next to the *cyn* operon.
+
+Genes are arrows to scale in the direction of their strand, labelled with their family (crowded labels are stacked
+and joined by leader lines). The title gives the location and the predicted substrate. Only the CGC's genes are
+drawn; ``--show-protein-ids`` adds protein IDs. Output: ``<contig>_<CGC>.cgc.<format>``.
+
+.. _cgc-coverage:
 
 CGC map with read depth: ``dbcan_plot CGC_coverage_plot``
------------------------------------------------------------
+---------------------------------------------------------
 
 .. code-block:: shell
 
-   samtools depth -a -r 'NC_000913.3:352706-366305' ctrl1.bam > ctrl1.CGC7.depth.txt
+   samtools depth -a -r 'NC_000913.3:352706-366305' ctrl1.bam  > ctrl1.CGC7.depth.txt
    samtools depth -a -r 'NC_000913.3:352706-366305' treat1.bam > treat1.CGC7.depth.txt
-   dbcan_plot CGC_coverage_plot -i output_dir --cgcid 'NC_000913.3|CGC7' \
+   dbcan_plot CGC_coverage_plot -i output_EscheriaColiK12MG1655_fna --cgcid 'NC_000913.3|CGC7' \
        --reads-count ctrl1.CGC7.depth.txt --reads-count treat1.CGC7.depth.txt --samples ctrl1,treat1 -o figures
-
-``--reads-count`` takes a ``samtools depth`` file (contig, position, depth; tab- or space-separated) and can be
-repeated; each file becomes one panel above the gene map (first file on top). Only the rows of the CGC's contig
-inside the CGC window are used, so a depth file of the whole assembly works too. The contig names must be the ones
-of ``cgc.gff``: a depth file without any row for the CGC's contig (for example ``NC_000913`` instead of
-``NC_000913.3``) is an error (exit status 1), not an empty panel. A contig that is present but has no row inside the
-CGC window only gives a warning and a zero-depth panel. All panels share one y axis (``read depth``) so samples can be
-compared; ``--samples`` names the panels (default: file names). Output: ``<contig>_<CGC>.cgc-coverage.<format>``.
 
 .. figure:: ../_static/img/figures/cgc_coverage_ecoli_CGC7.png
    :width: 100%
    :alt: Read depth of two samples above the gene map of E. coli CGC7
 
-   ``CGC_coverage_plot`` of CGC7 with simulated RNA-seq reads of a control and a treatment sample (CGC7 is
-   expressed four times lower in the treatment). The grey bands mark the genes.
+   CGC7 with simulated RNA-seq reads: expressed four times lower in ``treat1``. Grey bands mark the genes.
+
+* ``--reads-count`` takes a ``samtools depth`` file (contig, position, depth); repeat it, one panel per file (first
+  on top), all on one y axis. ``--samples`` names the panels (default: file names).
+* A whole-assembly depth file works: only rows of the CGC window are used. Contig names must be those of
+  ``cgc.gff``: a file without the CGC's contig (``NC_000913`` vs ``NC_000913.3``) is an error; a contig without rows
+  in the window gives a warning and a zero panel.
+* Output: ``<contig>_<CGC>.cgc-coverage.<format>``.
+
+.. _cgc-synteny:
 
 Synteny with dbCAN-PUL
------------------------
+----------------------
 
-``run_dbcan substrate_prediction`` (and ``easy_substrate``) writes one PDF per CGC that has a dbCAN-PUL hit to
-``synteny_pdf/<contig>_<CGC>_<PUL>-syntenic.pdf``. ``dbcan_plot`` draws the same figure for one CGC:
+``substrate_prediction`` writes ``synteny_pdf/<contig>_<CGC>_<PUL>-syntenic.pdf`` for every CGC with a PUL hit.
+``dbcan_plot`` draws the same figure for one CGC, against its best PUL or another one (``--pul``):
 
 .. code-block:: shell
 
@@ -186,85 +166,71 @@ Synteny with dbCAN-PUL
    dbcan_plot CGC_synteny_plot -i output_dir --cgcid 'NC_000913.3|CGC7' --db-dir db --pul PUL0751 --no-synteny-revcomp
    dbcan_plot CGC_synteny_coverage_plot -i output_dir --cgcid 'NC_000913.3|CGC7' --db-dir db --reads-count ctrl1.CGC7.depth.txt
 
-The CGC is drawn above the dbCAN-PUL (read from ``<db_dir>/dbCAN-PUL/<PUL>.out/cgc.gff``). The left labels name the
-two tracks and the title gives ``CGC vs PUL`` and the PUL substrate. The reference is shifted so homologous genes sit
-under each other and, with ``--synteny-revcomp`` (default on), it is drawn reverse-complemented when most homologous
-gene pairs lie on opposite strands. Homologous genes are joined by ribbons whose grey level is the protein identity
-(colour bar ``identity (%)``), and the identity is printed on each ribbon in a small tag outlined in the ribbon's grey. Tags of the
-one-to-one gene pairs form one row half-way between the tracks; tags of multiple matches sit above that row, near the CGC end of
-their ribbon. Ribbons are narrower than the genes
-(about a third of the gene width), and a gene with several hits (multiple matches, e.g. two paralogous GH32 genes
-hitting each other's counterpart) gives each ribbon its own slot, ordered by the partner's position, so every link
-stays visible. Only DIAMOND hits from ``PUL_blast.out`` that pass the per-hit cut-offs of
-substrate prediction are drawn: ``substrate_prediction`` uses its own ``-evalue``/``-iden``/``-cov`` values and
-``dbcan_plot`` takes ``--evalue-cutoff`` (default 0.01), ``--identity-cutoff`` (percent, default 0) and
-``--coverage-cutoff`` (fraction, default 0). ``--pul`` compares the CGC with another dbCAN-PUL than its best hit.
-``CGC_synteny_coverage_plot`` adds the read-depth panels of ``CGC_coverage_plot`` above the CGC.
-
-.. figure:: ../_static/img/figures/cgc_synteny_ecoli_CGC7_PUL0751.png
-   :width: 100%
-   :alt: E. coli CGC7 compared with dbCAN-PUL PUL0751
-
-   ``CGC_synteny_plot`` of *E. coli* CGC7 and its best dbCAN-PUL hit, PUL0751 (lactose).
-
 .. figure:: ../_static/img/figures/synteny_PUL0008_CGC1.png
    :width: 100%
    :alt: CGC1 of the PUL0008 region compared with dbCAN-PUL PUL0008
 
-   A gene with several hits: the paralogous ``GH32`` genes of the PUL0008 region also hit each other's
-   counterpart (light 50 % ribbons). Each ribbon has its own slot on the gene, and the labels of these multiple
-   matches sit above the row of one-to-one labels.
+   The PUL0008 region against PUL0008: one-to-one pairs (87-96%) and two paralogous ``GH32`` genes that also hit
+   each other's counterpart (light 50% ribbons, labels above the main row).
+
+How to read it:
+
+* The CGC is on top, the dbCAN-PUL (from ``<db_dir>/dbCAN-PUL/<PUL>.out/cgc.gff``) below, shifted so that homologous
+  genes sit under each other; with ``--synteny-revcomp`` (default) it is reverse-complemented when most pairs lie on
+  opposite strands.
+* Ribbons join homologous genes; their grey level and tag give the % identity. Tags of one-to-one pairs form one row
+  half-way; tags of multiple matches sit above it. A gene with several hits gives each ribbon its own slot.
+* Only hits that pass the substrate-prediction cut-offs are drawn: ``--evalue-cutoff`` (0.01),
+  ``--identity-cutoff`` (percent, 0), ``--coverage-cutoff`` (fraction, 0); ``substrate_prediction`` uses its own
+  ``-evalue``/``-iden``/``-cov``.
+* ``CGC_synteny_coverage_plot`` adds the depth panels of ``CGC_coverage_plot`` above the CGC
+  (``<cgc>_<PUL>-syntenic-cov.<format>``).
+
+.. _dbcan-plot-options:
 
 ``dbcan_plot`` options
------------------------
+----------------------
 
 .. list-table::
-   :widths: 32 68
+   :widths: 34 66
    :header-rows: 1
 
    * - Option
-     - Description
+     - Description (default)
    * - ``-i`` / ``--input``
-     - run_dbcan output directory (CGC figures) or comma-separated abundance files (``bar_plot``, ``heatmap_plot``)
+     - run_dbcan output directory (CGC figures) or comma-separated abundance files (charts)
    * - ``-o`` / ``--output-dir``
-     - Directory for the figures (default: current directory; created if needed)
+     - Folder for the figures, created if needed (``.``)
    * - ``--cgcid``
-     - CGC id ``contig|CGCn`` as in ``substrate_prediction.tsv`` (contig names may contain ``|``)
-   * - ``--format``
-     - CGC figures: ``pdf`` (default), ``png``, ``svg`` or a comma-separated list; ``--dpi`` sets the PNG resolution
-       (default 200)
+     - ``contig|CGCn`` as in ``substrate_prediction.tsv`` (contigs may contain ``|``)
+   * - ``--format`` / ``--dpi``
+     - CGC figures: ``pdf``, ``png``, ``svg`` or a list (``pdf``); PNG resolution (200)
    * - ``--db-dir``
-     - Database directory holding ``dbCAN-PUL/`` (synteny figures)
+     - Database folder with ``dbCAN-PUL/`` (``db``)
    * - ``--pul``
-     - dbCAN-PUL id for the synteny figures (default: best hit of the CGC)
-   * - ``--reads-count``
-     - samtools depth file; repeat for several samples
-   * - ``--samples``
-     - Comma-separated names: one per ``--reads-count`` file, or one per abundance file
+     - dbCAN-PUL to compare with (best hit)
+   * - ``--reads-count`` / ``--samples``
+     - Depth file (repeatable) / comma-separated names, one per depth or abundance file
    * - ``--synteny-revcomp`` / ``--no-synteny-revcomp``
-     - Reverse-complement the dbCAN-PUL when it is on the opposite strand (default: on)
+     - Reverse-complement an opposite-strand PUL (on)
    * - ``--evalue-cutoff``, ``--identity-cutoff``, ``--coverage-cutoff``
-     - Per-hit filters of the synteny links (same meaning and defaults as in ``substrate_prediction``)
+     - Synteny link filters (0.01, 0, 0)
    * - ``--show-protein-ids``
-     - Print protein IDs under the genes of ``CGC_plot`` / ``CGC_coverage_plot``
+     - Protein IDs under the genes (``CGC_plot``, ``CGC_coverage_plot``)
    * - ``--top``, ``--col``, ``--value``
-     - Abundance charts: number of rows, or the rows whose column ``--col`` has one of the ``--value`` values
-   * - ``--vertical-bar``
-     - ``bar_plot``: vertical bars (default: horizontal bars)
-   * - ``--plot-style``
-     - Matplotlib style of the abundance charts: ``ggplot`` (default), ``seaborn-v0_8``, ``seaborn-v0_8-poster``,
-       ``seaborn-v0_8-whitegrid``, ``default``, ``classic``, ``bmh``, ``fivethirtyeight``; the old names ``seaborn``
-       and ``seaborn-poster`` are mapped to the ``seaborn-v0_8`` ones
+     - Charts: number of rows (20), or the rows whose column ``--col`` has one of the ``--value`` values
    * - ``--pdf``
-     - File name of ``bar_plot`` (default ``bar_plot.pdf``) or ``heatmap_plot`` (default ``heatmap.pdf`` /
-       ``heatmap_cluster.pdf``); a bare name is written into ``--output-dir``
-   * - ``--show-abund``, ``--cluster-map``, ``--palette``, ``--show-fig``
-     - ``heatmap_plot``: print values in the cells, cluster rows, colormap name. ``--show-fig`` also opens the
-       heatmap in a window after writing the PDF; without a display (no interactive matplotlib backend) the PDF is
-       still written but ``dbcan_plot`` exits with status 1
+     - Chart file name (``bar_plot.pdf`` / ``heatmap.pdf``, ``heatmap_cluster.pdf``), written into ``-o``
+   * - ``--vertical-bar``
+     - ``bar_plot``: vertical bars
+   * - ``--plot-style``
+     - Chart style: ``ggplot`` (default), ``seaborn-v0_8*``, ``default``, ``classic``, ``bmh``,
+       ``fivethirtyeight`` (``seaborn``, ``seaborn-poster`` are mapped to ``seaborn-v0_8``)
+   * - ``--show-abund``, ``--cluster-map``, ``--palette``
+     - ``heatmap_plot``: values in cells, clustered rows, colormap
+   * - ``--show-fig``
+     - ``heatmap_plot``: also open a window; without a display the PDF is written and the exit status is 1
 
-``dbcan_plot`` exits with status 1 and an error message when a figure cannot be drawn (unknown ``--cgcid``, missing
-depth file, depth file without the CGC's contig, no dbCAN-PUL hit, empty abundance file, ...).
-
-.. tip::
-   PDF and SVG output keep the text editable in ``Inkscape`` or ``Adobe Illustrator``.
+``dbcan_plot`` exits with status 1 and a message when a figure cannot be drawn (unknown ``--cgcid``, missing or
+wrong depth file, no dbCAN-PUL hit, empty abundance file, ...). PDF and SVG keep the text editable (Inkscape,
+Illustrator).

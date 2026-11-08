@@ -6,9 +6,11 @@ Unreleased
 #. ``--mode`` accepts only ``prok``, ``meta`` or ``protein``. pyrodigal (``prok``/``meta``) is for bacteria, archaea
    and metagenomes; for fungi and other eukaryotes predict genes with funannotate, BRAKER or similar and run
    ``--mode protein`` with their GFF. A warning is logged when pyrodigal proteins look like a split eukaryotic genome.
-#. ``--mode protein`` (and any user ``--input_gff``) requires ``--gff_type``. New types: ``funannotate``, ``BRAKER``,
-   ``GFF3``, ``GTF`` (case-insensitive). The gene/protein match is checked before step 1 and the run stops when fewer
-   than ``--gff_min_match`` (default 0.9) of the protein-coding genes match; the report is ``gff_resolution.tsv``.
+#. CGC prediction from proteins (``easy_CGC``/``easy_substrate`` with ``--mode protein``) requires ``--input_gff``
+   and ``--gff_type``, and ``gff_process`` requires ``--gff_type`` with any user ``--input_gff``;
+   ``CAZyme_annotation`` still needs only the FASTA. New types: ``funannotate``, ``BRAKER``, ``GFF3``, ``GTF``
+   (case-insensitive). The gene/protein match is checked first (before step 1 in ``easy_*``) and the run stops when
+   fewer than ``--gff_min_match`` (default 0.9) of the protein-coding genes match; report: ``gff_resolution.tsv``.
 #. ``--prokaryotic`` / ``--fungi``: TF annotation uses TF DIAMOND for prokaryotes (default) and the TF HMMs with
    ``--fungi``.
 #. ``substrate_prediction``: ``-cpn`` now takes effect; ``-uqcgn``/``-upghn`` compare the right side; mismatched
@@ -25,33 +27,26 @@ Unreleased
 
 .. rubric:: Changed outputs
 
-#. ``cgc.gff``: on a CGC CAZyme (``#ofTools`` >= 2) TC, TF (DIAMOND) and sulfatase labels are no longer used:
-   they come from full-length protein databases and cannot be placed relative to the CAZyme domain, so the CAZyme
-   annotation wins (the hits stay in ``total_cgc_info.tsv``). Domain-level labels (STP, fungal TF HMM, peptidase)
-   are kept. *E. coli* K-12: 24 CAZyme genes lose such a label and CGC44 (the LPS core glycosyltransferase cluster,
-   a CGC only through ``GT121 + TC 9.B.67`` on WaaL) is no longer called (53 -> 52 CGCs); *Xylona*: 27 genes,
-   CGC111 (``GT48 + TC 9.B.119`` on FKS1) is no longer called (111 -> 110). Substrate predictions are unchanged.
-#. ``cgc.gff``: a protein that is not a CGC CAZyme keeps only **one** full-length label (TC, TF DIAMOND or
-   sulfatase), the hit with the highest DIAMOND bit score (ties: higher min(query, subject) coverage, then lower
-   E-value, then TC > TF > Sulfatase); the others stay in ``total_cgc_info.tsv``. The E-value is not used because it
-   depends on the size of the database searched. Domain-level labels (STP, fungal TF HMM, peptidase) are not
-   affected. The TC, TF, sulfatase and peptidase DIAMOND searches report the bit score (``BITSCORE``, after
-   ``Database`` in ``diamond.out.*``), ``total_cgc_info.tsv`` has a last column ``Bitscore``, and each search keeps
-   its best hit per protein by bit score. An older ``total_cgc_info.tsv`` without ``Bitscore`` keeps all labels.
-   *E. coli* K-12: 21 proteins had both a TF and a TC label. 20 are two-component response regulators, LacI-family
-   or NtrC-family (AAA+) regulators whose weaker TC hit (``3.A.23.1.1``, ``3.E.1.5.3``, ``3.A.1.2.x``; bit score
-   50-230 against 147-1353 for the TF hit) comes from a shared domain; they keep the TF label and their Gene Type
-   changes from ``TC`` to ``TF``. The 21st, ``NP_418207.1`` (the ribose-binding protein RbsB), keeps
-   ``TC|3.A.1.2.1`` (551 vs 54 bits). With the default ``--additional_genes TC`` a TF gene is not a signature gene:
-   CGC7 (lac) loses ``lacI`` at its end, CGC9 loses five genes (``phoB`` was the only signature gene bridging them)
-   and CGC32 loses ``fhlA`` and the null gene before it at its end. The number of CGCs (52) and every predicted
-   substrate stay the same; only the PUL0751 (lactose) score of CGC7 drops from 3968 to 3296 (``lacI`` pair). *Xylona* (``--fungi``: TC and sulfatase only), PUL0008 and PUL0230: no protein has two full-length
-   labels, nothing changes.
-#. Sulfatase (SulfAtlas DIAMOND) hits must also cover at least 70 % of the SulfAtlas protein
-   (``--subject_coverage_threshold_sulfatase``). SulfAtlas entries are full-length proteins, often sulfatases fused
-   to GH or other domains; without this filter a GH32 or GH2 protein that only matched the glycoside hydrolase part
-   of such an entry was labelled ``S1_7`` / ``S1_19``. *E. coli* K-12: 113 -> 6 sulfatase hits, *Xylona*: 267 -> 10;
-   CGC membership and substrate predictions are unchanged.
+#. ``cgc.gff``: on a CGC CAZyme (``#ofTools`` >= 2) the TC, TF (DIAMOND) and sulfatase labels are no longer used
+   (full-length database hits cannot be placed relative to the CAZyme domain; CAZyme wins; the hits stay in
+   ``total_cgc_info.tsv``). Domain-level labels (STP, fungal TF HMM, peptidase) are kept. *E. coli* K-12: 24 genes
+   lose a label and CGC44 (``GT121 + TC 9.B.67`` on WaaL) is gone (53 -> 52 CGCs); *Xylona*: 27 genes, CGC111
+   (``GT48 + TC 9.B.119`` on FKS1) is gone (111 -> 110). Substrate predictions are unchanged.
+#. ``cgc.gff``: a non-CAZyme protein keeps only **one** full-length label (TC, TF DIAMOND or sulfatase): the hit
+   with the highest DIAMOND bit score (ties: higher min(query, subject) coverage, lower E-value, TC > TF >
+   Sulfatase; the E-value depends on database size). Domain-level labels are not affected; all hits stay in
+   ``total_cgc_info.tsv``. The DIAMOND searches report ``BITSCORE`` (after ``Database`` in ``diamond.out.*``),
+   ``total_cgc_info.tsv`` has a last column ``Bitscore`` (an older file without it keeps all labels), and each search
+   keeps its best hit per protein by bit score. *E. coli* K-12: of 21 proteins with a TF and a TC label, 20
+   regulators (two-component, LacI, NtrC families; TC hit 50-230 bits vs 147-1353 for TF) keep TF and their Gene
+   Type changes from ``TC`` to ``TF``; RbsB (``NP_418207.1``) keeps ``TC|3.A.1.2.1`` (551 vs 54 bits). With the
+   default ``--additional_genes TC`` the TF genes are no longer signatures: CGC7 (lac) loses ``lacI``, CGC9 five
+   genes (bridged only by ``phoB``), CGC32 ``fhlA`` and one null gene. Still 52 CGCs with the same substrates; the
+   PUL0751 score of CGC7 drops from 3968 to 3296. *Xylona* (``--fungi``), PUL0008 and PUL0230: unchanged.
+#. Sulfatase hits must also cover >= 70% of the SulfAtlas protein (``--subject_coverage_threshold_sulfatase``):
+   SulfAtlas entries are often sulfatases fused to GH domains, and a GH32 or GH2 protein that matched only the GH
+   part was labelled ``S1_7`` / ``S1_19``. *E. coli* K-12: 113 -> 6 hits, *Xylona*: 267 -> 10; CGCs and substrates
+   unchanged.
 #. ``overview.tsv``: gene IDs are always read as text (numeric or ``NA`` IDs are no longer lost); the ``DIAMOND``
    column keeps only CAZy family tokens, once each; an EC without a count is written ``EC:1``; the ``Substrate``
    column looks the EC up across the eHMM's composition families, falls back to the family-level substrate, and uses
@@ -97,8 +92,9 @@ Unreleased
    caption lines. ``CGC_coverage_plot`` uses the same gene track and accepts several ``--reads-count`` files.
 #. Synteny figures (``substrate_prediction`` and ``dbcan_plot CGC_synteny_plot``) share one renderer: the dbCAN-PUL is
    aligned to the CGC and reverse-complemented when it lies on the opposite strand (``--synteny-revcomp``, default
-   on); only hits that pass the substrate-prediction cut-offs are drawn, each labelled with its % identity in a tag on the ribbon (one row for the one-to-one pairs; tags of multiple
-   matches towards the ribbon ends). Ribbons are narrower than the genes and a gene with several hits gives each its
+   on); only hits that pass the substrate-prediction cut-offs are drawn, each labelled with its % identity in a tag
+   on the ribbon (one row for the one-to-one pairs; tags of multiple matches above it, near the CGC end of their
+   ribbon). Ribbons are narrower than the genes and a gene with several hits gives each its
    own slot, so multiple matches stay visible. ``CGC_synteny_coverage_plot`` writes
    ``<cgc>_<PUL>-syntenic-cov.<ext>``.
 #. ``cgc_circle_plot --layout auto|circos|overview``: circos for one contig, an overview of the contigs with CGCs
@@ -106,9 +102,9 @@ Unreleased
    named inside the innermost ring and the ticks are labelled on the largest sector only.
 #. ``dbcan_plot``: ``-o`` is honoured by every plot; ``--vertical-bar`` draws vertical bars; ``seaborn-v0_8*`` styles
    are accepted.
-#. Documentation: new :ref:`figure_gallery` page with one example of every figure (circos, overview, CGC map,
-   coverage, synteny, synteny with coverage, bar chart, heatmap) and the command that made it, drawn from real runs
-   of *E. coli*, *Xylona heveae* and PUL0008; the CGC figure, substrate prediction and abundance pages show them too.
+#. Documentation: new :ref:`figure_gallery` page with one example of every figure and the command that made it
+   (real runs of *E. coli*, *Xylona heveae* and PUL0008); a pipeline overview figure (index, quick start) and a CGC
+   rule figure (:ref:`cgc-rules-figure`); the user guide is rewritten to lead with the command and its outputs.
 
 .. rubric:: Fixes
 
