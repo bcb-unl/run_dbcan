@@ -331,14 +331,18 @@ def run_dbCAN_CGCFinder_substrate(config):
 
 def run_dbcan_syn_plot(config):
     from dbcan.plot.syntenic_plot import SyntenicPlot
-    syntenic_plot = SyntenicPlot(config)
+    written, failed = SyntenicPlot(config).syntenic_plot_allpairs()
+    if failed:
+        raise DbcanStepError(f"{failed} synteny plot(s) failed ({written} written); see the log above for details.")
 
-    syntenic_plot.syntenic_plot_allpairs()
 
 def run_dbCAN_cgc_circle(config):
+    from dbcan.plot.cgc_viz import PlotInputError
     from dbcan.plot.plot_cgc_circle import CGCCircosPlot
-    cgc_plot = CGCCircosPlot(config)
-    cgc_plot.plot()
+    try:
+        return CGCCircosPlot(config).plot()
+    except PlotInputError as e:
+        raise DbcanStepError(f"CGC plot failed: {e}") from e
 
 def run_dbCAN_topology_annotation(config):
     """

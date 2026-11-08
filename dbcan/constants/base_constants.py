@@ -62,6 +62,8 @@ GENE_STRAND_FIELD = "Gene Strand"
 GENE_ANNOTATION_FIELD = "Gene Annotation"
 
 #plot for CGCs
+# The ONE gene-type palette used by every dbCAN figure (circle/overview, CGC map, coverage,
+# synteny). Do not copy these values elsewhere: import this dict.
 CGC_FEATURE_LEGEND = ['CAZyme', 'TC', 'TF', 'STP', 'Peptidase', 'Sulfatase']
 CGC_FEATURE_COLORS = {
     "CAZyme": "#E67E22",      # orange
@@ -74,6 +76,17 @@ CGC_FEATURE_COLORS = {
 }
 GENE_LABEL_COLOR = list(CGC_FEATURE_COLORS.values())
 GENE_LABELS = list(CGC_FEATURE_COLORS.keys())
+
+# Gene Type priority for a gene with several signature roles (lower = wins). Used by
+# CGCFinder for the "Gene Type" column and by the plots to pick the single fill colour.
+CGC_GENE_TYPE_PRIORITY = {'CAZyme': 0, 'TC': 1, 'TF': 2, 'STP': 3, 'Sulfatase': 4, 'Peptidase': 5}
+# Spellings of the signature types found in cgc.gff / cgc_standard_out.tsv and in the
+# dbCAN-PUL reference gffs (SULFATLAS, PEPTIDASE), mapped to the palette keys.
+CGC_GENE_TYPE_ALIASES = {
+    "cazyme": "CAZyme", "tc": "TC", "tf": "TF", "stp": "STP",
+    "sulfatase": "Sulfatase", "sulfatlas": "Sulfatase",
+    "peptidase": "Peptidase",
+}
 
 # common label for different feature types
 CAZYME = "CAZyme"

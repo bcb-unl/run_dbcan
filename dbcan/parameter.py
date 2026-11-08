@@ -719,6 +719,14 @@ def cgc_substrate_base_options(func):
     take --input_raw_data/--mode (GitHub issue #81); easy_substrate adds them itself.
     """
     func = output_dir_option(func)
+    func = click.option(
+        '--synteny_revcomp/--no-synteny_revcomp',
+        '--synteny-revcomp/--no-synteny-revcomp',
+        'synteny_revcomp',
+        default=True,
+        show_default=True,
+        help='Synteny PDFs: draw the dbCAN-PUL reverse-complemented when most homologous genes lie on the opposite strand of the CGC.',
+    )(func)
     # Options of the run_dbcan 3/4 substrate scripts; accepted so old command lines keep working.
     _legacy = 'substrate_prediction reads its inputs from --output_dir and the PUL database from --db_dir.'
     func = ignored_option('--pul', default=None, type=click.Path(dir_okay=False), note=_legacy)(func)
@@ -811,7 +819,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.0,
         type=float,
         show_default=True,
-        help='Minimum DIAMOND percent identity (0–100, e.g. 30 for 30%%) for PUL–CGC homology hits.',
+        help='Minimum DIAMOND percent identity (0-100, e.g. 30 for 30%) for PUL–CGC homology hits.',
     )(func)
     func = click.option(
         '-cov',
@@ -901,6 +909,13 @@ def syn_plot_options(func):
 
 def cgc_circle_plot_options(func):
     func = output_dir_option(func)
+    func = click.option(
+        '--layout',
+        type=click.Choice(['auto', 'circos', 'overview'], case_sensitive=False),
+        default='auto',
+        show_default=True,
+        help='auto: circos plot when cgc.gff has one contig (complete genome), overview ideogram otherwise.',
+    )(func)
     return func
 
 def topology_annotation_options(func):

@@ -106,7 +106,9 @@ Parameters
        hits used by the domain composition method
    * - ``-ndsc``, ``-npsc``, ``-subs``
      - Minimum counts and score for a dbCAN-sub based substrate call (defaults: 2, 2, 2.0)
-
+   * - ``--synteny_revcomp`` / ``--no-synteny_revcomp``
+     - Synteny PDFs: draw the dbCAN-PUL reverse-complemented when most of its homologous genes lie on the opposite
+       strand of the CGC (default: on). See :ref:`cgc_visualization`.
    * - ``-odbcan_sub true``
      - Also write ``substrate_prediction_dbcan_sub.tsv`` (see below). Default: ``false``
    * - ``-odbcanpul true``
@@ -114,8 +116,8 @@ Parameters
 
 ``--pul``, ``-o/--out``, ``-w/--workdir``, ``-rerun`` and ``-env`` (options of the run_dbcan 3/4 substrate scripts)
 are hidden from ``--help``; they are still accepted so that old command lines keep working, but they have no
-effect and a warning is logged when they are given. The number of DIAMOND threads is chosen automatically (all CPUs) for this command; ``easy_substrate`` uses
-``--threads``. For all options, run ``run_dbcan substrate_prediction --help`` or see the ``API documentation``.
+effect and a warning is logged when they are given. The number of DIAMOND threads is chosen automatically (all CPUs)
+for this command; ``easy_substrate`` uses ``--threads``. For all options, run ``run_dbcan substrate_prediction --help`` or see the ``API documentation``.
 
 Output Files
 -------------
@@ -126,7 +128,15 @@ Substrate prediction generates the following output files:
   ``dbCAN-PUL substrate``, ``bitscore``, ``signature pairs``, ``dbCAN-sub substrate``, ``dbCAN-sub substrate score``
 * ``CGC.faa`` - Protein sequences of all CGC genes used as DIAMOND queries
 * ``PUL_blast.out`` - Raw DIAMOND search results
-* ``synteny_pdf/`` - Synteny plots directory. It shows the gene cluster mappings between PULs and CGCs
+* ``synteny_pdf/`` - One synteny plot per CGC with a dbCAN-PUL hit (``<contig>_<CGC>_<PUL>-syntenic.pdf``): the CGC
+  above its best dbCAN-PUL match, homologous genes linked by grey ribbons (darker = higher identity; only the DIAMOND
+  hits that pass ``-evalue``/``-iden``/``-cov`` are drawn). See :ref:`cgc_visualization`.
+
+  The synteny figures are drawn after ``substrate_prediction.tsv`` has been written. If one of them cannot be made
+  (most often because ``<db_dir>/dbCAN-PUL/<PUL>.out/cgc.gff`` is missing from the database directory),
+  ``substrate_prediction`` and ``easy_substrate`` stop with an error and a **non-zero exit status**, even though
+  ``substrate_prediction.tsv`` is complete. Download the full database (``run_dbcan database``) or restore the
+  ``dbCAN-PUL/`` folder and run the command again.
 * ``substrate_prediction_dbcan_sub.tsv`` (``-odbcan_sub true``) - The dbCAN-sub evidence of every CGC: one row
   per dbCAN-sub hit of a CGC protein that passes ``-hmmevalue``/``-hmmcov`` (subfamily, EC, substrate, i-Evalue,
   coverage), followed by the CGC-level columns ``CGC substrate scores`` (``substrate:score`` for all substrates,
