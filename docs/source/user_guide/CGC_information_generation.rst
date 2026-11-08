@@ -28,13 +28,35 @@ To identify and analyze CGCs, users must first prepare annotation information by
    example a GH13 protein that also hits TC 8.A.9 (the rBAT/SLC3 family of TCDB, itself a GH13 homologue) is a
    CAZyme only, and a cluster of glycosyltransferases cannot become a CGC because one of them is also in TCDB.
    Domain-level labels (STP, fungal TF HMM, MEROPS peptidase units) are kept, and CGCFinder ignores them only when
-   they lie on the CAZyme domain. On proteins without a CAZyme annotation, labels from different sources are kept
-   side by side (one protein can be, for example, ``TC`` and ``STP``); such a gene still fills only one role when
-   CGCs are called. Each DIAMOND search keeps one best hit per protein; STP and TF HMM domains are resolved within their own
-   HMM library. The peptidase database is built from MEROPS ``pepunit.lib`` (peptidase units); hits to MEROPS
+   they lie on the CAZyme domain. On proteins without a CAZyme annotation, domain-level labels are kept side by side
+   with one full-length label (one protein can be, for example, ``TC`` and ``STP``); such a gene still fills only
+   one role when CGCs are called. Each DIAMOND search keeps one best hit per protein (highest bit score); STP and
+   TF HMM domains are resolved within their own HMM library. The peptidase database is built from MEROPS ``pepunit.lib`` (peptidase units); hits to MEROPS
    peptidase *inhibitor* units (families ``I*``) are not reported as ``Peptidase`` (they stay in the raw
    ``diamond.out.peptidase`` file). In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of
    ``cgc_standard_out.tsv`` shows the first of CAZyme > TC > TF > STP > Sulfatase > Peptidase.
+
+   **One full-length label per protein.** A protein that is not a CGC CAZyme can hit more than one full-length
+   database, for example TCDB and SulfAtlas, or TCDB and the prokaryotic TF database. These hits are competing
+   names for the whole protein, not domains at different positions, so only the best one is written to
+   ``cgc.gff`` (all of them stay in ``total_cgc_info.tsv``). The best hit is the one with the highest DIAMOND
+   **bit score** (``Bitscore``, the last column of ``total_cgc_info.tsv``):
+
+   * the E-value cannot be used: it grows with the size of the database searched (E = K·m·n·e\ :sup:`-λS`, with
+     *n* the total length of the database), and TCDB, ``TF.dmnd`` and SulfAtlas differ in size, so the same
+     alignment gets a different E-value in each of them;
+   * the bit score is the raw alignment score normalised by the scoring system (BLOSUM62 and the same gap
+     penalties for all three searches) and does not depend on database size, so the scores of one query protein
+     against the three databases are on the same scale;
+   * the three searches share the query, so ranking by bit score is the same as ranking by the blast score ratio
+     (bit score / bit score of the query aligned with itself): the self-score is one number per query protein.
+
+   Ties (equal bit scores) go to the higher min(query coverage, subject coverage) of the alignment, then to the
+   lower E-value, then to TC > TF > Sulfatase. For example *E. coli* LacI hits ``LACI_ECOLI`` in the TF database
+   (bit score 677) and TCDB ``3.A.1.2.1`` (55; the ribose ABC transporter, whose binding protein shares the LacI
+   ligand-binding fold): it is labelled ``TF`` only. Domain-level labels (STP, fungal TF HMM, MEROPS peptidase units)
+   are not part of this choice. A ``total_cgc_info.tsv`` written before the ``Bitscore`` column was added keeps
+   all labels.
 
    SulfAtlas entries are full-length proteins, and many of them are sulfatases fused to other domains (for example
    GH2 or GH32). A protein that aligns only to the non-sulfatase part of such an entry would take its sulfatase
@@ -265,7 +287,10 @@ This step generates several output files:
 * ``TF_hmm_results.tsv`` - pyHMMER output for fungal Transcription Factors (only with ``--fungi``)
 * ``STP_hmm_results.tsv`` - pyHMMER output for Signal Transduction Proteins (STPs) using the STP-HMM database
 * ``diamond.out.sulfatase`` and ``diamond.out.peptidase`` - DIAMOND output for sulfatases and peptidases
-* ``total_cgc_info.tsv`` - Combined table of all non-CAZyme signature genes (TC, TF, STP, Sulfatase, Peptidase)
+* ``total_cgc_info.tsv`` - Combined table of all non-CAZyme signature genes (TC, TF, STP, Sulfatase, Peptidase).
+  ``Source`` names the search (``TC``, ``TF_prok``, ``TF_fungi``, ``STP``, ``Sulfatase``, ``Peptidase``) and
+  ``Bitscore`` (last column) the DIAMOND bit score (empty for the HMM searches). The ``diamond.out.*`` files have a
+  ``BITSCORE`` column after ``Database``.
 * ``cgc.gff`` - Simplified GFF with ``protein_id`` and ``CGC_annotation`` attributes, the input of ``cgc_finder``
 * ``gff_resolution.tsv`` - Gene → protein match of every gene of ``--input_gff`` (not written for the pyrodigal
   ``uniInput.gff``); see `Gene/protein match check`_

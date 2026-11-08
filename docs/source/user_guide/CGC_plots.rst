@@ -28,6 +28,9 @@ run_dbcan draws four kinds of CGC figures from the files of a run directory
        ``CGC_synteny_coverage_plot`` (one CGC)
      - One CGC above its best (or a chosen) dbCAN-PUL, homologous genes linked
 
+The :ref:`figure_gallery` shows one example of each figure (and of the abundance charts of ``dbcan_plot``) with the
+command that made it.
+
 Colours and labels (all figures)
 ---------------------------------
 
@@ -102,11 +105,24 @@ named radially inside the innermost ring, the name ending just below that ring a
 room are shortened with ``…``); every sector starts at 0, so the tick marks
 are drawn on all sectors but labelled on the largest one only, and the subtitle gives the tick interval.
 
+.. figure:: ../_static/img/figures/cgc_circos_ecoli.png
+   :width: 80%
+   :alt: Circos plot of the CGCs of E. coli K-12 MG1655
+
+   Circos layout: the 52 CGCs of *E. coli* K-12 MG1655, 16 of them with a substrate prediction. The
+   :ref:`figure_gallery` also shows the same plot with ``DEG.tsv``.
+
 **Overview layout** (``cgc_circos/cgc_overview.png`` and ``.pdf``). One row per contig that carries a CGC (longest
 first, up to 60 rows; all rows share one bp scale), the contig name on the left and its length at the end of the
 bar. CGCs are blocks on the bar, slate with a ``CGCn substrate`` label when a substrate was predicted and cool
 grey otherwise (when no substrate prediction exists the CGC ids are shown where they fit). Contigs without CGCs are not
 drawn.
+
+.. figure:: ../_static/img/figures/cgc_overview_xylona.png
+   :width: 80%
+   :alt: Overview of the CGCs on the scaffolds of Xylona heveae
+
+   Overview layout: the 110 CGCs of *Xylona heveae* TC161 on 15 of its 23 scaffolds.
 
 Contig lengths are taken from ``##sequence-region`` lines of ``cgc.gff`` when present, otherwise from the last
 annotated feature of each contig.
@@ -118,7 +134,7 @@ CGC map: ``dbcan_plot CGC_plot``
 
    dbcan_plot CGC_plot -i output_EscheriaColiK12MG1655_fna --cgcid 'NC_000913.3|CGC7' -o figures --format pdf,png
 
-The title gives the CGC and its location (``CGC7  NC_000913.3:352,706–367,510``) and one line the predicted
+The title gives the CGC and its location (``CGC7  NC_000913.3:352,706–366,305``) and one line the predicted
 substrate(s) (names only, from ``substrate_prediction.tsv``). Genes are arrows drawn to scale and pointing in the
 direction of their strand, with a short family label above each gene. When labels would overlap they are stacked
 in tiers and joined to their gene by a thin leader line; labels and leader lines never cross each other's text (a
@@ -127,13 +143,19 @@ A kb ruler and a scale bar are drawn below the genes and the gene-type legend at
 CGC are drawn (no flanking genes). ``--show-protein-ids`` also prints the protein IDs under the genes.
 Output: ``<contig>_<CGC>.cgc.<format>``.
 
+.. figure:: ../_static/img/figures/cgc_map_ecoli_CGC7.png
+   :width: 100%
+   :alt: Gene map of E. coli CGC7
+
+   ``CGC_plot`` of *E. coli* CGC7 (the *lac* genes next to the *cyn* operon).
+
 CGC map with read depth: ``dbcan_plot CGC_coverage_plot``
 -----------------------------------------------------------
 
 .. code-block:: shell
 
-   samtools depth -a -r 'NC_000913.3:352706-367510' ctrl1.bam > ctrl1.CGC7.depth.txt
-   samtools depth -a -r 'NC_000913.3:352706-367510' treat1.bam > treat1.CGC7.depth.txt
+   samtools depth -a -r 'NC_000913.3:352706-366305' ctrl1.bam > ctrl1.CGC7.depth.txt
+   samtools depth -a -r 'NC_000913.3:352706-366305' treat1.bam > treat1.CGC7.depth.txt
    dbcan_plot CGC_coverage_plot -i output_dir --cgcid 'NC_000913.3|CGC7' \
        --reads-count ctrl1.CGC7.depth.txt --reads-count treat1.CGC7.depth.txt --samples ctrl1,treat1 -o figures
 
@@ -144,6 +166,13 @@ of ``cgc.gff``: a depth file without any row for the CGC's contig (for example `
 ``NC_000913.3``) is an error (exit status 1), not an empty panel. A contig that is present but has no row inside the
 CGC window only gives a warning and a zero-depth panel. All panels share one y axis (``read depth``) so samples can be
 compared; ``--samples`` names the panels (default: file names). Output: ``<contig>_<CGC>.cgc-coverage.<format>``.
+
+.. figure:: ../_static/img/figures/cgc_coverage_ecoli_CGC7.png
+   :width: 100%
+   :alt: Read depth of two samples above the gene map of E. coli CGC7
+
+   ``CGC_coverage_plot`` of CGC7 with simulated RNA-seq reads of a control and a treatment sample (CGC7 is
+   expressed four times lower in the treatment). The grey bands mark the genes.
 
 Synteny with dbCAN-PUL
 -----------------------
@@ -171,6 +200,20 @@ substrate prediction are drawn: ``substrate_prediction`` uses its own ``-evalue`
 ``dbcan_plot`` takes ``--evalue-cutoff`` (default 0.01), ``--identity-cutoff`` (percent, default 0) and
 ``--coverage-cutoff`` (fraction, default 0). ``--pul`` compares the CGC with another dbCAN-PUL than its best hit.
 ``CGC_synteny_coverage_plot`` adds the read-depth panels of ``CGC_coverage_plot`` above the CGC.
+
+.. figure:: ../_static/img/figures/cgc_synteny_ecoli_CGC7_PUL0751.png
+   :width: 100%
+   :alt: E. coli CGC7 compared with dbCAN-PUL PUL0751
+
+   ``CGC_synteny_plot`` of *E. coli* CGC7 and its best dbCAN-PUL hit, PUL0751 (lactose).
+
+.. figure:: ../_static/img/figures/synteny_PUL0008_CGC1.png
+   :width: 100%
+   :alt: CGC1 of the PUL0008 region compared with dbCAN-PUL PUL0008
+
+   A gene with several hits: the paralogous ``GH32`` genes of the PUL0008 region also hit each other's
+   counterpart (light 50 % ribbons). Each ribbon has its own slot on the gene, and the labels of these multiple
+   matches sit above the row of one-to-one labels.
 
 ``dbcan_plot`` options
 -----------------------

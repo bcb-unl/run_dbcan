@@ -7,6 +7,7 @@ from typing import Dict, Any
 import pandas as pd
 from dbcan.IO.table import read_tsv
 import dbcan.constants.process_utils_constants as PU
+from dbcan.process.process_utils import best_full_length_labels
 from Bio import SeqIO
 from BCBio import GFF
 from tqdm import tqdm
@@ -150,6 +151,14 @@ def _sort_features_in_record(record):
     return record
 
 
+# total_cgc_info.tsv columns that rank the full-length labels of a protein (best_full_length_labels)
+_FULL_LENGTH_RANK_COLUMNS = (
+    PU.ANNOTATE_LENGTH_COLUMN, PU.TARGET_LENGTH_COLUMN, PU.IEVALUE_COLUMN,
+    PU.ANNOTATE_FROM_COLUMN, PU.ANNOTATE_TO_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN,
+    PU.SIGNATURE_BITSCORE_COLUMN,
+)
+
+
 def _natural_key(s: str):
     """Natural sort helper: splits digits and text."""
     import re
@@ -233,6 +242,16 @@ class GFFProcessor:
                 if PU.SIGNATURE_SOURCE_COLUMN in header:
                     usecols.append(header.index(PU.SIGNATURE_SOURCE_COLUMN))
                     names.append(PU.SIGNATURE_SOURCE_COLUMN)
+                # Columns used to pick the best full-length label of a non-CAZyme protein. Tables
+                # written before the bit score was added have no Bitscore column: all labels are kept.
+                rank_full_length = PU.SIGNATURE_SOURCE_COLUMN in header and PU.SIGNATURE_BITSCORE_COLUMN in header
+                if rank_full_length:
+                    for col in _FULL_LENGTH_RANK_COLUMNS:
+                        if col in header and col not in names:
+                            usecols.append(header.index(col))
+                            names.append(col)
+                # pandas returns usecols in file order: give the names in that order too
+                usecols, names = (list(t) for t in zip(*sorted(zip(usecols, names))))
                 cgc_sig_chunks = read_tsv(
                     self.cgc_sig_path,
                     id_columns=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
@@ -260,10 +279,23 @@ class GFFProcessor:
                                 & chunk[G.GFF_PROTEIN_ID_COL].isin(cazyme_ids))
                         dropped_full_length += int(drop.sum())
                         chunk = chunk[~drop]
-                    cgc_sig_df_list.append(chunk[[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]])
+                    cgc_sig_df_list.append(chunk)
                 cgc_sig_df = pd.concat(cgc_sig_df_list, ignore_index=True) if cgc_sig_df_list else pd.DataFrame(
                     columns=[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]
                 )
+                if rank_full_length and not cgc_sig_df.empty:
+                    # A non-CAZyme protein with several full-length labels (e.g. TC and Sulfatase) is one
+                    # protein with competing whole-protein names: only the best one is used.
+                    full = cgc_sig_df[PU.SIGNATURE_SOURCE_COLUMN].isin(PU.FULL_LENGTH_SIGNATURE_SOURCES)
+                    best = best_full_length_labels(cgc_sig_df[full], protein_col=G.GFF_PROTEIN_ID_COL)
+                    n_drop = int(full.sum()) - len(best)
+                    if n_drop:
+                        n_prot = int((cgc_sig_df.loc[full, G.GFF_PROTEIN_ID_COL].value_counts() > 1).sum())
+                        logger.info("%d full-length label(s) (TC/TF(DIAMOND)/sulfatase) not used in cgc.gff on %d "
+                                    "non-CAZyme protein(s) with more than one: the hit with the highest bit "
+                                    "score is kept (all stay in %s)", n_drop, n_prot, self.cgc_sig_path.name)
+                    cgc_sig_df = cgc_sig_df[~full | cgc_sig_df.index.isin(best.index)]
+                cgc_sig_df = cgc_sig_df[[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]]
                 if dropped_full_length:
                     logger.info("%d TC/TF(DIAMOND)/sulfatase label(s) on CAZyme proteins not used in cgc.gff "
                                 "(full-length database hits; they stay in %s)", dropped_full_length,

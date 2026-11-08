@@ -13,6 +13,17 @@ import dbcan.constants.diamond_constants as D
 
 logger = logging.getLogger(__name__)
 
+def _bitscore_last(cols):
+    """Column order of a formatted diamond.out.* file: the bit score goes after 'Database'.
+
+    The first columns ('<DB> ID' ... 'COVERAGE', 'Database') keep the positions they had before
+    the bit score was added, so readers that address them by position still work.
+    """
+    if D.DIAMOND_BITSCORE_COLUMN not in cols:
+        return list(cols)
+    return [c for c in cols if c != D.DIAMOND_BITSCORE_COLUMN] + [D.DIAMOND_BITSCORE_COLUMN]
+
+
 class DiamondProcessor(ABC):
     def __init__(self, config: DiamondConfig):
         self.config = config
@@ -102,7 +113,7 @@ class DiamondProcessor(ABC):
             # Keep the 'Database' column convention if label is provided
             if self.config.label and 'Database' not in cols:
                 cols.append('Database')
-            header_df = pd.DataFrame(columns=cols)
+            header_df = pd.DataFrame(columns=_bitscore_last(cols))
             of.parent.mkdir(parents=True, exist_ok=True)
             header_df.to_csv(of, sep='\t', index=False)
             logger.info(f"No DIAMOND hits. Wrote header-only file: {self.output_file}")
@@ -113,6 +124,7 @@ class DiamondProcessor(ABC):
                 self._postprocess_ids(df, self.config.id_column)
             if self.config.label:
                 df['Database'] = self.config.label
+            df = df[_bitscore_last(list(df.columns))]
             df.to_csv(of, sep='\t', index=False)
             logger.info(f"Results formatted and saved to {self.output_file}")
         except Exception as e:

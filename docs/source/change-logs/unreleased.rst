@@ -31,6 +31,22 @@ Unreleased
    are kept. *E. coli* K-12: 24 CAZyme genes lose such a label and CGC44 (the LPS core glycosyltransferase cluster,
    a CGC only through ``GT121 + TC 9.B.67`` on WaaL) is no longer called (53 -> 52 CGCs); *Xylona*: 27 genes,
    CGC111 (``GT48 + TC 9.B.119`` on FKS1) is no longer called (111 -> 110). Substrate predictions are unchanged.
+#. ``cgc.gff``: a protein that is not a CGC CAZyme keeps only **one** full-length label (TC, TF DIAMOND or
+   sulfatase), the hit with the highest DIAMOND bit score (ties: higher min(query, subject) coverage, then lower
+   E-value, then TC > TF > Sulfatase); the others stay in ``total_cgc_info.tsv``. The E-value is not used because it
+   depends on the size of the database searched. Domain-level labels (STP, fungal TF HMM, peptidase) are not
+   affected. The TC, TF, sulfatase and peptidase DIAMOND searches report the bit score (``BITSCORE``, after
+   ``Database`` in ``diamond.out.*``), ``total_cgc_info.tsv`` has a last column ``Bitscore``, and each search keeps
+   its best hit per protein by bit score. An older ``total_cgc_info.tsv`` without ``Bitscore`` keeps all labels.
+   *E. coli* K-12: 21 proteins had both a TF and a TC label. 20 are two-component response regulators, LacI-family
+   or NtrC-family (AAA+) regulators whose weaker TC hit (``3.A.23.1.1``, ``3.E.1.5.3``, ``3.A.1.2.x``; bit score
+   50-230 against 147-1353 for the TF hit) comes from a shared domain; they keep the TF label and their Gene Type
+   changes from ``TC`` to ``TF``. The 21st, ``NP_418207.1`` (the ribose-binding protein RbsB), keeps
+   ``TC|3.A.1.2.1`` (551 vs 54 bits). With the default ``--additional_genes TC`` a TF gene is not a signature gene:
+   CGC7 (lac) loses ``lacI`` at its end, CGC9 loses five genes (``phoB`` was the only signature gene bridging them)
+   and CGC32 loses ``fhlA`` and the null gene before it at its end. The number of CGCs (52) and every predicted
+   substrate stay the same; only the PUL0751 (lactose) score of CGC7 drops from 3968 to 3296 (``lacI`` pair). *Xylona* (``--fungi``: TC and sulfatase only), PUL0008 and PUL0230: no protein has two full-length
+   labels, nothing changes.
 #. Sulfatase (SulfAtlas DIAMOND) hits must also cover at least 70 % of the SulfAtlas protein
    (``--subject_coverage_threshold_sulfatase``). SulfAtlas entries are full-length proteins, often sulfatases fused
    to GH or other domains; without this filter a GH32 or GH2 protein that only matched the glycoside hydrolase part
@@ -81,6 +97,9 @@ Unreleased
    named inside the innermost ring and the ticks are labelled on the largest sector only.
 #. ``dbcan_plot``: ``-o`` is honoured by every plot; ``--vertical-bar`` draws vertical bars; ``seaborn-v0_8*`` styles
    are accepted.
+#. Documentation: new :ref:`figure_gallery` page with one example of every figure (circos, overview, CGC map,
+   coverage, synteny, synteny with coverage, bar chart, heatmap) and the command that made it, drawn from real runs
+   of *E. coli*, *Xylona heveae* and PUL0008; the CGC figure, substrate prediction and abundance pages show them too.
 
 .. rubric:: Fixes
 

@@ -20,6 +20,7 @@ TARGET_TO_COLUMN = "Target To"
 COVERAGE_COLUMN = "Coverage"
 HMM_FILE_COLUMN = "HMM File Name"
 ANNOTATE_NAME_COLUMN = "Annotate Name"
+ANNOTATE_LENGTH_COLUMN = "Annotate Length"
 ANNOTATE_FROM_COLUMN = "Annotate From"
 ANNOTATE_TO_COLUMN = "Annotate To"
 
@@ -48,6 +49,12 @@ DOMAIN_LEVEL_SIGNATURE_SOURCES = frozenset({'STP', 'TF_fungi', 'Peptidase'})
 # protein and its position cannot be compared with a domain. On a protein that is a CGC CAZyme these
 # labels are dropped from cgc.gff (they stay in total_cgc_info.tsv): the CAZyme annotation wins.
 FULL_LENGTH_SIGNATURE_SOURCES = frozenset({'TC', 'TF_prok', 'Sulfatase'})
+# On a protein that is NOT a CGC CAZyme, only the best of its full-length labels is written to
+# cgc.gff (the others stay in total_cgc_info.tsv). Best = highest DIAMOND bit score; ties go to
+# the higher min(query coverage, subject coverage), then the lower E-value, then this order.
+FULL_LENGTH_SOURCE_PRIORITY = ('TC', 'TF_prok', 'Sulfatase')
+# total_cgc_info.tsv column (last) with the DIAMOND bit score of a hit; empty for HMM sources.
+SIGNATURE_BITSCORE_COLUMN = 'Bitscore'
 # A domain-level signature on a CAZyme domain (overlap > this fraction of the shorter
 # interval) describes the same region and is not an extra CGC signature.
 SAME_REGION_OVERLAP_THRESHOLD = 0.5
