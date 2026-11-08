@@ -302,26 +302,22 @@ def run_dbCAN_cgc_circle(config):
 
 def run_dbCAN_topology_annotation(config):
     """
-    Run SignalP6 to annotate proteins in overview.tsv with signal peptide information.
-    DeepTMHMM has been removed due to licensing issues.
+    Run SignalP 6 and/or a user-installed DeepTMHMM on the CAZymes of overview.tsv and add their columns.
+
+    Each tool runs when requested on its own (--run_signalp, --run_deeptmhmm). If a requested tool cannot
+    run or fails, DbcanStepError is raised so that the command exits with a non-zero status (the columns
+    of a tool that did succeed are still written to overview.tsv).
     """
     import logging
-    if not config.run_signalp:
-        logging.info("No SignalP requested; skipping.")
+    if not (getattr(config, 'run_signalp', False) or getattr(config, 'run_deeptmhmm', False)):
+        logging.info("No topology annotation requested; skipping.")
         return
     try:
         from dbcan.annotation.signalp_tmhmm import SignalPTMHMMProcessor
         processor = SignalPTMHMMProcessor(config)
         results = processor.run()
-        if results and 'signalp_out' in results:
-            logging.info(f"SignalP results: {results['signalp_out']}")
-        else:
-            logging.warning("SignalP produced no results")
-    except ImportError as e:
-        logging.error(f"SignalP module import failed: {e}")
     except Exception as e:
-        logging.error(f"SignalP annotation failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-
+        raise DbcanStepError(f"Topology annotation (SignalP/DeepTMHMM) failed: {e}") from e
+    for key in ('signalp_out', 'deeptmhmm_out'):
+        if key in results:
+            logging.info(f"{key}: {results[key]}")
