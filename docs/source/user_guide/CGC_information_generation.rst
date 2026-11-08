@@ -29,6 +29,7 @@ To identify and analyze CGCs, users must first prepare annotation information by
    peptidase *inhibitor* units (families ``I*``) are not reported as ``Peptidase`` (they stay in the raw
    ``diamond.out.peptidase`` file). In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of
    ``cgc_standard_out.tsv`` shows the first of CAZyme > TC > TF > STP > Sulfatase > Peptidase.
+
 4. Marks CAZymes using ``overview.tsv``: only proteins with ``#ofTools`` >= 2 count as CAZymes, annotated with their ``Recommend Results``
 5. Integrates these annotations into the user-submitted GFF file to generate a ``cgc.gff`` file
 
@@ -37,81 +38,135 @@ To identify and analyze CGCs, users must first prepare annotation information by
 Input GFF File Types
 -----------------------
 
-``cgc.gff`` is built by matching each gene in your GFF to a protein ID in ``uniInput.faa``. Which GFF attribute is
-used depends on ``--gff_type``:
+``cgc.gff`` is built by matching each gene in your GFF to a protein ID in ``uniInput.faa``. How a gene is linked
+to its protein depends on ``--gff_type`` (case-insensitive; any other value is rejected). With ``--mode protein``
+``--gff_type`` must be given; ``prodigal`` is only the default for the ``uniInput.gff`` written by pyrodigal in
+``prok``/``meta`` mode.
 
 .. list-table::
-   :widths: 18 82
+   :widths: 16 30 54
    :header-rows: 1
 
    * - ``--gff_type``
-     - How proteins are matched
+     - Use for
+     - How the gene is linked to its protein
    * - ``prodigal``
-     - Every feature line is used. The protein ID is the ``ID`` attribute. This is the type of ``uniInput.gff``
-       written by pyrodigal in ``prok``/``meta`` mode. Features are kept in file order (not re-sorted).
+     - ``uniInput.gff`` of ``prok``/``meta`` mode; Prodigal/pyrodigal GFF
+     - Every feature line is a gene; the protein ID is its ``ID``. Features are kept in file order.
    * - ``NCBI_prok``
-     - Only ``gene`` features are used. The protein ID is the ``protein_id`` attribute of the ``CDS`` child of the gene.
-       Genes with a non-CDS child (tRNA, rRNA, ...) are written as ``protein_id=NA`` with ``CGC_annotation=Other|<type>``.
+     - NCBI prokaryote GFF3 (``*_genomic.gff``)
+     - ``gene`` features; ``protein_id`` of the gene's ``CDS`` child. Genes with a non-CDS child (tRNA, rRNA, ...)
+       are written as ``protein_id=NA`` with ``CGC_annotation=Other|<type>``.
    * - ``NCBI_euk``
-     - Only ``gene`` features are used. Each gene must have ``mRNA`` children; the protein ID is the ``protein_id``
-       attribute of the first ``CDS`` under the first ``mRNA`` that has one. Genes with a child that is not ``mRNA``
-       (tRNA, ncRNA, a ``CDS`` directly under the gene, ...) are written as ``protein_id=NA`` with
-       ``CGC_annotation=Other|<type>``.
+     - NCBI eukaryote GFF3
+     - ``gene`` features with ``mRNA`` children; ``protein_id`` of the first ``CDS`` under the first ``mRNA`` that
+       has one. Genes with a child that is not ``mRNA`` (tRNA, ncRNA, ...) are written as ``protein_id=NA``.
    * - ``JGI``
-     - Only ``gene`` features are used. The protein ID is the ``proteinId`` attribute of the gene, compared with the
-       third ``-``-separated field of the FASTA IDs. JGI headers such as ``jgi|Xylhe1|123456|name`` become
-       ``jgi-Xylhe1-123456-name`` in protein mode, so ``proteinId=123456`` matches.
+     - JGI MycoCosm GFF3
+     - ``proteinId`` attribute of the gene, compared with the third ``-``-separated field of the FASTA IDs
+       (``jgi|Xylhe1|123456|name`` becomes ``jgi-Xylhe1-123456-name`` in protein mode).
+   * - ``funannotate``
+     - funannotate and funannotate2 GFF3
+     - ``gene`` → ``mRNA`` → ``CDS``; proteins are named by the ``mRNA`` ID (``FUN_000001-T1``, or the locus tag
+       after ``funannotate annotate``); the ``CDS`` ID (``FUN_000001-T1.cds``) and gene ID are also tried.
+   * - ``BRAKER``
+     - BRAKER / AUGUSTUS GFF3 (``braker.gff3``, ``augustus --gff3=on``)
+     - ``gene`` → ``mRNA`` or ``transcript`` → ``CDS``; proteins are named by the transcript ID (``g1.t1``, as in
+       ``braker.aa``); ``CDS`` IDs such as ``g1.t1.CDS1`` or ``g1.t1.cds`` are also tried.
+   * - ``GFF3``
+     - any other ``gene`` → ``mRNA``/``transcript`` → ``CDS`` GFF3 (Helixer, Ensembl, MAKER, gffread, ...)
+     - In this order, the first identifier found in the FASTA: ``CDS`` ``protein_id``/``proteinId``/``Name``/``ID``,
+       transcript ``ID``/``transcript_id``, gene ``ID``/``Name``/``locus_tag``.
+   * - ``GTF``
+     - GTF (``braker.gtf``, AUGUSTUS GTF, NCBI/Ensembl ``.gtf``)
+     - ``CDS`` rows grouped by ``transcript_id``; ``protein_id``, then ``transcript_id``, then ``gene_id``.
 
-For ``NCBI_prok``, ``NCBI_euk`` and ``JGI`` the features of each contig are sorted by position, and ``cgc.gff``
-contains one line per gene. Only ``prodigal``, ``NCBI_prok``, ``NCBI_euk`` and ``JGI`` are accepted.
+For ``funannotate``, ``BRAKER``, ``GFF3`` and ``GTF`` (the resolver):
 
-.. warning::
+* every identifier is also tried without the prefixes ``cds-``, ``rna-``, ``gene-``, ``CDS:``, ``transcript:``,
+  ``gene:`` and without the suffixes ``.cds``, ``-CDS``, ``.CDS.<n>``, ``-P<n>``; a version-less accession
+  (``XP_1`` for ``XP_1.1``) or a JGI ``proteinId`` is used only if it points to a single FASTA protein;
+* identifiers go through the same ID cleaning as the FASTA headers in ``--mode protein`` (first word, ``|`` → ``-``
+  for JGI IDs, at most 80 characters);
+* one protein is kept per gene. When a gene has several transcripts (isoforms), the one annotated as a CAZyme
+  (else as another CGC signature) is kept, otherwise the one with the longest CDS. All isoform proteins of the gene
+  are listed in ``gff_resolution.tsv``;
+* genes without a CDS (tRNA, rRNA, ncRNA, pseudogenes) are kept as ``protein_id=NA`` rows, as with ``NCBI_euk``,
+  so that they count as null genes between signature genes;
+* ``cgc.gff`` has one ``gene`` row per gene, contigs in file order, genes sorted by position. On the NCBI GFF3 of
+  *Xylona heveae*, ``--gff_type GFF3`` writes a ``cgc.gff`` identical to ``--gff_type NCBI_euk``.
 
-   **Unmatched genes fail silently.** If the expected attribute is missing, the gene is written as
-   ``protein_id=unknown``; if the ID does not occur in ``overview.tsv`` or ``total_cgc_info.tsv``, it is written as
-   ``CGC_annotation=null``. No warning is printed. When no gene matches, ``cgc_finder`` finds no CGC and
-   ``cgc_standard_out.tsv`` is empty. Check ``cgc.gff`` after this step:
+Gene/protein match check
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-   .. code-block:: shell
+For every ``--gff_type``, ``gff_process`` first matches the genes of ``--input_gff`` to the protein IDs (this
+takes a few seconds) and writes ``gff_resolution.tsv`` (one row per gene: ``gene_id``, ``contig``, ``start``,
+``end``, ``strand``, ``protein_id``, ``matched_by`` (the attribute that matched, ``~`` = after removing a prefix or
+suffix), ``status`` (``matched``, ``unmatched``, ``noncoding``), ``n_transcripts`` and ``isoform_proteins``). A
+summary line is logged, for example::
 
-      grep -c "protein_id=unknown" output_dir/cgc.gff
-      grep -c "CGC_annotation=CAZyme" output_dir/cgc.gff
+   GFF resolution (--gff_type funannotate): 8201/8201 protein-coding genes matched to a protein (100.0%);
+   145 non-coding genes kept as null rows; ...
 
-   If most genes are ``unknown`` or no line contains ``CAZyme``, the GFF does not use the IDs of your protein FASTA.
+If fewer than ``--gff_min_match`` (default ``0.9``) of the protein-coding genes are matched, the command stops
+with a non-zero exit status before the TC/TF/STP/sulfatase/peptidase searches. The error lists unmatched genes
+with the identifiers that were looked up, the first FASTA IDs, and the ``--gff_type`` that matches most genes of
+the file. In ``easy_CGC`` and ``easy_substrate`` with ``--mode protein`` the check runs before step 1, so a wrong
+``--gff_type`` or GFF fails in seconds. ``--gff_min_match 0`` turns the stop off (the table is still written).
+The check is skipped for the ``uniInput.gff`` that pyrodigal writes in ``prok``/``meta`` mode.
 
 Eukaryotic genomes (fungi, etc.)
 ---------------------------------
 
-There is no eukaryotic genome mode. For fungi and other eukaryotes:
+run_dbcan does not predict eukaryotic genes, and ``--mode prok``/``meta`` must not be used for them: pyrodigal is a
+prokaryotic gene finder and splits intron-containing genes into short ORFs (a ``WARNING`` is logged when the
+predicted proteins look eukaryotic). For fungi and other eukaryotes:
 
-1. Predict genes with a eukaryotic gene finder (e.g. funannotate or BRAKER), or use an NCBI/JGI annotation.
-2. Run ``CAZyme_annotation`` (or ``easy_CGC``) with ``--mode protein`` on the predicted proteins.
-3. Provide the matching GFF with ``--input_gff`` and ``--gff_type NCBI_euk`` (or ``JGI`` for MycoCosm files).
-   Add ``--fungi`` to search fungal transcription factors with ``TF.hmm`` (instead of the prokaryotic TF DIAMOND search).
-
-GFF3 files from funannotate, BRAKER and similar pipelines usually have ``gene`` → ``mRNA`` → ``CDS`` features, but
-their ``CDS`` rows have no ``protein_id`` attribute, so every gene becomes ``protein_id=unknown``. Their protein
-FASTA IDs are usually the transcript (``mRNA``) IDs. In that case, add ``protein_id=<FASTA ID>`` to each ``CDS``
-row, taken from its ``Parent`` attribute, and use ``--gff_type NCBI_euk``:
+1. Annotate the genome with a eukaryotic pipeline, for example funannotate / funannotate2 or BRAKER, or download
+   the NCBI or JGI MycoCosm annotation. Keep the protein FASTA and the GFF3/GTF of the **same** run.
+2. Run ``easy_CGC`` (or ``easy_substrate``) with ``--mode protein`` on the proteins, ``--input_gff`` with the GFF and
+   the matching ``--gff_type``. Add ``--fungi`` to search fungal transcription factors with ``TF.hmm`` instead of
+   the prokaryotic TF DIAMOND search.
 
 .. code-block:: shell
 
-   awk 'BEGIN { FS = OFS = "\t" }
-   $3 == "CDS" && $9 !~ /protein_id=/ && match($9, /Parent=[^;]+/) {
-       pid = substr($9, RSTART + 7, RLENGTH - 7)
-       sub(/;$/, "", $9)
-       $9 = $9 ";protein_id=" pid
-   }
-   { print }' annotation.gff3 > annotation.protein_id.gff3
+   # funannotate / funannotate2: <name>.proteins.fa + <name>.gff3
+   run_dbcan easy_CGC --mode protein --input_raw_data Xylona.proteins.fa \
+     --input_gff Xylona.gff3 --gff_type funannotate --fungi \
+     --output_dir output_fungus --db_dir db
 
+   # BRAKER: braker.aa + braker.gff3 (or braker.gtf with --gff_type GTF)
+   run_dbcan easy_CGC --mode protein --input_raw_data braker/braker.aa \
+     --input_gff braker/braker.gff3 --gff_type BRAKER --fungi \
+     --output_dir output_fungus --db_dir db
+
+   # NCBI or JGI annotation
+   run_dbcan easy_CGC --mode protein --input_raw_data Xylona_heveae_TC161.faa \
+     --input_gff Xylona_heveae_TC161.gff --gff_type NCBI_euk --fungi \
+     --output_dir output_fungus --db_dir db
+
+If your pipeline only writes a GFF3 (for example Helixer), translate it with gffread and use ``--gff_type GFF3``;
+``-S`` writes ``*`` instead of ``.`` for stop codons (run_dbcan replaces both, see :doc:`CAZyme_annotation`):
+
+.. code-block:: shell
+
+   gffread annotation.gff3 -g genome.fna -y proteins.faa -S
    run_dbcan easy_CGC --mode protein --input_raw_data proteins.faa \
-     --input_gff annotation.protein_id.gff3 --gff_type NCBI_euk \
-     --output_dir output_fungus --db_dir db --fungi
+     --input_gff annotation.gff3 --gff_type GFF3 --fungi --output_dir output_fungus --db_dir db
 
-Before running, compare a few FASTA IDs with the new ``protein_id`` values (they must be identical, at most
-80 characters and unique; see :doc:`CAZyme_annotation`). If the file uses ``transcript`` instead of ``mRNA``
-in column 3, rename those features to ``mRNA``. A GTF file must be converted to GFF3 with ``ID``/``Parent``
-attributes first.
+.. note::
+
+   Earlier versions of this guide suggested adding ``protein_id`` to the ``CDS`` rows with ``awk`` and using
+   ``--gff_type NCBI_euk``. This is no longer needed. If a file is not matched by any ``--gff_type`` (the error
+   message says so), a GFF with one line per gene and ``ID=<protein ID of the FASTA>`` in column 9 can be used
+   with ``--gff_type prodigal`` as a last resort; genes are then taken in file order and tRNA genes are not kept.
+
+.. note::
+
+   The CGC rule (CAZyme plus signature genes separated by at most ``--num_null_gene`` genes) was developed for
+   bacterial genomes. Fungal genes are about three times less dense than bacterial genes and rarely form operons,
+   so fungal CGCs are less specific; ``--use_distance`` with 15 kb spans about 5 fungal genes. dbCAN-PUL contains
+   no fungal PULs, so PUL-based substrate prediction for fungal CGCs relies on bacterial references.
 
 Command Examples
 ------------------
@@ -132,15 +187,15 @@ Command Examples
 
    run_dbcan gff_process --output_dir output_dir --db_dir db --input_gff eukaryotic_genome.gff --gff_type NCBI_euk --fungi
 
+.. code-block:: shell
+
+   run_dbcan gff_process --output_dir output_dir --db_dir db --input_gff braker.gff3 --gff_type BRAKER --fungi
+
 .. note::
 
    ``gff_process`` has no ``--mode`` option. If ``--input_gff`` is omitted, it uses ``<output_dir>/uniInput.gff`` with
-   ``--gff_type prodigal``, which only exists after a ``prok``/``meta`` run. For protein input always pass
-   ``--input_gff`` and ``--gff_type``. If the GFF file is missing, an error is logged but no ``cgc.gff`` is written.
-
-.. note::
-
-   Eukaryotic GFF processing is currently in beta. While functional, we're still validating and improving this feature.
+   ``--gff_type prodigal``, which only exists after a ``prok``/``meta`` run. Any other ``--input_gff`` needs
+   ``--gff_type``. A missing GFF file or too few matched genes stop the command with an error.
 
 Key Parameters
 ~~~~~~~~~~~~~~~~~~
@@ -158,7 +213,12 @@ Key Parameters
    * - ``--input_gff``
      - Path to your GFF annotation file (default: ``<output_dir>/uniInput.gff``)
    * - ``--gff_type``
-     - Format of the GFF file: ``NCBI_prok``, ``prodigal``, ``JGI``, or ``NCBI_euk`` (default: ``prodigal``)
+     - Format of the GFF file: ``prodigal``, ``NCBI_prok``, ``NCBI_euk``, ``JGI``, ``funannotate``, ``BRAKER``,
+       ``GFF3`` or ``GTF`` (see `Input GFF File Types`_). Required for any ``--input_gff`` other than
+       ``<output_dir>/uniInput.gff`` (default there: ``prodigal``)
+   * - ``--gff_min_match``
+     - Stop when fewer than this fraction of the protein-coding genes are matched to a protein (default ``0.9``;
+       ``0`` disables the stop)
    * - ``--fungi`` / ``--no-fungi``
      - Fungal input: annotate TFs with the TF HMM search (default: off)
    * - ``--prokaryotic`` / ``--no-prokaryotic``
@@ -182,6 +242,8 @@ This step generates several output files:
 * ``diamond.out.sulfatase`` and ``diamond.out.peptidase`` - DIAMOND output for sulfatases and peptidases
 * ``total_cgc_info.tsv`` - Combined table of all non-CAZyme signature genes (TC, TF, STP, Sulfatase, Peptidase)
 * ``cgc.gff`` - Simplified GFF with ``protein_id`` and ``CGC_annotation`` attributes, the input of ``cgc_finder``
+* ``gff_resolution.tsv`` - Gene → protein match of every gene of ``--input_gff`` (not written for the pyrodigal
+  ``uniInput.gff``); see `Gene/protein match check`_
 
 .. admonition:: Next Steps
 

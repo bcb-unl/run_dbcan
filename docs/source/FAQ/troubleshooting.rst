@@ -11,11 +11,24 @@ Input data
 ----------
 
 **Can run_dbcan annotate a fungal or other eukaryotic genome?**
-   Not from DNA. There is no eukaryotic genome mode: ``--mode prok`` and ``--mode meta`` use pyrodigal, which predicts
-   prokaryotic genes only. Predict genes with a eukaryotic gene finder (or use an NCBI/JGI annotation), run the
-   proteins with ``--mode protein``, and for CGCs provide the GFF with ``--input_gff`` and ``--gff_type NCBI_euk``
-   (or ``JGI``). GFF3 files from funannotate or BRAKER need a ``protein_id`` attribute on their ``CDS`` rows first;
-   see :ref:`cgc-information-generation`.
+   Not from DNA. ``--mode prok`` and ``--mode meta`` use pyrodigal, which predicts prokaryotic genes only (bacteria,
+   archaea, metagenomes); on a fungal genome it splits most genes at their introns, and run_dbcan logs a warning
+   when the predicted proteins look like that. run_dbcan does not predict eukaryotic genes. Annotate the genome
+   with funannotate/funannotate2 or BRAKER (or use the NCBI/JGI annotation), run its proteins with
+   ``--mode protein``, and for CGCs pass its GFF3/GTF with ``--input_gff`` and ``--gff_type funannotate``,
+   ``BRAKER``, ``GFF3``, ``GTF``, ``NCBI_euk`` or ``JGI``; see :ref:`cgc-information-generation`.
+
+**cgc_standard_out.tsv is empty / gff_process stops with "protein-coding genes ... were matched".**
+   The genes of ``--input_gff`` could not be linked to the protein IDs of the FASTA. ``gff_process`` (and
+   ``easy_CGC``/``easy_substrate`` in protein mode, before step 1) stops when fewer than ``--gff_min_match``
+   (default 0.9) of the protein-coding genes match. The message shows unmatched genes, the identifiers looked up
+   and the ``--gff_type`` that matches the file best; ``gff_resolution.tsv`` lists every gene. Use the protein
+   FASTA and the GFF of the same annotation run, and the suggested ``--gff_type``.
+
+**DIAMOND fails with "Invalid character in sequence: '.'"**
+   Proteins translated with ``gffread -y`` contain ``.`` for stop codons. In ``--mode protein`` run_dbcan now
+   removes trailing stops and replaces internal ``*``/``.`` with ``X``; with other tools, translate with
+   ``gffread -y ... -S``.
 
 **Which protein IDs are safe?**
    Use unique IDs of at most 80 characters that contain at least one letter. In ``--mode protein``:
@@ -25,7 +38,8 @@ Input data
    * duplicated IDs get ``_1``, ``_2``, ... appended;
    * IDs containing ``JGI`` have ``|`` replaced by ``-``.
 
-   These changes are applied to ``uniInput.faa`` only, not to your GFF, so changed IDs no longer match the GFF.
+   These changes are applied to ``uniInput.faa`` only, not to your GFF. For CGC prediction the GFF identifiers are
+   cleaned the same way before matching, except for the ``_1``, ``_2`` suffixes of duplicated IDs.
 
 **overview.tsv is empty or has no annotations, although the HMM/DIAMOND result files contain hits.**
    Known limitation: purely numeric protein IDs (``>0``, ``>1``, ...) are read as numbers when the result tables are

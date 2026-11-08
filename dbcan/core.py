@@ -215,7 +215,47 @@ def run_dbCAN_hmmer_stp(config):
     processor = PyHMMERSTPProcessor(config)
     processor.run()
 
+def check_gff_protein_match(gffconfig, protein_fasta=None, clean_ids=False):
+    """Match the genes of gffconfig.input_gff to the proteins of ``protein_fasta`` (default
+    <output_dir>/uniInput.faa), write <output_dir>/gff_resolution.tsv and raise GffResolutionError
+    (a DbcanStepError) when fewer than gffconfig.gff_min_match of the protein-coding genes match.
+
+    Takes seconds, so it runs before the signature searches (and, in easy_* protein mode, before
+    step 1). Skipped for the pyrodigal GFF of prok/meta mode, whose IDs always match.
+    Returns the ResolutionResult, or None when skipped.
+    """
+    import logging
+    from pathlib import Path
+    import dbcan.constants.gff_constants as G
+    from dbcan.constants.base_constants import INPUT_PRODIGAL_GFF_NAME
+    from dbcan.IO.gff_resolver import check_gff_resolution, normalize_gff_type, read_fasta_ids
+
+    out_dir = Path(gffconfig.output_dir)
+    gff_type = normalize_gff_type(gffconfig.gff_type)
+    gff_path = Path(gffconfig.input_gff)
+    auto_gff = out_dir / INPUT_PRODIGAL_GFF_NAME
+    if gff_type == G.GFF_FORMAT_PRODIGAL and gff_path.resolve() == auto_gff.resolve():
+        logging.info("[gff_process] uniInput.gff written by pyrodigal: gene/protein match check skipped.")
+        return None
+    fasta = Path(protein_fasta) if protein_fasta else out_dir / G.GFF_INPUT_PROTEIN_FILE
+    if not fasta.is_file():
+        logging.warning(f"[gff_process] {fasta} not found: gene/protein match check skipped.")
+        return None
+    if not gff_path.is_file():
+        raise DbcanStepError(f"GFF file not found: {gff_path}")
+    ids = read_fasta_ids(fasta, clean=clean_ids)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return check_gff_resolution(
+        gff_path, gff_type, ids,
+        min_match=getattr(gffconfig, "gff_min_match", G.GFF_MIN_MATCH_DEFAULT),
+        out_tsv=out_dir / G.GFF_RESOLUTION_FILE,
+    )
+
+
 def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfdiamondconfig, tfconfig, stpconfig, sulfatlasconfig, peptidaseconfig, cgcgffconfig):
+    # Fail fast on a GFF whose genes do not match the protein IDs (wrong --gff_type, wrong file):
+    # this takes seconds, the searches below can take an hour.
+    check_gff_protein_match(cgcgffconfig)
     run_dbCAN_tcdb_diamond(tcdbconfig)
     if getattr(tfdiamondconfig, 'prokaryotic', True):
         run_dbCAN_diamond_tf(tfdiamondconfig)

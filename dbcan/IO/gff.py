@@ -581,9 +581,41 @@ class ProdigalProcessor(GFFProcessor):
             raise
 
 
+class ResolverGFFProcessor(GFFProcessor):
+    """funannotate, BRAKER, GFF3 and GTF: gene -> transcript -> CDS resolution
+    (dbcan.IO.gff_resolver). One row per gene; the annotated isoform is kept, else the longest CDS.
+    Also writes gff_resolution.tsv."""
+
+    def process_gff(self) -> bool:
+        from dbcan.IO.gff_resolver import resolve_gff, write_cgc_gff, write_resolution_tsv, read_fasta_ids
+
+        if not self.input_gff_path.exists():
+            logger.error(f"Input GFF file not found: {self.input_gff_path}")
+            return False
+        if not self.input_total_faa_path.exists():
+            logger.error(f"Input protein sequences file not found: {self.input_total_faa_path}")
+            return False
+        logger.info("Loading annotation tables (CAZyme / CGC signatures)")
+        cgc_data = self.load_cgc_type()
+        annotations = {pid: v.get(G.GFF_CGC_ANNOTATION_COL, G.GFF_NULL_ANNOTATION) for pid, v in cgc_data.items()}
+        protein_ids = read_fasta_ids(self.input_total_faa_path, clean=False)
+        logger.info(f"[GFF] Resolving genes of {self.input_gff_path} (--gff_type {self.config.gff_type})")
+        result = resolve_gff(self.input_gff_path, self.config.gff_type, protein_ids, annotations)
+        wrote = write_cgc_gff(result, self.output_gff_path, annotations)
+        write_resolution_tsv(result, self.output_dir_path / G.GFF_RESOLUTION_FILE)
+        logger.info(result.summary())
+        logger.info(f"GFF processing complete: {self.output_gff_path} ({wrote} genes)")
+        return True
+
+
 def get_gff_processor(config: GFFConfig) -> GFFProcessor:
-    """Factory: build a processor by gff_type."""
-    gff_type = config.gff_type
+    """Factory: build a processor by gff_type (case-insensitive)."""
+    from dbcan.IO.gff_resolver import normalize_gff_type
+
+    gff_type = normalize_gff_type(config.gff_type)
+    config.gff_type = gff_type
+    if gff_type in G.GFF_RESOLVER_FORMATS:
+        return ResolverGFFProcessor(config)
     if gff_type == G.GFF_FORMAT_NCBI_EUK:
         return NCBIEukProcessor(config)
     elif gff_type == G.GFF_FORMAT_NCBI_PROK:

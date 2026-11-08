@@ -37,7 +37,10 @@ Key Parameters
    * - ``--db_dir``
      - Directory containing database files
    * - ``--mode``
-     - Analysis mode: ``prok`` (prokaryotic genome, default), ``meta`` (metagenomic contigs), or ``protein`` (protein sequences)
+     - Input type (case-insensitive; any other value is rejected): ``prok`` (bacterial/archaeal genome, DNA;
+       default), ``meta`` (metagenome assembly or MAGs, DNA) or ``protein`` (any proteome, including fungi and other
+       eukaryotes annotated with funannotate, BRAKER, NCBI or JGI). ``prok`` and ``meta`` predict genes with
+       pyrodigal, which is prokaryote-only.
    * - ``--methods``
      - Optional, comma-separated list of tools: ``diamond``, ``hmm``, ``dbCANsub``. Default: ``diamond,hmm,dbCANsub`` (all three).
        Example: ``--methods diamond,hmm``. Do not repeat the option; only the last ``--methods`` value is used.
@@ -77,6 +80,14 @@ written to ``uniInput.faa`` (proteins) and ``uniInput.gff`` (gene coordinates):
 
 For metagenomic contigs or MAGs, use ``--mode meta`` (pyrodigal metagenomic mode, no training step).
 
+.. warning::
+
+   pyrodigal models prokaryotic genes (no introns). On a fungal or other eukaryotic genome it splits most genes
+   into short ORFs: on *Xylona heveae* (24 Mb) it predicts 32,471 ORFs instead of 8,201 genes, with a median length
+   of 104 aa, and most CAZymes are split across several ORFs. After gene prediction run_dbcan logs a ``WARNING`` when
+   the proteins look like this (median below 150 aa and more than 30% shorter than 100 aa); the run is not
+   stopped. Use ``--mode protein`` with an external annotation instead (see `Analyzing Eukaryotic Proteins`_).
+
 Analyzing Protein Sequences
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -93,7 +104,13 @@ In ``protein`` mode the FASTA IDs are copied into ``uniInput.faa`` with these ch
 * IDs longer than 80 characters are truncated to 80 characters;
 * duplicated IDs are renamed by appending ``_1``, ``_2``, ... to the second and later copies.
 
-These changes are not applied to your GFF file, so for CGC prediction keep protein IDs unique and at most 80 characters.
+The protein sequences are also cleaned for DIAMOND: a trailing stop symbol (``*`` or ``.``) is removed and internal
+``*`` or ``.`` are replaced by ``X``. ``gffread -y`` writes ``.`` for stop codons, which DIAMOND rejects. The number
+of changed sequences is logged.
+
+The GFF file is not rewritten. For CGC prediction the identifiers of the GFF are passed through the same ID
+cleaning before they are compared with ``uniInput.faa``, so a JGI or long ID still matches; the ``_1``, ``_2``
+suffixes of duplicated IDs cannot be matched, so keep protein IDs unique.
 
 .. warning::
 
@@ -105,9 +122,10 @@ These changes are not applied to your GFF file, so for CGC prediction keep prote
 Analyzing Eukaryotic Proteins
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There is no eukaryotic genome mode: pyrodigal predicts prokaryotic genes only. For fungi and other eukaryotes,
-predict genes with a eukaryotic gene finder (or use a published annotation) and run the predicted proteins in
-``protein`` mode:
+There is no eukaryotic genome mode, and run_dbcan does not predict eukaryotic genes. For fungi and other
+eukaryotes, annotate the genome with a eukaryotic pipeline such as `funannotate <https://github.com/nextgenusfs/funannotate>`_
+/ funannotate2 or `BRAKER <https://github.com/Gaius-Augustus/BRAKER>`_ (or use the NCBI or JGI MycoCosm
+annotation), and run its protein FASTA in ``protein`` mode:
 
 .. code-block:: shell
 
@@ -117,7 +135,14 @@ predict genes with a eukaryotic gene finder (or use a published annotation) and 
 
    run_dbcan CAZyme_annotation --input_raw_data Xylhe1_GeneCatalog_proteins_20130827.aa.fasta --output_dir output_Xylhe1_faa --db_dir db --mode protein
 
-To predict CGCs for eukaryotes you also need a matching GFF file; see :doc:`CGC_information_generation`.
+To predict CGCs for eukaryotes, also pass the GFF3/GTF of the same annotation run with ``--input_gff`` and
+``--gff_type`` (``funannotate``, ``BRAKER``, ``GFF3``, ``GTF``, ``NCBI_euk`` or ``JGI``); see
+:ref:`cgc-information-generation` for the fungal workflow.
+
+.. tip::
+
+   If you translate a GFF yourself, use ``gffread annotation.gff3 -g genome.fna -y proteins.faa -S``: ``-S`` writes
+   ``*`` instead of ``.`` for stop codons. run_dbcan cleans both, but other tools may not.
 
 .. tip::
 
