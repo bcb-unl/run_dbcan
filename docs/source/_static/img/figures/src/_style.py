@@ -37,8 +37,9 @@ plt.rcParams.update({
     "savefig.facecolor": "white",
 })
 
-# text sizes (pt): titles / step names, body, notes and file names
-L, M, S = 10, 9, 8
+# text sizes (pt): titles / step names, body, notes and file names. The full-width figures are ~1350 px wide and
+# shown at ~800 px in the docs, so 9 pt comes out at ~11 px there.
+L, M, S = 11, 10, 9
 
 INK = "#1A1A1A"        # text and structure lines
 GREY = "#5C5C5C"       # secondary text, file names (contrast 6.7:1 on white)

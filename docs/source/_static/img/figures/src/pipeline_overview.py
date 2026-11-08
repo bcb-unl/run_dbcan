@@ -13,14 +13,14 @@ STEPS = [
      ["Gene calling: pyrodigal (prok, meta)", "DIAMOND: CAZy.dmnd", "pyHMMER: dbCAN.hmm, dbCAN-sub.hmm"],
      ["overview.tsv", "uniInput.faa", "uniInput.gff"]),
     ("gff_process",
-     ["DIAMOND: TCDB, TF, SulfAtlas, MEROPS", "pyHMMER: STP.hmm (TF.hmm with --fungi)"],
+     ["DIAMOND: TCDB, SulfAtlas, MEROPS", "TF: DIAMOND, or TF.hmm with --fungi", "pyHMMER: STP.hmm"],
      ["total_cgc_info.tsv", "cgc.gff"]),
     ("cgc_finder",
      ["Joins CAZymes and signature genes with", "at most 2 other genes between them",
       "Default: at least 1 CAZyme and 1 TC"],
      ["cgc_standard_out.tsv", "cgc_standard_out_summary.tsv"]),
     ("substrate_prediction",
-     ["DIAMOND: CGCs vs dbCAN-PUL (PUL.dmnd)", "dbCAN-sub: substrates of the CAZyme families"],
+     ["DIAMOND: CGCs vs dbCAN-PUL (PUL.dmnd)", "dbCAN-sub: substrates of CAZyme families"],
      ["substrate_prediction.tsv", "synteny_pdf/"]),
 ]
 OTHER = [("run_dbcan database", "downloads the databases (once, before step 1)"),
@@ -28,18 +28,18 @@ OTHER = [("run_dbcan database", "downloads the databases (once, before step 1)")
          ("dbcan_utils", "read abundance (metagenomes)")]
 WRAPPERS = [("easy_CGC", 3), ("easy_substrate", 4)]
 
-W = 8.8
-X_BOX, BOX_W, BOX_H = 0.0, 1.85, 0.46
-X_TOOLS, X_FILES = 2.2, 5.15
-X_WRAP = [7.55, 8.4]
-LINE = 0.175          # line pitch of 9 pt text
-ROW = 0.86            # row pitch
+W = 9.4
+X_BOX, BOX_W, BOX_H = 0.0, 2.0, 0.5
+X_TOOLS, X_FILES = 2.32, 5.42
+X_WRAP = [7.85, 8.85]
+LINE = 0.195          # line pitch of 10 pt text
+ROW = 0.92            # row pitch
 
 
 def draw(use_accent):
     acc = st.accent(use_accent)
     y_input = 0.12
-    y_head = 0.70
+    y_head = 0.76
     y0 = y_head + 0.36                     # top of the first step box
     y_end = y0 + 3 * ROW + BOX_H           # bottom of the last step box
     H = y_end + 0.82
@@ -56,9 +56,9 @@ def draw(use_accent):
     st.arrow(ax, (xc, y_input + 0.22), (xc, y0), color=acc)
 
     # column heads
-    for x, t, ha in ((X_TOOLS, "Tools and databases", "left"), (X_FILES, "Output files", "left"),
-                     (X_WRAP[0], "easy_CGC", "center"), (X_WRAP[1], "easy_substrate", "center")):
-        st.text(ax, x, y_head, t, size=st.S, color=st.GREY, ha=ha)
+    for x, t, ha, mono in ((X_TOOLS, "Tools and databases", "left", False), (X_FILES, "Output files", "left", False),
+                           (X_WRAP[0], "easy_CGC", "center", True), (X_WRAP[1], "easy_substrate", "center", True)):
+        st.text(ax, x, y_head, t, size=st.S, color=st.GREY, ha=ha, mono=mono)
     st.hline(ax, X_TOOLS, W, y_head + 0.15, color=st.INK)
 
     for i, (name, tools, files) in enumerate(STEPS):
@@ -75,7 +75,7 @@ def draw(use_accent):
         for k, f in enumerate(files):
             st.text(ax, X_FILES, block_top + k * LINE, f, mono=True, color=st.GREY, size=st.S)
         if i < 3:
-            st.hline(ax, X_TOOLS, X_WRAP[0] - 0.45, top + BOX_H + (ROW - BOX_H) / 2, lw=0.5)
+            st.hline(ax, X_TOOLS, W, top + BOX_H + (ROW - BOX_H) / 2, lw=0.5)
 
     # wrappers: a line through the steps each one runs
     for x, (_, n) in zip(X_WRAP, WRAPPERS):
@@ -89,7 +89,7 @@ def draw(use_accent):
     st.hline(ax, X_TOOLS, W, y_foot - 0.2, color=st.INK)
     st.text(ax, xc, y_foot, "Other commands", size=st.L, weight="bold", ha="center")
     for k, (cmd, what) in enumerate(OTHER):
-        st.text(ax, X_TOOLS, y_foot + k * LINE, cmd)
+        st.text(ax, X_TOOLS, y_foot + k * LINE, cmd, mono=True)
         st.text(ax, X_FILES, y_foot + k * LINE, what, color=st.GREY)
     return fig
 

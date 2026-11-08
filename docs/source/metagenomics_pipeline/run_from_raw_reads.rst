@@ -13,7 +13,8 @@ datasets and routes below only list what differs and link back to the steps here
    :target: ../_static/img/figures/protocol_flow.png
    :alt: The four modules of the protocol, their commands and output files
 
-   The four modules, the command of each step and the files it writes (``S`` = sample name; click to enlarge).
+   The four modules, the command of each protocol step (P1-P15) and the files it writes (``S`` = sample name; click
+   to enlarge).
 
 .. list-table:: Example datasets and routes
    :header-rows: 1
