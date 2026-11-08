@@ -53,6 +53,7 @@ CGC_MAP_TITLE_IN = 0.62         # title + substrate line
 CGC_MAP_LEGEND_IN = 0.42
 CGC_MAP_DEPTH_PANEL_IN = 0.85   # height of one read-depth panel
 CGC_MAP_DEPTH_GAP_IN = 0.14
+CGC_MAP_RULER_ONLY_DEPTH = 0.75  # room under the ruler when the gene track has no scale bar (data units)
 SYNTENY_UNIT_IN = 0.27
 SYNTENY_GENE_H = 1.0
 SYNTENY_CGC_TRACK_Y = 3.2       # y of the CGC track (data units); the PUL track is at y = 0
