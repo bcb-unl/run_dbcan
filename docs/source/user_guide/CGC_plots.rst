@@ -161,7 +161,7 @@ The CGC is drawn above the dbCAN-PUL (read from ``<db_dir>/dbCAN-PUL/<PUL>.out/c
 two tracks and the title gives ``CGC vs PUL`` and the PUL substrate. The reference is shifted so homologous genes sit
 under each other and, with ``--synteny-revcomp`` (default on), it is drawn reverse-complemented when most homologous
 gene pairs lie on opposite strands. Homologous genes are joined by ribbons whose grey level is the protein identity
-(colour bar ``identity (%)``), and the identity is printed beside each ribbon. Ribbons are narrower than the genes
+(colour bar ``identity (%)``), and the identity is printed on each ribbon in a small tag outlined in the ribbon's grey. Ribbons are narrower than the genes
 (about a third of the gene width), and a gene with several hits (multiple matches, e.g. two paralogous GH32 genes
 hitting each other's counterpart) gives each ribbon its own slot, ordered by the partner's position, so every link
 stays visible. Only DIAMOND hits from ``PUL_blast.out`` that pass the per-hit cut-offs of

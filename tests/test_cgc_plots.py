@@ -569,7 +569,7 @@ def _hourglass_case():
 def test_synteny_draws_every_link_as_a_narrow_ribbon_with_its_identity():
     """Multiple matches are drawn too: every link is a ribbon narrower than its genes, a gene with
     several links gives each its own slot (no two ribbons share an end), and every link gets its
-    % identity beside it without overlapping labels."""
+    % identity on it without overlapping tags."""
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
     from dbcan.plot.syntenic_plot import draw_links, link_ports
@@ -600,7 +600,7 @@ def test_synteny_draws_every_link_as_a_narrow_ribbon_with_its_identity():
     assert not any(a.overlaps(b) for i, a in enumerate(boxes) for b in boxes[i + 1:])
 
 
-def test_synteny_single_link_is_centred_and_labelled_beside_it():
+def test_synteny_single_link_is_centred_and_tagged_on_its_ribbon():
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
     from dbcan.plot.syntenic_plot import Link, draw_links, link_ports
@@ -616,5 +616,9 @@ def test_synteny_single_link_is_centred_and_labelled_beside_it():
     ax.set_xlim(-100, 1100)
     draw_links(ax, [link], pmap, mcolors.Normalize(20, 100), 1200 / 6.0)
     t = ax.texts[0]
+    edge = t.get_bbox_patch().get_edgecolor()
+    ribbon = ax.patches[0].get_facecolor()
     plt.close(fig)
-    assert t.get_text() == "93%" and t.get_position()[0] > qx1
+    # the tag sits ON its ribbon (centre line, half-way) and is outlined in the ribbon's grey
+    assert t.get_text() == "93%" and t.get_position()[0] == pytest.approx(500)
+    assert tuple(edge[:3]) == pytest.approx(tuple(ribbon[:3]))

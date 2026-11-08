@@ -90,8 +90,8 @@ SYNTENY_LINK_WIDTH_FRACTION = 0.35       # ribbon width at a gene, as a fraction
 SYNTENY_LINK_SLOT_FILL = 0.8             # with several links on one gene: fraction of a slot used
 SYNTENY_LINK_EDGE_COLOR = "white"        # hairline that separates crossing links
 SYNTENY_LINK_EDGE_LW = 0.5
-SYNTENY_LINK_LABEL_GAP_IN = 0.03        # space between a link's edge and its % label
-SYNTENY_LINK_LABEL_LEVELS = (0.0, 0.55, -0.55)   # y offsets (data units) tried to keep labels apart
+# where a % tag sits along its ribbon (0 = CGC track, 1 = PUL track); later positions are tried when tags collide
+SYNTENY_LINK_LABEL_POSITIONS = (0.5, 0.32, 0.68, 0.2, 0.8)
 SYNTENY_PDF_DIR = "synteny_pdf"
 SYNTENY_FILE_TEMPLATE = "{cgc}_{pul}-syntenic.{ext}"
 DBCAN_PUL_DIR = "dbCAN-PUL"

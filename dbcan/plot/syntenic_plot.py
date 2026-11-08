@@ -9,7 +9,7 @@ One renderer (:func:`plot_synteny`) is shared by ``run_dbcan substrate_predictio
   drawn reverse-complemented.
 * Links are the DIAMOND hits (PUL_blast.out) that pass the substrate-prediction per-hit
   cut-offs (E-value, identity, query coverage); their grey level is the % identity, which is also
-  printed beside each link. Ribbons are narrower than the genes and a gene with several links gives
+  printed on each link in a small tag outlined in the link's grey. Ribbons are narrower than the genes and a gene with several links gives
   each its own slot, so crossing links and multiple matches of one gene stay visible.
 * Text is minimal: the two track names on the left, a title (CGC vs PUL) and the
   substrate. Gene colours use the shared dbCAN palette.
@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.colors as mcolors
-from matplotlib import patheffects
 import matplotlib.pyplot as plt
 from matplotlib.path import Path as MPath
 from matplotlib.patches import PathPatch
@@ -185,38 +184,41 @@ def link_ports(links, pmap) -> Dict[int, Tuple[float, float, float, float]]:
     return {id(l): (*q_end[id(l)], *s_end[id(l)]) for l in links}
 
 
-def draw_link_labels(ax, links, ports, ytop: float, ybot: float, x_per_in: float) -> int:
-    """Write the % identity of every link beside its ribbon, half-way between the tracks (right
-    side first, then left, then the same at the heights in P.SYNTENY_LINK_LABEL_LEVELS), so a
-    number never covers a ribbon or another number. A thin white halo keeps it readable over
-    crossing ribbons. Returns the number of labels written."""
-    ym = (ytop + ybot) / 2
+def draw_link_labels(ax, links, ports, ytop: float, ybot: float, x_per_in: float, colors=None) -> int:
+    """Write the % identity of every link ON its ribbon: a small white tag, outlined in the
+    ribbon's grey, centred on the ribbon's centre line, so the ribbon visibly runs into and out of
+    its own tag. Tags start half-way between the tracks; when two would overlap, a tag slides
+    along its own ribbon (P.SYNTENY_LINK_LABEL_POSITIONS). Returns the number of labels written."""
     fs = P.SYNTENY_LINK_LABEL_FONT_SIZE
-    gap = P.SYNTENY_LINK_LABEL_GAP_IN * x_per_in
-    placed = {lvl: [] for lvl in P.SYNTENY_LINK_LABEL_LEVELS}
-    halo = [patheffects.withStroke(linewidth=2.2, foreground="white")]
+    half_h = (fs * 1.45 / 72) / U / 2                     # tag half-height in data units
+    pad_x = 0.05 * x_per_in
+    colors = colors or {}
+    boxes: List[Tuple[float, float, float, float]] = []
     n = 0
-    for l in sorted(links, key=lambda l: (l.q.mid, -l.pident)):
+    for l in sorted(links, key=lambda l: (-l.pident, l.q.mid)):
         qx0, qx1, sx0, sx1 = ports[id(l)]
+        qc, sc = (qx0 + qx1) / 2, (sx0 + sx1) / 2
         text = P.SYNTENY_LINK_LABEL_FORMAT.format(l.pident)
-        w = V.text_width_data_in(text, fs) * x_per_in
+        half_w = V.text_width_data_in(text, fs) * x_per_in / 2 + pad_x
         choice = None
-        for lvl in P.SYNTENY_LINK_LABEL_LEVELS:
-            y = ym + lvl
-            right = max(_ribbon_x_at(qx1, sx1, ytop, ybot, y), _ribbon_x_at(qx0, sx0, ytop, ybot, y)) + gap
-            left = min(_ribbon_x_at(qx1, sx1, ytop, ybot, y), _ribbon_x_at(qx0, sx0, ytop, ybot, y)) - gap - w
-            for x0 in (right, left):
-                if all(x0 + w <= p0 or x0 >= p1 for p0, p1 in placed[lvl]):
-                    choice = (lvl, x0)
-                    break
-            if choice:
+        for pos in P.SYNTENY_LINK_LABEL_POSITIONS:
+            y = ytop - pos * (ytop - ybot)
+            if y + half_h > ytop or y - half_h < ybot:
+                continue
+            x = _ribbon_x_at(qc, sc, ytop, ybot, y)
+            box = (x - half_w, x + half_w, y - half_h, y + half_h)
+            if all(box[1] <= b[0] or box[0] >= b[1] or box[3] <= b[2] or box[2] >= b[3] for b in boxes):
+                choice = (x, y, box)
                 break
         if choice is None:
-            choice = (P.SYNTENY_LINK_LABEL_LEVELS[0], (qx1 + sx1) / 2 + gap)
-        lvl, x0 = choice
-        placed[lvl].append((x0, x0 + w))
-        ax.text(x0, ym + lvl, text, ha="left", va="center", fontsize=fs, color=P.PLOT_INK, zorder=1.6,
-                path_effects=halo)
+            y = (ytop + ybot) / 2
+            x = _ribbon_x_at(qc, sc, ytop, ybot, y)
+            choice = (x, y, (x - half_w, x + half_w, y - half_h, y + half_h))
+        x, y, box = choice
+        boxes.append(box)
+        ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=P.PLOT_INK, zorder=1.6,
+                bbox=dict(boxstyle="round,pad=0.18", facecolor="white",
+                          edgecolor=colors.get(id(l), P.PLOT_INK_MUTED), linewidth=0.8))
         n += 1
     return n
 
@@ -227,11 +229,11 @@ def draw_links(ax, links, pmap, norm, x_per_in) -> List[Link]:
     slot, so multiple matches (paralogues) and crossing links all stay visible. Returns the links."""
     ytop, ybot = Y_CGC - GENE_H / 2, GENE_H / 2
     ports = link_ports(links, pmap)
+    colors = {id(l): IDENTITY_CMAP(norm(min(max(l.pident, P.SYNTENY_IDENTITY_MIN), P.SYNTENY_IDENTITY_MAX)))
+              for l in links}
     for l in sorted(links, key=lambda l: (l.pident, l.bitscore)):
-        _ribbon(ax, *ports[id(l)], ytop, ybot,
-                IDENTITY_CMAP(norm(min(max(l.pident, P.SYNTENY_IDENTITY_MIN), P.SYNTENY_IDENTITY_MAX))),
-                zorder=1.2)
-    draw_link_labels(ax, links, ports, ytop, ybot, x_per_in)
+        _ribbon(ax, *ports[id(l)], ytop, ybot, colors[id(l)], zorder=1.2)
+    draw_link_labels(ax, links, ports, ytop, ybot, x_per_in, colors)
     return list(links)
 
 
