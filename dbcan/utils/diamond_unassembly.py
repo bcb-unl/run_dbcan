@@ -8,8 +8,10 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import rich_click as click
 from rich import print as rprint
+import re
 from dbcan.parameter import logging_options
 from dbcan.main import setup_logging
+from dbcan.constants.base_constants import CAZY_FAMILY_TOKEN_PATTERN
 
 # rich-click styling (can be adjusted)
 click.rich_click.USE_RICH_MARKUP = True
@@ -62,55 +64,44 @@ DIAMOND (custom blast tabular)
 def CAZy_filter(cazy):
     return set([aa for aa in cazy])
 
+_CAZY_FAMILY_RE = re.compile(CAZY_FAMILY_TOKEN_PATTERN)
+
+
 def extract_CAZy_from_Tsn(tsn):
     """
-    Extract CAZy annotations from target sequence name (Tsn).
-    
-    Normal case: CAD7272370.1|GH33 -> CAZy is ['GH33'] (content after |)
-    Special case: CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta 
-                  -> When ID contains '.fasta' (case-insensitive), if the first part after | is a pure number,
-                     then CAZy is the part before | (i.e., 'CE16')
-                  -> Otherwise, extract all parts before the first pure number
-    
-    Args:
-        tsn: Target sequence name from DIAMOND result (sseqid)
-    
-    Returns:
-        List of CAZy annotations (stripped of whitespace)
+    CAZy families of a CAZy DIAMOND subject name (Tsn), in header order, without repeats.
+
+    A token is a family only if the whole token is a CAZy family/subfamily name (GH5, GH5_7, CBM1),
+    wherever it is in the header, so accessions, EC numbers, JGI protein numbers and file names are
+    never returned:
+
+      'CAD7272370.1|GH33'                  -> ['GH33']
+      '1803517A|GH13_6|GH13_6|3.2.1.1'     -> ['GH13_6']
+      'GH5_7|CBM1|390012|X.aa.fasta'       -> ['GH5_7', 'CBM1']
+      '390012|GH5|X.aa.fasta'              -> ['GH5']
     """
-    # Check if '.fasta' is in the ID (case-insensitive, more precise than just 'fasta')
-    tsn_lower = tsn.lower()
-    if '.fasta' in tsn_lower:
-        # Split by |
-        parts = tsn.split('|')
-        if len(parts) < 2:
-            return []
-        
-        # Check if the first part after | is a pure number
-        first_part_after_pipe = parts[1].strip()
-        if first_part_after_pipe.isdigit():
-            # Special case: first part after | is a pure number
-            # Return the part before | as CAZy annotation (if not empty)
-            cazy_part = parts[0].strip()
-            return [cazy_part] if cazy_part else []
-        
-        # Otherwise, collect all parts before the first pure number
-        cazy_parts = []
-        for part in parts[1:]:
-            stripped_part = part.strip()
-            if stripped_part.isdigit():
-                # Found first pure number, stop here
-                break
-            elif stripped_part:  # Only add non-empty parts
-                # Collect non-numeric parts (stripped)
-                cazy_parts.append(stripped_part)
-        
-        # Return collected parts, or empty list if none found
-        return cazy_parts
-    else:
-        # Normal case: return everything after the first |, with each part stripped
-        parts = tsn.strip("|").split("|")[1:]
-        return [part.strip() for part in parts if part.strip()]  # Filter out empty strings
+    tokens = (t.strip() for t in str(tsn).split('|'))
+    return list(dict.fromkeys(t for t in tokens if _CAZY_FAMILY_RE.match(t)))
+
+
+def seqid_from_Tsn(tsn):
+    """
+    Reference sequence ID of a CAZy DIAMOND subject name, used to count reads per sequence.
+
+    NCBI-style headers start with the accession ('CAD7272370.1|GH33' -> 'CAD7272370.1'). JGI-style
+    headers start with the families and end with '<protein number>|<file>'
+    ('CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta' -> '390012|Krezon1_...aa.fasta'),
+    so the ID is everything after the last leading family token. Using the first token there would
+    give the family name and merge all sequences of a family into one.
+    """
+    tokens = [t.strip() for t in str(tsn).split('|')]
+    n = 0
+    while n < len(tokens) and _CAZY_FAMILY_RE.match(tokens[n]):
+        n += 1
+    if n == 0:
+        return tokens[0]
+    rest = [t for t in tokens[n:] if t]
+    return '|'.join(rest) if rest else str(tsn)
 
 class PafRecord(object):
     def __init__(self, lines):
@@ -126,7 +117,7 @@ class PafRecord(object):
         self.Nrm = lines[11]
         self.Abl = lines[3]
         self.Mq  = lines[10]
-        self.SeqID = self.Tsn.split('|')[0]
+        self.SeqID = seqid_from_Tsn(self.Tsn)
         # Use special extraction function for CAZy annotations
         cazy_list = extract_CAZy_from_Tsn(self.Tsn)
         self.CAZys = CAZy_filter(cazy_list) if cazy_list else set()
@@ -263,14 +254,31 @@ def FPKMToCsv(args, tool, cazyfpkm, readtable, cazy2seqid):
             if not cazyid[0].isdigit():
                 f.write(f"{cazyid}\t{fpkm}\t{seqnum}\t{readcount}\n")
 
+READ_FILE_SUFFIXES = {
+    "fq": (".fq", ".fastq"),
+    "fa": (".fa", ".fasta", ".fna"),
+}
+
+
+def read_file_type(filename):
+    """'fq' or 'fa' from the file name (optionally gzipped), None if not recognised."""
+    name = str(filename).lower()
+    if name.endswith(".gz"):
+        name = name[:-3]
+    for kind, suffixes in READ_FILE_SUFFIXES.items():
+        if name.endswith(suffixes):
+            return kind
+    return None
+
+
 def check_read_type(filename):
-    if filename.endswith("fq") or filename.endswith("fq.gz"):
-        return "fq"
-    elif filename.endswith("fa") or filename.endswith("fa.gz"):
-        return "fa"
-    else:
-        sys.stderr.write(HLError("Error") + " File type not supported, please provide .fa(fa.gz) or (fq)fq.gz reads file.\n")
-        exit(1)
+    kind = read_file_type(filename)
+    if kind is None:
+        raise click.BadParameter(
+            f"{filename}: unsupported reads file; use .fq/.fastq or .fa/.fasta/.fna, optionally .gz",
+            param_hint="'--raw_reads'",
+        )
+    return kind
 
 def _count_fastq(path: Path) -> int:
     opener = gzip.open if path.suffix == ".gz" else open
@@ -285,19 +293,11 @@ def _count_fasta(path: Path) -> int:
         return sum(1 for line in fh if line.startswith('>'))
 
 def get_count_reads(file):
-    p = Path(file)
-    if p.suffix in [".gz"]:
-        # Look at previous suffix
-        stem_suffix = "".join(p.name.split(".")[-2:])
-        # Not strictly needed; rely on pattern
-    if file.endswith("fq.gz"):
-        return float(_count_fastq(p))
-    elif file.endswith(".fq"):
-        return float(_count_fastq(p))
-    elif file.endswith("fa.gz"):
-        return float(_count_fasta(p))
-    elif file.endswith(".fa"):
-        return float(_count_fasta(p))
+    kind = read_file_type(file)
+    if kind == "fq":
+        return float(_count_fastq(Path(file)))
+    if kind == "fa":
+        return float(_count_fasta(Path(file)))
     return 0.0
 
 def diamond_unassemble_data(args):
@@ -986,7 +986,7 @@ def common_threads_option(f):
 @cli.command("diamond_fam_abund", help="Compute CAZy family abundance (FPKM/TPM/RPM).")
 @click.option("-paf1", required=True, type=click.Path(exists=True), help="R1 DIAMOND blastx output.")
 @click.option("-paf2", type=click.Path(exists=True), default="", help="R2 DIAMOND blastx output (optional).")
-@click.option("--raw_reads", required=True, type=click.Path(exists=True), help="Raw reads file (fq/fa[.gz]).")
+@click.option("--raw_reads", required=True, type=click.Path(exists=True), help="Raw reads file used for the total read count: .fq/.fastq or .fa/.fasta/.fna, optionally .gz.")
 @click.option("-d", "--db", default="./db", show_default=True, type=click.Path(), help="Database directory.")
 @click.option("-o", "--output", default="asmfree_fam_abund", show_default=True, help="Output file.")
 @common_norm_option
@@ -1008,7 +1008,7 @@ def cmd_fam_abund(paf1, paf2, raw_reads, db, output, normalized, threads):
 @cli.command("diamond_subfam_abund", help="Compute CAZy sub-family abundance.")
 @click.option("-paf1", required=True, type=click.Path(exists=True), help="R1 DIAMOND blastx tabular output (path).")
 @click.option("-paf2", type=click.Path(exists=True), default="", help="Optional R2 DIAMOND blastx output (paired-end).")
-@click.option("--raw_reads", required=True, type=click.Path(exists=True), help="Matching reads FASTA/FASTQ (.gz allowed).")
+@click.option("--raw_reads", required=True, type=click.Path(exists=True), help="Raw reads file used for the total read count: .fq/.fastq or .fa/.fasta/.fna, optionally .gz.")
 @click.option("-d", "--db", default="./db", show_default=True, type=click.Path(), help="dbCAN database directory used for CAZy mapping.")
 @click.option("-o", "--output", default="asmfree_subfam_abund", show_default=True, help="Output TSV path for subfamily abundances.")
 @common_norm_option

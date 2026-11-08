@@ -288,6 +288,18 @@ We developed a Python script as dbcan_asmfree (included in the run_dbcan package
 The substrate prediction in the assemble-free route is based on the fam-substrate-mapping-08012023.tsv mapping table. Specifically, from the blastx result files, reads are first grouped according to their best CAZyDB proteins. Then, reads are further grouped according to the CAZyme families and eCAMI subfamilies where the best CAZyDB proteins belong to. Lastly, the fam-substrate-mapping-08012023.tsv mapping table is used to map CAZyme families and ECs (from eCAMI subfamilies) to substrates. 
 Therefore, the substrate abundance is calculated in a similar way as implemented in dbCAN-sub. 
 
+.. note::
+
+   ``--raw_reads`` is only used for the total number of reads (the normalisation denominator). Accepted file names
+   end in ``.fq``/``.fastq`` or ``.fa``/``.fasta``/``.fna``, optionally followed by ``.gz``.
+
+   The CAZy families of a hit are the tokens of the CAZy sequence header (DIAMOND ``sseqid``) that are whole
+   family or subfamily names (``GH5``, ``GH5_7``, ``CBM1``), at any position; accessions, EC numbers, JGI protein
+   numbers and file names are ignored, and a family repeated in the header counts once. Reads are counted per
+   reference sequence: the accession for NCBI-style headers (``CAD7272370.1|GH33``), and
+   ``<protein number>|<file>`` for JGI-style headers (``CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta``),
+   so different JGI proteins of the same family are separate sequences with their own length.
+
 
 
 Module 4: dbcan_plot for data visualization (Fig. 2) of abundances of CAZymes, CGCs, and substrates (TIMING variable)
