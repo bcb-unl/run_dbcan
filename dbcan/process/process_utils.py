@@ -10,6 +10,7 @@ from Bio import SeqIO
 logger = logging.getLogger(__name__)
 import dbcan.constants.process_utils_constants as PU
 import dbcan.constants.base_constants as B
+import dbcan.constants.diamond_constants as D
 
 
 def _is_nonempty_file(path: Path) -> bool:
@@ -172,20 +173,83 @@ def filter_overlaps(df: pd.DataFrame, overlap_ratio_threshold: float = PU.OVERLA
     return pd.DataFrame(kept_rows, columns=df.columns)
 
 
+def _numeric(df: pd.DataFrame, col: str, fill: float) -> pd.Series:
+    """Numeric column (``fill`` where missing or not a number; all ``fill`` if the column is absent)."""
+    if col not in df.columns:
+        return pd.Series(fill, index=df.index, dtype=float)
+    return pd.to_numeric(df[col], errors='coerce').fillna(fill)
+
+
 def _best_hit_per_protein(df: pd.DataFrame) -> pd.DataFrame:
-    """Keep one DIAMOND hit per protein: lowest E-value, then highest query coverage.
+    """Keep one DIAMOND hit per protein: highest bit score, then lowest E-value, then highest coverage.
 
     DIAMOND signature databases (TCDB, PRODORIC TF, SulfAtlas, MEROPS) hold full-length
-    proteins, so a hit is a protein-level label, not a domain; its query interval is an
-    alignment span and is never compared with other annotations by coordinates.
+    proteins (MEROPS: peptidase units), so a hit is a protein-level label, not a domain; its
+    query interval is an alignment span and is never compared with other annotations by
+    coordinates. Within one database the bit score and the E-value rank hits the same way, but
+    the bit score still separates hits whose E-value is reported as 0. Files written before the
+    bit score was added (no ``Bitscore`` column) are ranked by E-value and coverage as before.
     """
     if df.empty:
         return df
     ranked = df.assign(
-        _ev=pd.to_numeric(df[PU.IEVALUE_COLUMN], errors='coerce').fillna(float('inf')),
-        _cov=pd.to_numeric(df[PU.COVERAGE_COLUMN], errors='coerce').fillna(0.0),
-    ).sort_values([PU.TARGET_NAME_COLUMN, '_ev', '_cov'], ascending=[True, True, False], kind='mergesort')
-    return ranked.drop_duplicates(subset=[PU.TARGET_NAME_COLUMN], keep='first').drop(columns=['_ev', '_cov'])
+        _bits=_numeric(df, PU.SIGNATURE_BITSCORE_COLUMN, float('-inf')),
+        _ev=_numeric(df, PU.IEVALUE_COLUMN, float('inf')),
+        _cov=_numeric(df, PU.COVERAGE_COLUMN, 0.0),
+    ).sort_values([PU.TARGET_NAME_COLUMN, '_bits', '_ev', '_cov'], ascending=[True, False, True, False],
+                  kind='mergesort')
+    return ranked.drop_duplicates(subset=[PU.TARGET_NAME_COLUMN], keep='first').drop(columns=['_bits', '_ev', '_cov'])
+
+
+def best_full_length_labels(df: pd.DataFrame, protein_col: str = PU.TARGET_NAME_COLUMN) -> pd.DataFrame:
+    """Keep the one best full-length label (TC, TF DIAMOND, sulfatase) of each protein.
+
+    ``df`` holds full-length database rows (``Source`` in FULL_LENGTH_SIGNATURE_SOURCES) with the
+    total_cgc_info.tsv columns. These databases hold whole proteins, so their hits cannot be
+    placed at domain level and several of them on one protein are competing names for the same
+    protein. They are ranked by:
+
+    1. DIAMOND bit score (higher first). For one query protein the bit score does not depend on
+       the size of the database searched, unlike the E-value, and ranking by bit score is the
+       same as ranking by the blast score ratio (bit score / self-score of the query);
+    2. min(query coverage, subject coverage) of the alignment (higher first);
+    3. E-value (lower first);
+    4. FULL_LENGTH_SOURCE_PRIORITY (TC > TF_prok > Sulfatase).
+
+    A protein with a row that has no bit score (tables written before the column existed) keeps
+    all of its rows: they cannot be compared.
+    """
+    if df.empty:
+        return df
+    bits = pd.to_numeric(df[PU.SIGNATURE_BITSCORE_COLUMN], errors='coerce') \
+        if PU.SIGNATURE_BITSCORE_COLUMN in df.columns else pd.Series(float('nan'), index=df.index)
+    multi = df[protein_col].duplicated(keep=False)
+    unscored = set(df.loc[bits.isna() & multi, protein_col])
+    if unscored:
+        logger.warning("%d protein(s) have a full-length label without a bit score; all of their "
+                       "full-length labels are kept", len(unscored))
+
+    def _cov(start_col, end_col, len_col):
+        span = (_numeric(df, end_col, 0.0) - _numeric(df, start_col, 0.0)).abs() + 1
+        length = _numeric(df, len_col, 0.0)
+        return (span / length.where(length > 0)).clip(upper=1.0).fillna(0.0)
+
+    min_cov = pd.concat([
+        _cov(PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN, PU.TARGET_LENGTH_COLUMN),        # query
+        _cov(PU.ANNOTATE_FROM_COLUMN, PU.ANNOTATE_TO_COLUMN, PU.ANNOTATE_LENGTH_COLUMN),  # subject
+    ], axis=1).min(axis=1)
+    order = {s: i for i, s in enumerate(PU.FULL_LENGTH_SOURCE_PRIORITY)}
+    prio = df[PU.SIGNATURE_SOURCE_COLUMN].map(order).fillna(len(order)) \
+        if PU.SIGNATURE_SOURCE_COLUMN in df.columns else pd.Series(len(order), index=df.index)
+    ranked = df.assign(
+        _bits=bits.fillna(float('-inf')), _mincov=min_cov,
+        _ev=_numeric(df, PU.IEVALUE_COLUMN, float('inf')), _prio=prio,
+    ).sort_values([protein_col, '_bits', '_mincov', '_ev', '_prio'],
+                  ascending=[True, False, False, True, True], kind='mergesort')
+    scored = ~ranked[protein_col].isin(unscored)
+    best = ranked[scored].drop_duplicates(subset=[protein_col], keep='first')
+    keep_idx = best.index.union(ranked.index[~scored])
+    return df.loc[df.index.isin(keep_idx)]
 
 
 def _drop_non_peptidase_units(df: pd.DataFrame) -> pd.DataFrame:
@@ -262,7 +326,12 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                     df = pd.concat(chunks, ignore_index=True)
                 else:
                     df = read_tsv(fpath, header=0)
-                
+
+                # DIAMOND bit score (by name; files written before it was added have none)
+                bits = None
+                if D.DIAMOND_BITSCORE_COLUMN in df.columns:
+                    bits = pd.to_numeric(df.pop(D.DIAMOND_BITSCORE_COLUMN), errors='coerce')
+
                 # align columns
                 missing = [c for c in columns if c not in df.columns]
                 if missing:
@@ -288,6 +357,7 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 df['Type'] = _TYPE_MAP.get(name, name)
                 # Source keeps TF DIAMOND (TF_prok) and TF HMM (TF_fungi) apart for the CGC step.
                 df[PU.SIGNATURE_SOURCE_COLUMN] = name
+                df[PU.SIGNATURE_BITSCORE_COLUMN] = bits.reindex(df.index) if bits is not None else float('nan')
                 if name == 'Peptidase':
                     df = _drop_non_peptidase_units(df)
                 if name in PU.DIAMOND_SIGNATURE_SOURCES:
@@ -301,9 +371,11 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 logger.error(f"Error reading {name} output file: {e}", exc_info=True)
 
         out_file = out_dir_path / B.GFF_CGC_SIG_FILE
+        # Type (column 11) and Source keep their positions; the bit score is the last column.
+        out_columns = columns + ['Type', PU.SIGNATURE_SOURCE_COLUMN, PU.SIGNATURE_BITSCORE_COLUMN]
         if not frames:
             logger.warning("No valid CGC annotation data found")
-            pd.DataFrame(columns=columns + ['Type', PU.SIGNATURE_SOURCE_COLUMN]).to_csv(out_file, index=False, sep='\t')
+            pd.DataFrame(columns=out_columns).to_csv(out_file, index=False, sep='\t')
             return
 
         # Optimize DataFrame concatenation for large datasets
@@ -324,7 +396,7 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         # No cross-source overlap filtering (see docstring); stable order for the GFF step.
         total_df = total_df.sort_values(
             by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN, 'Type'], kind='mergesort'
-        )
+        )[out_columns]
         total_df.to_csv(out_file, index=False, sep='\t')
         logger.info(f"Saved {len(total_df)} CGC annotations to {out_file}")
     except Exception as e:
