@@ -9,7 +9,8 @@ One renderer (:func:`plot_synteny`) is shared by ``run_dbcan substrate_predictio
   drawn reverse-complemented.
 * Links are the DIAMOND hits (PUL_blast.out) that pass the substrate-prediction per-hit
   cut-offs (E-value, identity, query coverage); their grey level is the % identity, which is also
-  printed on each link.
+  printed on each link. Genes are matched one-to-one by bitscore (filled ribbons); further hits of
+  an already matched gene (multiple matches, paralogues) are dashed outlines drawn on top.
 * Text is minimal: the two track names on the left, a title (CGC vs PUL) and the
   substrate. Gene colours use the shared dbCAN palette.
 """
@@ -131,13 +132,33 @@ def load_pul_genes(db_dir: Path, pul: str) -> List[V.Gene]:
     return sorted(genes, key=lambda g: g.start)
 
 
-def _ribbon(ax, qx0, qx1, sx0, sx1, ytop, ybot, color, zorder):
+def _ribbon(ax, qx0, qx1, sx0, sx1, ytop, ybot, color, zorder, outline: bool = False):
     ym = (ytop + ybot) / 2
     verts = [(qx0, ytop), (qx0, ym), (sx0, ym), (sx0, ybot), (sx1, ybot), (sx1, ym), (qx1, ym),
              (qx1, ytop), (qx0, ytop)]
     codes = [MPath.MOVETO, MPath.CURVE4, MPath.CURVE4, MPath.CURVE4, MPath.LINETO, MPath.CURVE4,
              MPath.CURVE4, MPath.CURVE4, MPath.CLOSEPOLY]
-    ax.add_patch(PathPatch(MPath(verts, codes), facecolor=color, edgecolor="none", zorder=zorder))
+    if outline:     # secondary (multiple) match: drawn on top of the filled ribbons, never hidden
+        ax.add_patch(PathPatch(MPath(verts, codes), facecolor="none", edgecolor=P.SYNTENY_SECONDARY_EDGE_COLOR,
+                               lw=P.SYNTENY_SECONDARY_EDGE_LW, ls=P.SYNTENY_SECONDARY_EDGE_STYLE, zorder=zorder))
+    else:
+        ax.add_patch(PathPatch(MPath(verts, codes), facecolor=color, edgecolor="none", zorder=zorder))
+
+
+def split_primary_links(links):
+    """One-to-one matching of homologous genes: links are taken by decreasing bitscore and a link is
+    primary when neither its CGC gene nor its PUL gene is already matched. The rest (a second hit
+    of an already matched gene, e.g. paralogues) are secondary."""
+    used_q, used_s, primary, secondary = set(), set(), [], []
+    for l in sorted(links, key=lambda l: (-l.bitscore, -l.pident)):
+        kq, ks = (l.q.contig, l.q.start, l.q.end), (l.s.contig, l.s.start, l.s.end)
+        if kq in used_q or ks in used_s:
+            secondary.append(l)
+        else:
+            primary.append(l)
+            used_q.add(kq)
+            used_s.add(ks)
+    return primary, secondary
 
 
 def _ribbon_x_at(qx: float, sx: float, ytop: float, ybot: float, y: float) -> float:
@@ -160,45 +181,51 @@ def _ribbon_span_at(link_x, ytop: float, ybot: float, y: float):
     return (_ribbon_x_at(qx0, sx0, ytop, ybot, y), _ribbon_x_at(qx1, sx1, ytop, ybot, y))
 
 
-def draw_link_labels(ax, links, pmap, ytop: float, ybot: float, x_per_in: float) -> int:
+def draw_link_labels(ax, links, pmap, ytop: float, ybot: float, x_per_in: float, secondary=()) -> int:
     """Write the % identity of every link on its own ribbon, between the two tracks.
 
-    Ribbons are drawn in order of increasing identity, so a weak (paralogous) link can be hidden
-    under stronger ones. A label is placed only where its ribbon is visible (not covered by a
-    ribbon drawn later) and where it does not overlap another label; the heights in
-    P.SYNTENY_LINK_LABEL_LEVELS are tried in turn. A link that is hidden at every height gets no
-    label. Returns the number of labels written."""
+    ``links`` are the filled (primary) ribbons, drawn in order of increasing identity; a primary
+    label is placed only where its ribbon is not covered by a ribbon drawn later. ``secondary``
+    links are drawn as outlines on top of everything, so their labels (on a light box) are always
+    visible. Labels never overlap: the heights in P.SYNTENY_LINK_LABEL_LEVELS are tried in turn.
+    Returns the number of labels written."""
     ym = (ytop + ybot) / 2
     fs = P.SYNTENY_LINK_LABEL_FONT_SIZE
     pad = 0.06 * x_per_in
-    order = sorted(links, key=lambda l: l.pident)          # same order as the ribbons
-    xs = []
-    for l in order:
+    order = sorted(links, key=lambda l: l.pident)          # same order as the filled ribbons
+
+    def xs_of(l):
         a, b, _ = pmap(l.s)
-        xs.append((l.q.start, l.q.end, a, b))
+        return (l.q.start, l.q.end, a, b)
+
+    xs = [xs_of(l) for l in order]
     placed = {lvl: [] for lvl in P.SYNTENY_LINK_LABEL_LEVELS}
+    jobs = [(l, xs[i], i, False) for i, l in enumerate(order)] + [(l, xs_of(l), None, True) for l in secondary]
     n = 0
-    for i in sorted(range(len(order)), key=lambda k: order[k].q.mid):
-        l = order[i]
+    for l, lx, i, is_sec in sorted(jobs, key=lambda j: ((j[1][0] + j[1][1]) / 2, j[3])):
         text = P.SYNTENY_LINK_LABEL_FORMAT.format(l.pident)
         half = V.text_width_data_in(text, fs) * x_per_in / 2 + pad
-        qmid, smid = (xs[i][0] + xs[i][1]) / 2, (xs[i][2] + xs[i][3]) / 2
-        for lvl in P.SYNTENY_LINK_LABEL_LEVELS:
+        qmid, smid = (lx[0] + lx[1]) / 2, (lx[2] + lx[3]) / 2
+        levels = P.SYNTENY_LINK_LABEL_LEVELS
+        if is_sec:   # keep secondary labels off the middle line used by most primary labels
+            levels = tuple(v for v in levels if v != 0.0) + (0.0,)
+        for lvl in levels:
             y = ym + lvl
             x = _ribbon_x_at(qmid, smid, ytop, ybot, y)
             if any(not (x + half <= x0 or x - half >= x1) for x0, x1 in placed[lvl]):
                 continue
-            covered = False
-            for j in range(i + 1, len(order)):
-                lo, hi = sorted(_ribbon_span_at(xs[j], ytop, ybot, y))
-                if x + half > lo and x - half < hi:
-                    covered = True
-                    break
-            if covered:
+            if not is_sec and any(
+                    x + half > lo and x - half < hi
+                    for lo, hi in (sorted(_ribbon_span_at(xs[j], ytop, ybot, y)) for j in range(i + 1, len(order)))):
                 continue
             placed[lvl].append((x - half, x + half))
-            color = "white" if l.pident >= P.SYNTENY_LINK_LABEL_WHITE_FROM else P.PLOT_INK
-            ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=color, zorder=1.5)
+            if is_sec:
+                ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=P.PLOT_INK, zorder=1.6,
+                        bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none",
+                                  alpha=P.SYNTENY_SECONDARY_LABEL_BOX_ALPHA))
+            else:
+                color = "white" if l.pident >= P.SYNTENY_LINK_LABEL_WHITE_FROM else P.PLOT_INK
+                ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=color, zorder=1.5)
             n += 1
             break
     return n
@@ -281,12 +308,16 @@ def plot_synteny(cgc_genes: Sequence[V.Gene], cgcid: str, pul_genes: Sequence[V.
     ax.plot([c_lo, c_hi], [Y_CGC, Y_CGC], color=P.PLOT_BACKBONE_COLOR, lw=1.0, zorder=1)
     ax.plot([p_lo, p_hi], [0, 0], color=P.PLOT_BACKBONE_COLOR, lw=1.0, zorder=1)
     norm = mcolors.Normalize(P.SYNTENY_IDENTITY_MIN, P.SYNTENY_IDENTITY_MAX)
-    for l in sorted(links, key=lambda l: l.pident):
+    primary, secondary = split_primary_links(links)
+    for l in sorted(primary, key=lambda l: l.pident):
         a, b, _ = pmap(l.s)
         _ribbon(ax, l.q.start, l.q.end, a, b, Y_CGC - GENE_H / 2, GENE_H / 2,
                 IDENTITY_CMAP(norm(min(max(l.pident, P.SYNTENY_IDENTITY_MIN), P.SYNTENY_IDENTITY_MAX))),
                 zorder=1.2)
-    draw_link_labels(ax, links, pmap, Y_CGC - GENE_H / 2, GENE_H / 2, (xhi - xlo) / ax_w)
+    for l in secondary:
+        a, b, _ = pmap(l.s)
+        _ribbon(ax, l.q.start, l.q.end, a, b, Y_CGC - GENE_H / 2, GENE_H / 2, None, zorder=1.4, outline=True)
+    draw_link_labels(ax, primary, pmap, Y_CGC - GENE_H / 2, GENE_H / 2, (xhi - xlo) / ax_w, secondary=secondary)
     for g in cgc_genes:
         V.draw_gene(ax, g.start, g.end, g.strand, g.gtype, Y_CGC, GENE_H, head)
     for g, (a, b, st) in zip(pul_genes, placed):

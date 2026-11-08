@@ -592,3 +592,29 @@ def test_synteny_paralog_label_shown_where_its_ribbon_is_visible():
     texts = sorted(t.get_text() for t in ax.texts)
     plt.close(fig)
     assert texts == ["41%", "88%", "96%"]    # the crossing link is visible in the gap
+
+
+def test_multiple_matches_are_secondary_outlines_drawn_on_top():
+    """Two similar genes hitting each other's counterpart (paralogues): the one-to-one best pairs
+    are filled ribbons, the cross hits are secondary outlines with their own visible labels."""
+    import matplotlib
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+    from dbcan.plot.syntenic_plot import Link, draw_link_labels, split_primary_links
+
+    def gene(pid, s, e):
+        return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="CAZyme", roles=[("CAZyme", "GH32")])
+
+    q1, q2 = gene("q1", 0, 1000), gene("q2", 1000, 2000)
+    s1, s2 = gene("s1", 0, 1000), gene("s2", 1000, 2000)
+    links = [Link(q1, s1, 87.0, 900), Link(q2, s2, 88.0, 950), Link(q1, s2, 50.0, 300), Link(q2, s1, 50.0, 290)]
+    primary, secondary = split_primary_links(links)
+    assert sorted((l.q.pid, l.s.pid) for l in primary) == [("q1", "s1"), ("q2", "s2")]
+    assert sorted((l.q.pid, l.s.pid) for l in secondary) == [("q1", "s2"), ("q2", "s1")]
+    fig, ax = plt.subplots()
+    ax.set_xlim(-100, 2100)
+    n = draw_link_labels(ax, primary, lambda g: (g.start, g.end, g.strand), 2.7, 0.5, 2200 / 6.0,
+                         secondary=secondary)
+    texts = sorted(t.get_text() for t in ax.texts)
+    plt.close(fig)
+    assert texts == ["50%", "50%", "87%", "88%"] and n == 4
