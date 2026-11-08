@@ -16,7 +16,7 @@ from dbcan.plot import cgc_viz as V
 
 DATA = Path(__file__).parent / "_data" / "cgc_plot"
 RUN = DATA / "run"
-DB = DATA / "db"
+DB = DATA / "pul_db"
 ORIGINAL_COLORS = {
     "CAZyme": "#E67E22", "TC": "#2ECC71", "TF": "#9B59B6", "STP": "#F1C40F",
     "Peptidase": "#16A085", "Sulfatase": "#010E1B", "Other": "#95A5A6",

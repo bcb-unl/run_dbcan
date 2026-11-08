@@ -1,0 +1,4 @@
+ref1	.	CDS	100	1300	.	+	.	protein_id=r1;CGC_annotation=CAZyme|GH10
+ref1	.	CDS	1400	2200	.	-	.	protein_id=r2;CGC_annotation=TC|2.A.1.5.1
+ref1	.	CDS	2300	3300	.	-	.	protein_id=r3;CGC_annotation=CAZyme|GH13+SULFATLAS|S1_8
+ref1	.	CDS	3400	4000	.	-	.	protein_id=r4;CGC_annotation=PEPTIDASE|M38
