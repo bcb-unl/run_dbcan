@@ -427,6 +427,33 @@ def _gene_key_fallback(attrs: Dict[str, str]) -> Optional[str]:
     return None
 
 
+def _fallback_loci(items: List[Tuple[str, Feature, Optional[str]]]) -> List[Tuple[str, List[Tuple[Feature, Optional[str]]]]]:
+    """Gene loci of gffread-style transcripts (no gene rows) named by geneID/gene_id/gene.
+
+    ``items`` are (gene value, transcript row, transcript key or None for a transcript without CDS).
+    The value alone does not identify a gene ('gene=' holds a symbol, and symbols repeat, e.g. two
+    copies of tnpA): transcripts are grouped only when they share contig, strand and value AND
+    overlap (transitively). Returns (value, members) per locus, in file order of the first member."""
+    by_key: Dict[Tuple[str, str, str], List[Tuple[Feature, Optional[str]]]] = defaultdict(list)
+    for value, feat, tid in items:
+        by_key[(feat.seqid, feat.strand, value)].append((feat, tid))
+    loci: List[Tuple[str, List[Tuple[Feature, Optional[str]]]]] = []
+    for (_, _, value), members in by_key.items():
+        members.sort(key=lambda m: (m[0].start, m[0].order))
+        cur: List[Tuple[Feature, Optional[str]]] = []
+        cur_end = -1
+        for m in members:
+            if not cur or m[0].start > cur_end:
+                cur = []
+                loci.append((value, cur))
+                cur_end = m[0].end
+            else:
+                cur_end = max(cur_end, m[0].end)
+            cur.append(m)
+    loci.sort(key=lambda loc: min(f.order for f, _ in loc[1]))
+    return loci
+
+
 def _candidate_keys(tr: _Transcript, profile) -> List[Tuple[str, str, bool]]:
     """(identifier, provenance, strong). Strong: an ID-like attribute (protein_id, ID,
     transcript_id, ...) of the CDS or of a transcript row, or the transcript key itself; weak:
@@ -513,6 +540,7 @@ def _resolve_transcripts(path: Path, gff_type: str, idx: ProteinIndex,
             top_level.append(f)
 
     transcripts: "OrderedDict[str, _Transcript]" = OrderedDict()
+    fallback_tx: Dict[str, str] = {}      # gffread-style transcript -> geneID/gene_id/gene value
     for c in cds_rows:
         a = c.attrs
         if c.gtf:
@@ -536,12 +564,54 @@ def _resolve_transcripts(path: Path, gff_type: str, idx: ProteinIndex,
                     # Parent=<gene> without a gene row: group the isoforms by that ID
                     tr = _Transcript(tid, tfeat, tfeat, gparents[0], gene_is_row=False)
                 elif tfeat is not None and tfeat.ftype not in _GENE_TYPES and _gene_key_fallback(tfeat.attrs):
-                    # gffread-style transcript (no gene rows): geneID=/gene_id=/gene= names the gene
-                    tr = _Transcript(tid, tfeat, tfeat, _gene_key_fallback(tfeat.attrs), gene_is_row=False)
+                    # gffread-style transcript (no gene rows): geneID=/gene_id=/gene= names the gene;
+                    # the gene key is set per locus below
+                    tr = _Transcript(tid, tfeat, tfeat, tid, gene_is_row=False)
+                    fallback_tx[tid] = _gene_key_fallback(tfeat.attrs)
                 else:
                     tr = _Transcript(tid, tfeat, tfeat, tid, gene_is_row=tfeat is not None)
                 transcripts[tid] = tr
             tr.cds.append(c)
+
+    # gffread-style loci: coding transcripts and transcripts without CDS that share contig, strand,
+    # geneID/gene_id/gene value and overlap form one gene. A locus with a coding transcript is a
+    # coding gene (its non-coding isoforms add nothing); otherwise one non-coding null row spanning
+    # all its transcripts. The value names the gene when it names one locus only; a repeated value
+    # (gene symbol on several loci) names each locus after its first transcript.
+    fb_nc_feats = [
+        f for f in top_level
+        if f.ftype in _TRANSCRIPT_TYPES and f.ftype not in _GENE_TYPES
+        and (f.fid or "") not in transcripts and _gene_key_fallback(f.attrs)
+    ]
+    loci = _fallback_loci(
+        [(v, transcripts[t].feat, t) for t, v in fallback_tx.items()]
+        + [(_gene_key_fallback(f.attrs), f, None) for f in fb_nc_feats]
+    )
+    fb_handled: Set[int] = {f.order for f in fb_nc_feats}
+    fb_noncoding: List[GeneResolution] = []
+    n_loci = Counter(value for value, _ in loci)
+    taken: Set[str] = {tr.gene_key for t, tr in transcripts.items() if t not in fallback_tx}
+    taken.update(by_id)
+    taken.difference_update(t for t in fallback_tx)
+    taken.difference_update(f.fid for f in fb_nc_feats if f.fid)
+    for value, members in loci:
+        first = min(members, key=lambda m: m[0].order)[0]
+        key = value if n_loci[value] == 1 and value not in taken else (first.fid or f"__line{first.order}")
+        while key in taken:
+            key += "_"
+        taken.add(key)
+        coding = [t for _, t in members if t is not None]
+        if coding:
+            for t in coding:
+                transcripts[t].gene_key = key
+            continue
+        feats = [f for f, _ in members]
+        ftype = first.ftype
+        if any(f.ftype in _PSEUDO_TYPES for f in feats):
+            ftype = G.GFF_PSEUDOGENE_FEATURE
+        fb_noncoding.append(GeneResolution(
+            key, first.seqid, min(f.start for f in feats), max(f.end for f in feats), first.strand,
+            G.GFF_NA_PROTEIN_ID, G.GFF_STATUS_NONCODING, "", ftype, order=first.order))
 
     # transcript -> protein, in two passes: first only strong keys found exactly in the FASTA
     # (CDS protein_id, transcript ID, ...), then every key (Name, gene IDs, version-less/JGI
@@ -612,22 +682,15 @@ def _resolve_transcripts(path: Path, gff_type: str, idx: ProteinIndex,
             coding_keys.add(tr.gene.fid)
 
     # non-coding genes (tRNA, rRNA, ncRNA, pseudogenes without CDS): null rows
-    seen_noncoding: Set[str] = set()
+    rows.extend(fb_noncoding)
     for f in top_level:
         if f.ftype not in _GENE_TYPES and f.ftype not in _TRANSCRIPT_TYPES:
             continue
+        if f.order in fb_handled or (f.fid or "") in fallback_tx:
+            continue                      # gffread-style transcript: handled per locus above
         gid = f.fid or f"__line{f.order}"
         if gid in coding_keys or gid in genes:
             continue
-        if f.ftype not in _GENE_TYPES:
-            # gffread-style transcript without a gene row: one null row per gene, none for a
-            # non-coding isoform of a coding gene
-            gkey = _gene_key_fallback(f.attrs)
-            if gkey is not None:
-                if gkey in genes or gkey in coding_keys or gkey in seen_noncoding:
-                    continue
-                seen_noncoding.add(gkey)
-                gid = gkey
         kids = children.get(f.fid or "", [])
         ftype = kids[0].ftype if kids else f.ftype
         if ftype in _PSEUDO_TYPES or f.ftype in _PSEUDO_TYPES:

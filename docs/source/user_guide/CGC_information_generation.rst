@@ -92,7 +92,10 @@ For ``funannotate``, ``BRAKER``, ``GFF3`` and ``GTF`` (the resolver):
   through ``ID``-like attributes (``CDS`` ``protein_id``/``proteinId``/``ID``, transcript ``ID``/``transcript_id``)
   that equal a FASTA ID, and only then through ``Name``/``locus_tag``, gene-level IDs and version-less/JGI aliases;
 * transcripts without a gene parent (gffread output without gene rows) are grouped into genes by their ``geneID``,
-  ``gene_id`` or ``gene`` attribute, so that their isoforms give one gene;
+  ``gene_id`` or ``gene`` attribute, so that their isoforms give one gene. Only transcripts on the same contig and
+  strand that overlap are grouped: ``gene=`` often holds a gene symbol, and two copies of ``tnpA`` or two ``trnL``
+  tRNAs stay two genes. A repeated value names each locus after its first transcript; a gene's coordinates span all
+  its transcripts;
 * one protein is kept per gene. When a gene has several transcripts (isoforms), the one annotated as a CAZyme
   (else as another CGC signature) is kept, otherwise the one with the longest CDS. All isoform proteins of the gene
   are listed in ``gff_resolution.tsv``;

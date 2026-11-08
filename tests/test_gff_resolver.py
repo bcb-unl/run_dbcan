@@ -308,9 +308,46 @@ def test_gffread_transcripts_without_gene_rows_are_grouped_by_gene_id(tmp_path):
         ("G1", "t1", "matched", 2, 50, 900),
         ("G2", "t4", "matched", 1, 2000, 2600),
         ("abcD", "t5", "matched", 1, 3000, 3600),
-        ("G4", "NA", "noncoding", 0, 4000, 4100),
+        ("G4", "NA", "noncoding", 0, 4000, 4120),        # union of t6 and t7, like coding genes
     ]
     assert res.rows[0].isoform_proteins == ("t1", "t2")
+
+
+def test_gffread_repeated_gene_symbol_keeps_each_locus(tmp_path):
+    """'gene=' holds a symbol, and symbols repeat (tnpA copies, trnL tRNAs): transcripts are one
+    gene only when they share contig, strand and value and overlap."""
+    gff = tmp_path / "x.gff3"
+    gff.write_text(
+        "##gff-version 3\n"
+        "c1\tgffread\tmRNA\t100\t900\t.\t+\t.\tID=t1;gene=tnpA\n"
+        "c1\tgffread\tCDS\t100\t900\t.\t+\t0\tParent=t1\n"
+        "c1\tgffread\ttRNA\t2000\t2080\t.\t+\t.\tID=r1;gene=trnL\n"
+        "c1\tgffread\ttRNA\t3000\t3080\t.\t+\t.\tID=r2;gene=trnL\n"
+        "c1\tgffread\tmRNA\t50000\t50900\t.\t-\t.\tID=t2;gene=tnpA\n"     # other strand
+        "c1\tgffread\tCDS\t50000\t50900\t.\t-\t0\tParent=t2\n"
+        "c1\tgffread\tmRNA\t60000\t60900\t.\t+\t.\tID=t3;gene=tnpA\n"     # same strand, no overlap
+        "c1\tgffread\tCDS\t60000\t60900\t.\t+\t0\tParent=t3\n"
+        "c2\tgffread\tmRNA\t100\t900\t.\t+\t.\tID=t4;gene=tnpA\n"         # other contig
+        "c2\tgffread\tCDS\t100\t900\t.\t+\t0\tParent=t4\n"
+        "c2\tgffread\tmRNA\t200\t800\t.\t+\t.\tID=t5;gene=tnpA\n"         # isoform of t4
+        "c2\tgffread\tCDS\t200\t800\t.\t+\t0\tParent=t5\n"
+        "c2\tgffread\tmRNA\t5000\t5900\t.\t+\t.\tID=t6;gene=xylA\n"       # unique symbol
+        "c2\tgffread\tCDS\t5000\t5900\t.\t+\t0\tParent=t6\n")
+    faa = tmp_path / "x.faa"
+    faa.write_text("".join(f">t{i}\nMK\n" for i in range(1, 7)))
+    res = resolve_gff(gff, "GFF3", read_fasta_ids(faa))
+    assert [(r.gene_id, r.contig, r.start, r.end, r.strand, r.protein_id, r.status) for r in res.rows] == [
+        ("t1", "c1", 100, 900, "+", "t1", "matched"),
+        ("r1", "c1", 2000, 2080, "+", "NA", "noncoding"),
+        ("r2", "c1", 3000, 3080, "+", "NA", "noncoding"),
+        ("t2", "c1", 50000, 50900, "-", "t2", "matched"),
+        ("t3", "c1", 60000, 60900, "+", "t3", "matched"),
+        ("t4", "c2", 100, 900, "+", "t4", "matched"),
+        ("xylA", "c2", 5000, 5900, "+", "t6", "matched"),
+    ]
+    assert res.rows[5].isoform_proteins == ("t4", "t5")
+    assert res.n_matched == res.n_coding == 5
+    assert res.fasta_placed == 6
 
 
 def test_pseudogenes_are_noncoding_rows(tmp_path):
