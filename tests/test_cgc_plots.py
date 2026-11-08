@@ -432,3 +432,43 @@ def test_heatmap_show_fig_without_display_saves_and_fails(tmp_path, monkeypatch)
     assert res.exit_code == 1
     assert "--show-fig" in res.output
     assert (tmp_path / "heatmap.pdf").exists()
+
+
+def _circos_figure(run_dir, layout="circos"):
+    """Draw the circos and return the matplotlib figure (save_figure captured)."""
+    from unittest.mock import patch
+    from dbcan.plot.plot_cgc_circle import CGCCircosPlot
+    got = {}
+
+    def keep(fig, *a, **k):
+        got["fig"] = fig
+        return []
+    with patch.object(V, "save_figure", side_effect=keep):
+        CGCCircosPlot(SimpleNamespace(output_dir=str(run_dir), layout=layout)).plot()
+    return got["fig"]
+
+
+def test_circos_figure_is_sized_to_its_labels(run_dir):
+    """Single small contig: no empty band between the subtitle and the rings."""
+    pytest.importorskip("pycirclize")
+    _single_contig(run_dir)
+    fig = _circos_figure(run_dir)
+    W, H = fig.get_size_inches()
+    polar = [a for a in fig.axes if a.name == "polar"][0]
+    box = polar.get_position()
+    ring_top_in = (box.y0 + box.height / 2) * H + CC.CGC_CIRCLE_DIAMETER_IN / 2
+    subtitle_in = H - 0.47
+    gap = subtitle_in - ring_top_in
+    assert 0.2 < gap < 1.0, gap                 # was ~1.2 in with the fixed layout
+    assert H < W + 0.5
+
+
+def test_forced_circos_names_contigs_and_labels_ticks_once(run_dir):
+    pytest.importorskip("pycirclize")
+    fig = _circos_figure(run_dir)
+    polar = [a for a in fig.axes if a.name == "polar"][0]
+    texts = [t.get_text() for t in polar.texts if t.get_text().strip()]
+    assert "ctgA" in texts and "ctgB|x" in texts
+    tick_labels = [t for t in texts if t.endswith("kb") or t.endswith("Mb")]
+    assert len(tick_labels) == len(set(tick_labels))
+    assert any("ticks every" in t.get_text() for t in fig.texts)
