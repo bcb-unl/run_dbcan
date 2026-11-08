@@ -219,6 +219,12 @@ class CGCFinder:
 
                 last_index = None
                 start_index = None
+                core_windows = []  # (left_pos, right_pos) of the validated CGC cores on this contig
+
+                def close_window():
+                    base_cluster_df = self._get_base_cluster_window(contig_df, start_index, last_index)
+                    if self.validate_cluster(base_cluster_df):
+                        core_windows.append(tuple(sorted((pos_map[start_index], pos_map[last_index]))))
 
                 for i, sig_index in enumerate(sig_indices):
                     if last_index is None:
@@ -234,19 +240,15 @@ class CGCFinder:
                     if distance_valid and null_gene_valid:
                         last_index = sig_index
                     else:
-                        base_cluster_df = self._get_base_cluster_window(contig_df, start_index, last_index)
-                        cluster_df = self._extend_cluster(contig_df, start_index, last_index)
-                        if self.validate_cluster(base_cluster_df):
-                            clusters.append(self.process_cluster(cluster_df, cgc_id))
-                            cgc_id += 1
+                        close_window()
                         start_index = last_index = sig_index
 
                 if last_index is not None and start_index is not None:
-                    base_cluster_df = self._get_base_cluster_window(contig_df, start_index, last_index)
-                    cluster_df = self._extend_cluster(contig_df, start_index, last_index)
-                    if self.validate_cluster(base_cluster_df):
-                        clusters.append(self.process_cluster(cluster_df, cgc_id))
-                        cgc_id += 1
+                    close_window()
+
+                for left, right in self._resolve_extensions(contig_df, core_windows):
+                    clusters.append(self.process_cluster(contig_df.loc[idx_array[left:right + 1]], cgc_id))
+                    cgc_id += 1
 
             logger.info(f"Found {len(clusters)} CGC clusters")
             return clusters
@@ -273,6 +275,33 @@ class CGCFinder:
             except Exception:
                 pass
         return contig_df.iloc[0:0]
+
+    def _resolve_extensions(self, contig_df: pd.DataFrame, core_windows):
+        """Positional (left, right) bounds of each CGC on a contig after --extend_mode, without overlaps.
+
+        ``core_windows`` are the (left, right) positions of the validated CGC cores, in contig order. An
+        extension never reaches into the core of the neighbouring CGC, and where the extensions of two
+        neighbouring CGCs would share genes, each shared gene goes to the CGC whose core is nearer
+        (counted in genes; a tie goes to the upstream CGC). So every gene belongs to at most one CGC.
+        """
+        idx_array = contig_df.index.to_numpy()
+        bounds = []
+        for left, right in core_windows:
+            ext = self._extend_cluster(contig_df, idx_array[left], idx_array[right])
+            pos = contig_df.index.get_indexer(ext.index).tolist()
+            bounds.append([min(pos + [left]), max(pos + [right])])
+        for k in range(len(bounds) - 1):
+            a_core_right = core_windows[k][1]
+            b_core_left = core_windows[k + 1][0]
+            bounds[k][1] = min(bounds[k][1], b_core_left - 1)
+            bounds[k + 1][0] = max(bounds[k + 1][0], a_core_right + 1)
+            if bounds[k][1] >= bounds[k + 1][0]:
+                lo, hi = bounds[k + 1][0], bounds[k][1]
+                # shared genes lo..hi: nearer to core k (a_core_right) or core k+1 (b_core_left)
+                split = max(lo - 1, min(hi, (a_core_right + b_core_left) // 2))
+                bounds[k][1] = split
+                bounds[k + 1][0] = split + 1
+        return [tuple(b) for b in bounds]
 
     # NEW: extend cluster on both sides by bp or gene count
     def _extend_cluster(self, contig_df: pd.DataFrame, start_index, end_index) -> pd.DataFrame:

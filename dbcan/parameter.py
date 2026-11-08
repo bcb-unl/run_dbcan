@@ -634,7 +634,8 @@ def cgc_options(func):
         type=click.Choice(['none', 'bp', 'gene']),
         default='none',
         show_default=True,
-        help="After CGC detection, extend cluster bounds: 'bp' uses --extend_bp; 'gene' uses --extend_gene_count; 'none' disables.",
+        help=("After CGC detection, extend cluster bounds: 'bp' uses --extend_bp; 'gene' uses --extend_gene_count; "
+              "'none' disables. Extensions are trimmed so that no gene is in two CGCs."),
     )(func)
     func = click.option(
         '--extend_bp',
