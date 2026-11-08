@@ -1,78 +1,99 @@
-"""Draw pipeline_overview.png: the four run_dbcan steps, their inputs/outputs and the easy_* wrappers.
+"""Draw pipeline_overview.png: the four run_dbcan steps, their tools and output files, and the easy_* wrappers.
+
+Writes two variants: pipeline_overview.png (used by the docs) and pipeline_overview_alt.png. Which one is which
+follows _style.USE_ACCENT: True -> the docs figure has one muted accent (step numbers, arrows) and the alt is
+strictly monochrome; False -> the other way round.
 
 Run from the repository root:  python docs/source/_static/img/figures/src/pipeline_overview.py
 """
-from pathlib import Path
-
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-
-from dbcan.constants.base_constants import CGC_FEATURE_COLORS as COL
-
-OUT = Path(__file__).resolve().parents[1] / "pipeline_overview.png"
-SLATE, GREY, INK = "#34495E", "#ABB2B9", "#1F2A36"
+import _style as st
 
 STEPS = [
-    ("1  CAZyme_annotation", COL["CAZyme"],
-     ["pyrodigal (prok / meta)", "DIAMOND: CAZy.dmnd", "pyHMMER: dbCAN.hmm,", "   dbCAN-sub.hmm"],
-     ["overview.tsv", "uniInput.faa / .gff"]),
-    ("2  gff_process", COL["TC"],
-     ["DIAMOND: TCDB, TF, SulfAtlas,", "   MEROPS", "pyHMMER: STP.hmm", "   (TF.hmm with --fungi)"],
+    ("CAZyme_annotation",
+     ["Gene calling: pyrodigal (prok, meta)", "DIAMOND: CAZy.dmnd", "pyHMMER: dbCAN.hmm, dbCAN-sub.hmm"],
+     ["overview.tsv", "uniInput.faa", "uniInput.gff"]),
+    ("gff_process",
+     ["DIAMOND: TCDB, TF, SulfAtlas, MEROPS", "pyHMMER: STP.hmm (TF.hmm with --fungi)"],
      ["total_cgc_info.tsv", "cgc.gff"]),
-    ("3  cgc_finder", SLATE,
-     ["CAZyme + signature genes", "within --num_null_gene 2", "(default: CAZyme + TC)"],
+    ("cgc_finder",
+     ["Joins CAZymes and signature genes with", "at most 2 other genes between them",
+      "Default: at least 1 CAZyme and 1 TC"],
      ["cgc_standard_out.tsv", "cgc_standard_out_summary.tsv"]),
-    ("4  substrate_prediction", COL["TF"],
-     ["DIAMOND vs dbCAN-PUL", "   (PUL.dmnd, dbCAN-PUL.xlsx)", "dbCAN-sub substrate scores"],
+    ("substrate_prediction",
+     ["DIAMOND: CGCs vs dbCAN-PUL (PUL.dmnd)", "dbCAN-sub: substrates of the CAZyme families"],
      ["substrate_prediction.tsv", "synteny_pdf/"]),
 ]
+OTHER = [("run_dbcan database", "downloads the databases (once, before step 1)"),
+         ("cgc_circle_plot, dbcan_plot", "figures of the results"),
+         ("dbcan_utils", "read abundance (metagenomes)")]
+WRAPPERS = [("easy_CGC", 3), ("easy_substrate", 4)]
 
-fig, ax = plt.subplots(figsize=(10.4, 4.6), dpi=150)
-ax.set_xlim(0, 104)  # data units
-ax.set_ylim(0, 46)
-ax.axis("off")
+W = 8.8
+X_BOX, BOX_W, BOX_H = 0.0, 1.85, 0.46
+X_TOOLS, X_FILES = 2.2, 5.15
+X_WRAP = [7.55, 8.4]
+LINE = 0.175          # line pitch of 9 pt text
+ROW = 0.86            # row pitch
 
-# inputs
-ax.text(1, 44, "Input", fontsize=9, color=INK, weight="bold", va="center")
-ax.text(9, 44, "genome / metagenome DNA (--mode prok | meta)   or   proteins (--mode protein)",
-        fontsize=8.5, color=INK, va="center")
-ax.text(9, 40.8, "protein mode: CAZyme annotation needs only the FASTA; the CGC steps 2-4 also need its GFF "
-        "(--input_gff, --gff_type)", fontsize=8.0,
-        color="#566573", va="center")
 
-bw, gap, x0, ytop, h = 23.5, 2.2, 1, 37, 24
-for i, (title, colr, tools, outs) in enumerate(STEPS):
-    x = x0 + i * (bw + gap)
-    ax.add_patch(FancyBboxPatch((x, ytop - h), bw, h, boxstyle="round,pad=0,rounding_size=1.2",
-                                fc="white", ec=colr, lw=1.6))
-    ax.add_patch(FancyBboxPatch((x, ytop - 4.2), bw, 4.2, boxstyle="round,pad=0,rounding_size=1.2",
-                                fc=colr, ec=colr, lw=1.6))
-    ax.text(x + bw / 2, ytop - 2.1, title, ha="center", va="center", fontsize=9, color="white", weight="bold")
-    for k, t in enumerate(tools):
-        ax.text(x + 1.2, ytop - 6.6 - k * 2.4, t, fontsize=7.6, color=INK, va="center")
-    ax.plot([x + 1, x + bw - 1], [ytop - 16.2, ytop - 16.2], color=GREY, lw=0.6)
-    ax.text(x + 1.2, ytop - 17.8, "writes", fontsize=7, color="#7F8C8D", va="center", style="italic")
-    for k, t in enumerate(outs):
-        ax.text(x + 1.2, ytop - 20 - k * 2.4, t, fontsize=7.1, color=INK, va="center", family="monospace")
-    if i:
-        ax.add_patch(FancyArrowPatch((x - gap + 0.1, ytop - h / 2), (x - 0.1, ytop - h / 2),
-                                     arrowstyle="-|>", mutation_scale=11, color=INK, lw=1.2))
+def draw(use_accent):
+    acc = st.accent(use_accent)
+    y_input = 0.12
+    y_head = 0.70
+    y0 = y_head + 0.36                     # top of the first step box
+    y_end = y0 + 3 * ROW + BOX_H           # bottom of the last step box
+    H = y_end + 0.82
+    fig, ax = st.canvas(W, H)
+    xc = X_BOX + BOX_W / 2
 
-# wrappers
-def bracket(i0, i1, y, label):
-    xa = x0 + i0 * (bw + gap)
-    xb = x0 + i1 * (bw + gap) + bw
-    ax.plot([xa, xa, xb, xb], [y + 1, y, y, y + 1], color=INK, lw=1)
-    ax.text((xa + xb) / 2, y - 1.4, label, ha="center", va="center", fontsize=8.5, color=INK)
+    # input row
+    st.text(ax, xc, y_input + 0.06, "Input", size=st.L, weight="bold", ha="center")
+    st.text(ax, X_TOOLS, y_input + 0.06,
+            "Genome (--mode prok), metagenome contigs (--mode meta) or proteins (--mode protein)")
+    st.text(ax, X_TOOLS, y_input + 0.06 + LINE + 0.02,
+            "Protein mode: step 1 needs only the FASTA; the CGC steps 2–4 also need its GFF "
+            "(--input_gff, --gff_type).", size=st.S, color=st.GREY)
+    st.arrow(ax, (xc, y_input + 0.22), (xc, y0), color=acc)
 
-bracket(0, 2, 10.5, "run_dbcan easy_CGC  = steps 1-3")
-bracket(0, 3, 5.0, "run_dbcan easy_substrate  = steps 1-4")
+    # column heads
+    for x, t, ha in ((X_TOOLS, "Tools and databases", "left"), (X_FILES, "Output files", "left"),
+                     (X_WRAP[0], "easy_CGC", "center"), (X_WRAP[1], "easy_substrate", "center")):
+        st.text(ax, x, y_head, t, size=st.S, color=st.GREY, ha=ha)
+    st.hline(ax, X_TOOLS, W, y_head + 0.15, color=st.INK)
 
-ax.text(1, 1, "Afterwards: figures (cgc_circle_plot, dbcan_plot)  ·  read abundance (dbcan_utils)  ·  "
-        "databases: run_dbcan database --db_dir db", fontsize=7.8, color="#566573", va="center")
+    for i, (name, tools, files) in enumerate(STEPS):
+        top = y0 + i * ROW
+        mid = top + BOX_H / 2
+        st.box(ax, X_BOX, top, BOX_W, BOX_H)
+        st.text(ax, X_BOX + 0.14, mid, str(i + 1), size=st.L, weight="bold", color=acc)
+        st.text(ax, X_BOX + 0.36, mid, name, size=st.L, weight="bold")
+        if i:
+            st.arrow(ax, (xc, top - ROW + BOX_H), (xc, top), color=acc)
+        block_top = mid - (max(len(tools), len(files)) - 1) * LINE / 2
+        for k, t in enumerate(tools):
+            st.text(ax, X_TOOLS, block_top + k * LINE, t)
+        for k, f in enumerate(files):
+            st.text(ax, X_FILES, block_top + k * LINE, f, mono=True, color=st.GREY, size=st.S)
+        if i < 3:
+            st.hline(ax, X_TOOLS, X_WRAP[0] - 0.45, top + BOX_H + (ROW - BOX_H) / 2, lw=0.5)
 
-fig.savefig(OUT, dpi=150, bbox_inches="tight", pad_inches=0.08, facecolor="white")
-print(OUT, OUT.stat().st_size)
+    # wrappers: a line through the steps each one runs
+    for x, (_, n) in zip(X_WRAP, WRAPPERS):
+        mids = [y0 + i * ROW + BOX_H / 2 for i in range(n)]
+        st.vline(ax, x, mids[0], mids[-1], lw=1.2)
+        for m in mids:
+            ax.plot([x], [m], marker="o", ms=5.2, mfc=st.INK, mec="white", mew=1.0, zorder=3)
+
+    # other commands: name in the tools column, what it does in the files column
+    y_foot = y_end + 0.36
+    st.hline(ax, X_TOOLS, W, y_foot - 0.2, color=st.INK)
+    st.text(ax, xc, y_foot, "Other commands", size=st.L, weight="bold", ha="center")
+    for k, (cmd, what) in enumerate(OTHER):
+        st.text(ax, X_TOOLS, y_foot + k * LINE, cmd)
+        st.text(ax, X_FILES, y_foot + k * LINE, what, color=st.GREY)
+    return fig
+
+
+if __name__ == "__main__":
+    st.save(draw(st.USE_ACCENT), "pipeline_overview.png")
+    st.save(draw(not st.USE_ACCENT), "pipeline_overview_alt.png")
