@@ -123,6 +123,13 @@ def parse_roles(annotation: str) -> List[Tuple[str, str]]:
     return [(t, ";".join(d)) for t, d in sorted(merged.items(), key=lambda kv: order.get(kv[0], 99))]
 
 
+def canonical_type(name: str) -> str:
+    """Canonical spelling of a signature type (sulfatlas -> Sulfatase, stp -> STP); other names
+    (custom types such as 'Other') are returned stripped but otherwise as written."""
+    name = (name or "").strip()
+    return B.CGC_GENE_TYPE_ALIASES.get(name.lower(), name)
+
+
 def gene_type(annotation: str) -> str:
     """The final Gene Type of a ``CGC_annotation``: the label type with the highest priority
     (CAZyme > TC > TF > STP > Sulfatase > Peptidase).
@@ -137,8 +144,7 @@ def gene_type(annotation: str) -> str:
         part = part.strip()
         if not part or part.lower() in ("null", "na", "-"):
             continue
-        name = part.partition("|")[0].strip()
-        types.append(B.CGC_GENE_TYPE_ALIASES.get(name.lower(), name))
+        types.append(canonical_type(part.partition("|")[0]))
     if not types:
         return B.NULL
     order = B.CGC_GENE_TYPE_PRIORITY

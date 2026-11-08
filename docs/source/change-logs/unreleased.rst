@@ -61,7 +61,10 @@ Unreleased
    no longer a CGC with ``--additional_genes STP``, and a ``TC|...+STP|...`` gene is only a TC. Defaults (``TC``):
    no change on *E. coli* K-12, *Xylona*, PUL0008 and PUL0230. With TC, TF, STP and Peptidase all required
    (``--additional_logic all``): *E. coli* 19 -> 14 CGCs, *Xylona* 23 -> 15; each lost CGC had its STP or peptidase
-   only as a second label of a TC, TF or CAZyme gene. With ``--additional_logic any``: no change.
+   only as a second label of a TC, TF or CAZyme gene. With ``--additional_logic any``: no change. A gene whose
+   Gene Type is not listed is now also a null gene for joining, so CGCs can be split or trimmed: with
+   ``--additional_genes STP`` alone *E. coli* goes from 46 to 28 CGCs. ``--additional_genes`` values are matched
+   case-insensitively (``stp``, ``SULFATLAS``).
 #. ``--extend_mode`` extensions stop before the core of a neighbouring CGC.
 #. ``CGC.faa`` headers (``<contig>|<CGC#>|<protein>|<Gene Type>|<family>``): the family is now that of the Gene
    Type role of a multi-role gene (CAZyme > TC > TF > STP > Sulfatase > Peptidase), not the second ``|`` field of

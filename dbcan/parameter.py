@@ -629,7 +629,7 @@ def cgc_options(func):
         multiple=True,
         default=["TC"],
         show_default=True,
-        help='Gene class tags required alongside CAZyme for CGC signatures. Repeat: --additional_genes TC --additional_genes TF. Choices include TC, TF, STP.',
+        help="Signature types required besides CAZyme: TC, TF, STP, Sulfatase, Peptidase (any case). Repeat: --additional_genes TC --additional_genes TF. A gene counts only by its final Gene Type (CAZyme > TC > TF > STP > Sulfatase > Peptidase), so the STP label of a TC gene does not count as STP.",
     )(func)
     func = click.option(
         '--additional_logic',

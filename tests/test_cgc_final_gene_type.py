@@ -112,3 +112,11 @@ def test_gene_type_column_is_the_role(tmp_path):
     out = pd.read_csv(tmp_path / "cgc_standard_out.tsv", sep="\t", dtype=str)
     assert out["Gene Type"].tolist() == ["TC", "CAZyme", "CAZyme"]
     assert out["Gene Annotation"].tolist()[0] == "TC|3.A.1.14.3+STP|Peripla_BP_2"
+
+
+def test_additional_genes_spelling_is_normalized(tmp_path):
+    # stp / SULFATLAS are matched like STP / Sulfatase (the Gene Type spelling)
+    assert _cgcs(tmp_path, [STP, GH31], additional_genes=["stp"]) == [["pC", "pA"]]
+    sulf = ("pS", "SULFATLAS|S1_8")
+    assert _cgcs(tmp_path, [GH31, sulf], additional_genes=["sulfatlas"]) == [["pA", "pS"]]
+    assert _cgcs(tmp_path, [GH31, sulf], additional_genes=["Sulfatase", "SULFATASE"]) == [["pA", "pS"]]

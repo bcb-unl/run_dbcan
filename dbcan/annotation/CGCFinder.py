@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Prefer I/O module to parse GFF (compatible with both cases and function names)
 from dbcan.IO.gff import read_gff_to_df as io_read_gff_df
-from dbcan.IO.cgc_ids import gene_type
+from dbcan.IO.cgc_ids import canonical_type, gene_type
 
 
 class CGCFinder:
@@ -46,7 +46,9 @@ class CGCFinder:
 
     @property
     def additional_genes(self):
-        return self.config.additional_genes or []
+        """--additional_genes in the spelling of the Gene Type column (stp -> STP, SULFATLAS ->
+        Sulfatase), without duplicates; custom types are kept as written."""
+        return list(dict.fromkeys(canonical_type(g) for g in (self.config.additional_genes or []) if str(g).strip()))
 
     @property
     def additional_logic(self) -> str:
@@ -165,6 +167,9 @@ class CGCFinder:
             self.df[C.IS_CORE_COLUMN] = gene_types.isin(core_types)
             self.df[C.IS_ADDITIONAL_COLUMN] = gene_types.isin(wanted)
             self.df[C.IS_SIGNATURE_COLUMN] = self.df[C.IS_CORE_COLUMN] | self.df[C.IS_ADDITIONAL_COLUMN]
+            found = set(gene_types)
+            for cat in sorted(wanted - found):
+                logger.warning(f"--additional_genes {cat}: no gene has this Gene Type")
 
             logger.info(f"Marked signatures: core={int(self.df[C.IS_CORE_COLUMN].sum())}, "
                         f"additional={int(self.df[C.IS_ADDITIONAL_COLUMN].sum())}")
@@ -355,9 +360,9 @@ class CGCFinder:
         """
         if len(cluster_df) < max(1, self.min_cluster_genes):
             return False
-        roles = cluster_df[C.GENE_ROLE_COLUMN]
+        roles = set(cluster_df[C.GENE_ROLE_COLUMN])
         cazyme_count = int(cluster_df[C.IS_CORE_COLUMN].sum())
-        wanted = list(dict.fromkeys(self.additional_genes))
+        wanted = self.additional_genes
         core_types = set(C.CGC_CORE_SIG_TYPES)
 
         if wanted == ["CAZyme"]:
@@ -367,7 +372,7 @@ class CGCFinder:
         if not wanted:
             return True
 
-        present = {cat for cat in wanted if cat not in core_types and (roles == cat).any()}
+        present = {cat for cat in wanted if cat not in core_types and cat in roles}
         if any(cat in core_types for cat in wanted) and cazyme_count >= self.min_core_cazyme + 1:
             present.add("CAZyme")
         if self.additional_logic == 'all':

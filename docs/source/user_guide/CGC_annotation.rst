@@ -47,8 +47,8 @@ Options
    * - Option
      - Description (default)
    * - ``--additional_genes``
-     - Required signature types besides CAZyme; repeat for several: ``TC``, ``TF``, ``STP``, ``Sulfatase``,
-       ``Peptidase`` (``TC``)
+     - Required signature types besides CAZyme, matched against the Gene Type (any case); repeat for several:
+       ``TC``, ``TF``, ``STP``, ``Sulfatase``, ``Peptidase`` (``TC``)
    * - ``--additional_logic`` / ``--additional_min_categories``
      - ``all`` = every listed type, ``any`` = at least N types (``all`` / 1)
    * - ``--num_null_gene``
