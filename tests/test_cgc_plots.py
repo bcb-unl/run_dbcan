@@ -432,3 +432,35 @@ def test_heatmap_show_fig_without_display_saves_and_fails(tmp_path, monkeypatch)
     assert res.exit_code == 1
     assert "--show-fig" in res.output
     assert (tmp_path / "heatmap.pdf").exists()
+
+
+def test_gene_track_helper_draws_the_cgc_map_track_into_any_axis():
+    """gene_track() is the CGC map's gene track, reusable by other figures (e.g. expression panels)."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Polygon
+    from dbcan.plot.cgc_map import gene_track, map_width_in
+    cgcs = V.read_cgc_table(RUN / P.CGC_RESULT_FILE)
+    cid, genes = max(cgcs.items(), key=lambda kv: len(kv[1]))
+    W = map_width_in(len(genes))
+    with_bar = gene_track(genes, W)
+    track = gene_track(genes, W, scale_bar=False)
+    assert track.y_scale is None and with_bar.y_scale is not None
+    assert 0 < track.height_in < with_bar.height_in             # no scale bar -> shorter track
+    assert track.y_top == with_bar.y_top and track.lay.tiers == with_bar.lay.tiers
+    assert track.cstart == min(g.start for g in genes) and track.cend == max(g.end for g in genes)
+    fig, ax = plt.subplots()
+    try:
+        track.draw(ax)
+        arrows = [p for p in ax.patches if isinstance(p, Polygon)]
+        assert len(arrows) == len(genes)
+        assert [p.get_facecolor()[:3] for p in arrows] == [
+            tuple(int(V.gene_color(g.gtype)[k:k + 2], 16) / 255 for k in (1, 3, 5))
+            for g in sorted(genes, key=lambda g: g.start)]
+        assert ax.get_xlim() == (track.xlo, track.xhi) and ax.get_ylim() == (track.y_bottom, track.y_top)
+        texts = {t.get_text() for t in ax.texts}
+        assert {g.label for g in genes if g.label} <= texts       # same stacked family labels
+        assert not any(t == g.pid for t in texts for g in genes)  # no protein ids by default
+    finally:
+        plt.close(fig)
+    with pytest.raises(V.PlotInputError):
+        gene_track([], W)

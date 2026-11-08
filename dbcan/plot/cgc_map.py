@@ -8,6 +8,7 @@ bar, and the gene-type legend (only the types present). Flanking genes are not d
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -85,6 +86,96 @@ def draw_depth_panels(fig, tracks, genes: Sequence[V.Gene], xlo: float, xhi: flo
     return axes
 
 
+def map_width_in(n_genes: int) -> float:
+    """Figure width of a linear CGC map with ``n_genes`` genes (inches)."""
+    return max(8.0, min(16.0, 3.0 + 0.6 * n_genes))
+
+
+@dataclass
+class GeneTrack:
+    """Geometry of the CGC map gene track (arrows, stacked labels, kb ruler, scale bar).
+
+    Built by :func:`gene_track`; :meth:`draw` paints it into an axis whose x limits are
+    ``(xlo, xhi)`` and y limits ``(y_bottom, y_top)``; the axis height must be ``height_in``.
+    Other figures (e.g. RNA-seq expression panels) reuse it so their gene track is exactly
+    the one of ``dbcan_plot CGC_plot``.
+    """
+    genes: List[V.Gene]
+    cstart: int
+    cend: int
+    xlo: float
+    xhi: float
+    head: float
+    lay: V.LabelLayout
+    tier_h: float
+    lab_base: float
+    y_top: float
+    y_ruler: float
+    y_scale: Optional[float]
+    y_bottom: float
+    y_pid: Optional[float] = None
+
+    @property
+    def span(self) -> int:
+        return max(1, self.cend - self.cstart)
+
+    @property
+    def height_in(self) -> float:
+        return (self.y_top - self.y_bottom) * U
+
+    def draw(self, ax) -> None:
+        ax.set_xlim(self.xlo, self.xhi)
+        ax.set_ylim(self.y_bottom, self.y_top)
+        ax.axis("off")
+        fs = P.PLOT_LABEL_FONT_SIZE
+        ax.plot([self.cstart, self.cend], [0, 0], color=P.PLOT_BACKBONE_COLOR, lw=1.0, zorder=1,
+                solid_capstyle="butt")
+        for g in self.genes:
+            V.draw_gene(ax, g.start, g.end, g.strand, g.gtype, 0, GENE_H, self.head)
+        V.draw_labels(ax, self.lay, self.lab_base, self.tier_h, +1, fs, GENE_H / 2 + 0.03, self.span)
+        if self.y_pid is not None:
+            for g in self.genes:
+                ax.text(g.mid, self.y_pid, g.pid, rotation=30, rotation_mode="anchor", ha="right", va="top",
+                        fontsize=P.PLOT_SMALL_FONT_SIZE, color=P.PLOT_INK_MUTED)
+        V.draw_ruler(ax, self.cstart, self.cend, self.y_ruler)
+        if self.y_scale is not None:
+            V.draw_scale_bar(ax, self.cend, self.y_scale, self.span)
+
+
+def gene_track(genes: Sequence[V.Gene], fig_w: float, *, show_protein_ids: bool = False,
+               scale_bar: bool = True, left_in: float = L_IN, right_in: float = R_IN) -> GeneTrack:
+    """Lay out the gene track of one CGC for a figure ``fig_w`` inches wide."""
+    if not genes:
+        raise V.PlotInputError("gene track without genes")
+    genes = sorted(genes, key=lambda g: g.start)
+    cstart, cend = min(g.start for g in genes), max(g.end for g in genes)
+    span = max(1, cend - cstart)
+    xlo, xhi = cstart - 0.015 * span, cend + 0.015 * span
+    ax_w = fig_w - left_in - right_in
+    fs = P.PLOT_LABEL_FONT_SIZE
+    lay = V.layout_labels([g.label for g in genes], [g.mid for g in genes], xlo, xhi, fig_w, ax_w / fig_w, fs,
+                          extents=[(g.start, g.end) for g in genes])
+    tier_h = (fs * 1.25 / 72) / U + 0.08
+    lab_base = GENE_H / 2 + 0.3
+    y_top = lab_base + max(1, lay.ntiers) * tier_h + 0.1
+
+    y_cursor = -GENE_H / 2 - 0.2
+    y_pid = None
+    if show_protein_ids:
+        longest = max(len(g.pid) for g in genes)
+        y_pid = y_cursor
+        y_cursor -= (longest * P.PLOT_SMALL_FONT_SIZE * 0.55 / 72) * 0.5 / U + 0.15
+    y_ruler = y_cursor - 0.25
+    if scale_bar:
+        y_scale = y_ruler - 1.05
+        y_bottom = y_scale - 0.7
+    else:
+        y_scale = None
+        y_bottom = y_ruler - P.CGC_MAP_RULER_ONLY_DEPTH
+    return GeneTrack(list(genes), cstart, cend, xlo, xhi, 0.018 * span, lay, tier_h, lab_base, y_top,
+                     y_ruler, y_scale, y_bottom, y_pid)
+
+
 def plot_cgc_map(genes: Sequence[V.Gene], cgcid: str, out_dir: Path, *, substrates: Optional[Sequence[str]] = None,
                  depth_files: Optional[Sequence[Tuple[str, Path]]] = None, show_protein_ids: bool = False,
                  formats=P.PLOT_DEFAULT_FORMATS, dpi: int = P.PLOT_DEFAULT_DPI,
@@ -95,56 +186,22 @@ def plot_cgc_map(genes: Sequence[V.Gene], cgcid: str, out_dir: Path, *, substrat
     V.setup_matplotlib()
     genes = sorted(genes, key=lambda g: g.start)
     contig = genes[0].contig
-    cstart, cend = min(g.start for g in genes), max(g.end for g in genes)
-    span = max(1, cend - cstart)
-    xlo, xhi = cstart - 0.015 * span, cend + 0.015 * span
-    head = 0.018 * span
-
-    W = max(8.0, min(16.0, 3.0 + 0.6 * len(genes)))
+    W = map_width_in(len(genes))
     ax_w = W - L_IN - R_IN
-    fs = P.PLOT_LABEL_FONT_SIZE
-    lay = V.layout_labels([g.label for g in genes], [g.mid for g in genes], xlo, xhi, W, ax_w / W, fs,
-                          extents=[(g.start, g.end) for g in genes])
-    tier_h = (fs * 1.25 / 72) / U + 0.08
-    lab_base = GENE_H / 2 + 0.3
-    y_top = lab_base + max(1, lay.ntiers) * tier_h + 0.1
+    track = gene_track(genes, W, show_protein_ids=show_protein_ids)
+    ax_h = track.height_in
 
-    y_cursor = -GENE_H / 2 - 0.2
-    pid_h = 0.0
-    if show_protein_ids:
-        longest = max(len(g.pid) for g in genes)
-        pid_h = (longest * P.PLOT_SMALL_FONT_SIZE * 0.55 / 72) * 0.5 / U + 0.15
-        y_pid = y_cursor
-        y_cursor -= pid_h
-    y_ruler = y_cursor - 0.25
-    y_scale = y_ruler - 1.05
-    y_bottom = y_scale - 0.7
-
-    ax_h = (y_top - y_bottom) * U
     tracks = []
     if depth_files:
-        tracks = load_depth_tracks(depth_files, contig, int(np.floor(xlo)), int(np.ceil(xhi)))
+        tracks = load_depth_tracks(depth_files, contig, int(np.floor(track.xlo)), int(np.ceil(track.xhi)))
     depth_in = len(tracks) * (PANEL_IN + PANEL_GAP_IN)
     H = TITLE_IN + depth_in + ax_h + LEGEND_IN
     fig = plt.figure(figsize=(W, H))
     ax = fig.add_axes([L_IN / W, LEGEND_IN / H, ax_w / W, ax_h / H])
-    ax.set_xlim(xlo, xhi)
-    ax.set_ylim(y_bottom, y_top)
-    ax.axis("off")
-
-    ax.plot([cstart, cend], [0, 0], color=P.PLOT_BACKBONE_COLOR, lw=1.0, zorder=1, solid_capstyle="butt")
-    for g in genes:
-        V.draw_gene(ax, g.start, g.end, g.strand, g.gtype, 0, GENE_H, head)
-    V.draw_labels(ax, lay, lab_base, tier_h, +1, fs, GENE_H / 2 + 0.03, span)
-    if show_protein_ids:
-        for g in genes:
-            ax.text(g.mid, y_pid, g.pid, rotation=30, rotation_mode="anchor", ha="right", va="top",
-                    fontsize=P.PLOT_SMALL_FONT_SIZE, color=P.PLOT_INK_MUTED)
-    V.draw_ruler(ax, cstart, cend, y_ruler)
-    V.draw_scale_bar(ax, cend, y_scale, span)
+    track.draw(ax)
 
     if tracks:
-        draw_depth_panels(fig, tracks, genes, xlo, xhi, W, H, LEGEND_IN + ax_h + PANEL_GAP_IN)
+        draw_depth_panels(fig, tracks, genes, track.xlo, track.xhi, W, H, LEGEND_IN + ax_h + PANEL_GAP_IN)
 
     fig.text(L_IN / W, 1 - 0.18 / H, cgc_title(cgcid, genes), ha="left", va="top",
              fontsize=P.PLOT_TITLE_FONT_SIZE, fontweight="bold", color=P.PLOT_INK)
