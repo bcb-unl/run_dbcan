@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field, fields
 from typing import Optional, List
 
+from dbcan.constants.base_constants import GFF_MIN_MATCH_DEFAULT
+
 
 @dataclass
 class BaseConfig:
@@ -35,6 +37,8 @@ class GFFConfig(BaseConfig):
     # Prodigal: avoid BCBio GFF.parse on huge files (see annotate_prodigal_gff_streaming).
     prodigal_gff_streaming: str = "auto"  # auto | on | off
     prodigal_streaming_threshold_mb: int = 50
+    # Minimum fraction of protein-coding GFF genes that must match a protein of uniInput.faa.
+    gff_min_match: float = GFF_MIN_MATCH_DEFAULT
 
 
 

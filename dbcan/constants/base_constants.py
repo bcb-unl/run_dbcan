@@ -85,6 +85,18 @@ NULL = "null"
 PEPTIDASE = "Peptidase"
 SULFATASE = "Sulfatase"
 
+# Input processing
+# --mode protein: stop symbols removed at the end / replaced inside protein sequences
+PROTEIN_STOP_CHARS = "*."
+PROTEIN_UNKNOWN_AA = "X"
+# --mode prok/meta: warn when pyrodigal proteins look like a eukaryotic genome split at introns
+# (median protein length below EUK_WARN_MEDIAN_AA and more than EUK_WARN_SHORT_FRACTION of the
+# proteins shorter than EUK_WARN_SHORT_AA; complete genes only, at least EUK_WARN_MIN_GENES).
+EUK_WARN_MIN_GENES = 200
+EUK_WARN_MEDIAN_AA = 150
+EUK_WARN_SHORT_AA = 100
+EUK_WARN_SHORT_FRACTION = 0.30
+
 
 
 # Input/Output file names
@@ -121,6 +133,18 @@ GFF_FORMAT_NCBI_EUK = "NCBI_euk"
 GFF_FORMAT_NCBI_PROK = "NCBI_prok"
 GFF_FORMAT_JGI = "JGI"
 GFF_FORMAT_PRODIGAL = "prodigal"
+# Eukaryotic annotation pipelines (gene -> transcript -> CDS), read by dbcan.IO.gff_resolver
+GFF_FORMAT_FUNANNOTATE = "funannotate"
+GFF_FORMAT_BRAKER = "BRAKER"
+GFF_FORMAT_GFF3 = "GFF3"
+GFF_FORMAT_GTF = "GTF"
+GFF_LEGACY_FORMATS = (GFF_FORMAT_PRODIGAL, GFF_FORMAT_NCBI_PROK, GFF_FORMAT_NCBI_EUK, GFF_FORMAT_JGI)
+GFF_RESOLVER_FORMATS = (GFF_FORMAT_FUNANNOTATE, GFF_FORMAT_BRAKER, GFF_FORMAT_GFF3, GFF_FORMAT_GTF)
+GFF_FORMAT_CHOICES = GFF_LEGACY_FORMATS + GFF_RESOLVER_FORMATS
+
+# gene -> protein resolution report (gff_process / easy_* with --input_gff)
+GFF_RESOLUTION_FILE = "gff_resolution.tsv"
+GFF_MIN_MATCH_DEFAULT = 0.9
 
 # GFF attribute names
 GFF_PROTEIN_ID_ATTR_NCBI = "protein_id"
