@@ -71,8 +71,8 @@ Memory options (``--large``, ``--batch_size``, ...) are in ``run_dbcan CAZyme_an
 
    **HMM thresholds.** A domain is kept when its independent E-value (``i-Evalue``) is below the threshold and its
    coverage of the **HMM profile**, ``(HMM To - HMM From + 1) / HMM Length``, is above it (not the fraction of the
-   protein). Hits that share more than 50% of the shorter hit's match-state residues are reduced to the one with the
-   better i-Evalue (see `Match-state overlap resolution`_).
+   protein). Hits that overlap by more than 50% of the shorter one are reduced to the one with the better i-Evalue
+   (see `Overlapping domains`_).
 
 Output files
 ------------
@@ -95,8 +95,6 @@ Output files
      - dbCAN HMM domains after filtering
    * - ``dbCANsub_hmm_results.tsv``
      - dbCAN-sub domains with subfamily EC numbers and substrates (``dbCANsub_hmm_raw.tsv``: unfiltered)
-   * - ``*_hmm_alignment_details.tsv``
-     - Per-domain alignment span and match-state intervals (see `Match-state overlap resolution`_)
 
 .. _overview-columns:
 
@@ -217,76 +215,26 @@ run stops on another release), and explicit ``--dbcan-*-file`` options override
 it. In ``easy_CGC`` / ``easy_substrate`` it also turns on ``--fungi`` (TF HMM
 instead of TF DIAMOND) unless ``--fungi`` or ``--no-fungi`` is given.
 
-Match-state overlap resolution
-------------------------------
+.. _overlapping-domains:
 
-Domain conflicts are resolved using target residues assigned to profile-HMM
-match states rather than the continuous sequence alignment span. Residues
-assigned to HMM insert states do not contribute to match-state overlap.
+Overlapping domains
+-------------------
 
-HMMER reports each domain as a continuous ``Target From``-``Target To`` span,
-but a profile alignment may contain match (M), insert (I) and delete (D) states.
-A target residue aligned to an insert state lies between two consensus match
-positions and still falls inside the continuous span, so a large catalytic
-profile can geometrically span an inserted accessory domain without having any
-match-state evidence over it:
-
-.. code-block:: text
-
-   GH18 alignment span     1 ------------------------------------- 400
-   GH18 match states       1 -------------- 250      340 --------- 400
-   GH18 insert states                    251 ------------ 339
-   CBM18                                        300 --- 334
-
-Under the historical rule the CBM18 span lies almost entirely inside the GH18
-span, so the CBM was removed. Under match-state semantics the two share no
-match-state residues, there is no conflict, and both domains are kept.
+Within one protein and one HMM library (dbCAN, dbCAN-sub, and TF, STP and Pfam in the CGC steps), two domains
+conflict when their alignments (``Target From``-``Target To``) overlap by more than 50% of the shorter one, computed
+as in 5.2.9. Of two conflicting domains the one with the better i-Evalue is kept. All domains of a protein are
+resolved together, best i-Evalue first: a domain is kept unless it conflicts with one already kept. The result does
+not depend on the order of the hits. A pair listed in ``--dbcan-overlap-coexistence-file`` (dbCAN HMM only) never
+conflicts.
 
 .. note::
 
-   An insert state is an HMM alignment concept, not a biological one. A
-   lineage-specific loop or an inserted structural region may still belong to
-   the domain biologically. Match-state occupancy is used here because it is
-   the evidence the profile actually provides for that stretch of sequence, not
-   because inserted residues are "outside" the domain.
+   5.2.9 compared each domain only with the last one kept, so a domain could be lost that conflicts with nothing in
+   the final result. *Xylona heveae* KZF26007.1 (``STP.hmm``) has a protein kinase split by an insert: Pkinase
+   34-161 and 215-363, and Pkinase_Tyr 34-364 over both. 5.2.9 replaced the first half by Pkinase_Tyr and
+   Pkinase_Tyr by the second half; now both Pkinase halves are kept.
 
-Geometric overlap alone does not suppress a hit. The decision is:
-
-* no substantial match-state overlap → keep both;
-* substantial match-state overlap covered by an explicit coexistence policy
-  (``--dbcan-overlap-coexistence-file``) → keep both;
-* substantial match-state overlap between competing models → resolve by
-  evidence (best i-Evalue first).
-
-"Substantial" means strictly more than 50% of the shorter domain's match-state
-length; an overlap of exactly 50% is not a conflict. Resolution runs over a
-per-protein conflict graph, so the outcome does not depend on the order hits
-appear in the input.
-
-This behaviour is on by default for every HMM library in a run (dbCAN,
-dbCAN-sub, TF, STP, Pfam). ``--dbcan-legacy-overlap`` restores the previous
-alignment-span *geometry* and exists for reproducibility only. Note that the
-order-independent conflict-graph resolution applies in both modes: the old
-implementation compared each hit only against the most recently retained one,
-which could keep or drop a hit depending on row order, and that is a bug rather
-than behaviour worth reproducing.
-
-The public result tables keep their historical columns in both modes:
-``Target From`` and ``Target To`` remain the reported alignment location and are
-not replaced by match-state intervals. While match-state resolution is active,
-the intervals used for the decision are additionally written to a companion
-``*_alignment_details.tsv`` file (for example
-``dbCAN_hmm_alignment_details.tsv``) with the HMM name, target, alignment span,
-match-state intervals, i-Evalue and coverage. Downstream steps read that file so
-they consume already-resolved domains instead of re-deriving the architecture
-from the continuous span.
-
-.. note::
-
-   HMM coverage is unchanged: it is still ``(hmm_to - hmm_from + 1) /
-   hmm_length``, i.e. HMM coordinate-span coverage. That is not identical to
-   match-state occupancy when delete states occur, but the ``0.35`` default is
-   tied to historical calibration, so coverage semantics are deliberately left
-   as they are.
+In ``overview.tsv`` a dbCAN-sub subfamily is grouped with the dbCAN HMM domains it overlaps (one name in
+``Recommend Results``); two dbCAN HMM domains are not grouped with each other.
 
 Next: :doc:`CGC_information_generation` (step 2).

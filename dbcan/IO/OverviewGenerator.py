@@ -8,14 +8,7 @@ from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 
 from dbcan.configs.base_config import OverviewGeneratorConfig
-from dbcan.process.domain_resolution import (
-    intervals_length,
-    intervals_overlap,
-    parse_intervals,
-)
-from dbcan.process.process_utils import alignment_details_path
 import dbcan.constants.OverviewGenerator_constants as O
-import dbcan.constants.process_utils_constants as PU
 # from dbcan.constants import (
 #     OVERVIEW_FILE, INPUT_PROTEIN_NAME,
 #     DIAMOND_RESULT_FILE, DBCAN_SUB_RESULT_FILE, DBCAN_HMM_RESULT_FILE,
@@ -43,10 +36,6 @@ class OverviewGenerator:
 
     def __init__(self, config: OverviewGeneratorConfig):
         self.config = config
-        # (source, target, ali_from, ali_to) -> match-state intervals, loaded
-        # from the optional alignment-details sidecars written next to the HMM
-        # result tables. Empty when a run used legacy ali-span resolution.
-        self._matched_intervals: Dict[Tuple[str, str, int, int], Tuple[Tuple[int, int], ...]] = {}
         self._validate_basic()
 
     # ---------------------------
@@ -82,14 +71,6 @@ class OverviewGenerator:
             "diamond": self.diamond_result_path,
             "dbcan_sub": self.dbcan_sub_result_path,
             "dbcan_hmm": self.dbcan_hmm_result_path,
-        }
-
-    @property
-    def alignment_details_map(self) -> Dict[str, Path]:
-        """Optional match-state sidecars for the two HMM-based sources."""
-        return {
-            "dbcan_hmm": alignment_details_path(self.dbcan_hmm_result_path),
-            "dbcan_sub": alignment_details_path(self.dbcan_sub_result_path),
         }
 
     @property
@@ -144,60 +125,6 @@ class OverviewGenerator:
     # ---------------------------
     # Data loading
     # ---------------------------
-    def load_alignment_details(self) -> None:
-        """Load the resolved-domain sidecars, if the run produced them.
-
-        The public result tables keep the historical column schema, so the
-        match-state evidence used to resolve the architecture is carried in a
-        separate ``*_alignment_details.tsv`` file. Consuming it here means the
-        overview works from already-resolved domains instead of re-inferring the
-        architecture from the continuous alignment span. When the sidecar is
-        absent (legacy ali-span run, or a hand-assembled output directory) the
-        overview transparently falls back to span overlap.
-        """
-        self._matched_intervals = {}
-        selected = self.selected_result_keys
-        for source, path in self.alignment_details_map.items():
-            # a sidecar of a method not run in this call is left over from an earlier run
-            if source not in selected or not path.exists():
-                continue
-            try:
-                df = read_tsv(path)
-            except Exception as e:
-                logger.warning(f"Could not read alignment details {path}: {e}")
-                continue
-            required = {
-                PU.TARGET_NAME_COLUMN,
-                PU.TARGET_FROM_COLUMN,
-                PU.TARGET_TO_COLUMN,
-                PU.MATCHED_INTERVALS_COLUMN,
-            }
-            if not required.issubset(df.columns):
-                logger.warning(f"Alignment details {path} missing columns {required - set(df.columns)}")
-                continue
-            for _, row in df.iterrows():
-                try:
-                    ali_from = int(row[PU.TARGET_FROM_COLUMN])
-                    ali_to = int(row[PU.TARGET_TO_COLUMN])
-                except (TypeError, ValueError):
-                    continue
-                key = (source, str(row[PU.TARGET_NAME_COLUMN]), ali_from, ali_to)
-                # Two resolved hits can only share an identical span if a
-                # coexistence policy allowed them, in which case they describe
-                # the same region anyway; first one wins.
-                self._matched_intervals.setdefault(
-                    key,
-                    parse_intervals(row[PU.MATCHED_INTERVALS_COLUMN], ali_from, ali_to),
-                )
-            logger.info(f"Loaded {len(df)} {source} alignment details from {path}")
-
-    def _lookup_intervals(self, source: str, target: str, ali_from, ali_to):
-        try:
-            key = (source, str(target), int(ali_from), int(ali_to))
-        except (TypeError, ValueError):
-            return None
-        return self._matched_intervals.get(key)
-
     def load_data(self) -> Dict[str, pd.DataFrame]:
         data: Dict[str, pd.DataFrame] = {}
         selected = self.selected_result_keys
@@ -284,30 +211,12 @@ class OverviewGenerator:
         return O.RESULT_SEPARATOR.join(dict.fromkeys(families))
 
     def calculate_overlap(self, start1: int, end1: int, start2: int, end2: int) -> bool:
-        """Alignment-span overlap: the fallback when no match-state data exists."""
         start_max = max(start1, start2)
         end_min = min(end1, end2)
         overlap = max(0, end_min - start_max + 1)
         length1 = end1 - start1 + 1
         length2 = end2 - start2 + 1
         return overlap / min(length1, length2) > self.overlap_threshold
-
-    def annotations_overlap(self, ann1: Tuple, ann2: Tuple) -> bool:
-        """Do two annotations cover the same conserved region?
-
-        Uses match-state intervals when both annotations have them, so a
-        catalytic domain does not appear to cover an accessory domain that only
-        sits inside its insert-state region. Falls back to the alignment span
-        otherwise.
-        """
-        iv1 = ann1[4] if len(ann1) > 4 else None
-        iv2 = ann2[4] if len(ann2) > 4 else None
-        if iv1 and iv2:
-            overlap = intervals_overlap(iv1, iv2)
-            len1 = max(1, intervals_length(iv1))
-            len2 = max(1, intervals_length(iv2))
-            return overlap / min(len1, len2) > self.overlap_threshold
-        return self.calculate_overlap(ann1[1], ann1[2], ann2[1], ann2[2])
 
     def select_best_result(self, group: List[Tuple]) -> Tuple:
         # Priority 1: HMM results containing "_" (subfamily pattern in HMM result)
@@ -405,15 +314,7 @@ class OverviewGenerator:
                 all_ann = []
                 for _, hr in hmm_results.iterrows():
                     all_ann.append(
-                        (
-                            hr[O.HMM_NAME_FIELD],
-                            hr[O.TARGET_FROM_FIELD],
-                            hr[O.TARGET_TO_FIELD],
-                            'hmm',
-                            self._lookup_intervals(
-                                "dbcan_hmm", gene_id, hr[O.TARGET_FROM_FIELD], hr[O.TARGET_TO_FIELD]
-                            ),
-                        )
+                        (hr[O.HMM_NAME_FIELD], hr[O.TARGET_FROM_FIELD], hr[O.TARGET_TO_FIELD], 'hmm')
                     )
                 for _, sr in sub_results.iterrows():
                     all_ann.append(
@@ -422,9 +323,6 @@ class OverviewGenerator:
                             sr[O.TARGET_FROM_FIELD],
                             sr[O.TARGET_TO_FIELD],
                             'sub',
-                            self._lookup_intervals(
-                                "dbcan_sub", gene_id, sr[O.TARGET_FROM_FIELD], sr[O.TARGET_TO_FIELD]
-                            ),
                         )
                     )
                 grouped = self.graph_based_grouping(all_ann)
@@ -456,9 +354,9 @@ class OverviewGenerator:
         This groups *alternate annotations of the same region* (a dbCAN-HMM
         family and the dbCAN-sub subfamily that call it) so the recommendation
         does not list the same domain twice. It is not a second domain-conflict
-        algorithm: dbCAN-HMM hits reaching this point already survived
-        match-state-aware resolution, so two of them are distinct domains (or an
-        explicitly allowed coexisting pair) and are never merged with each other.
+        algorithm: dbCAN-HMM hits reaching this point already survived domain
+        resolution, so two of them are distinct domains (or an explicitly allowed
+        coexisting pair) and are never merged with each other.
         """
         if not all_results:
             return []
@@ -469,7 +367,7 @@ class OverviewGenerator:
         # Special case 1: a single subfamily call spanning every HMM domain.
         if len(sub_results) == 1 and len(hmm_results) > 1:
             sub = sub_results[0]
-            if all(self.annotations_overlap(sub, hmm) for hmm in hmm_results):
+            if all(self.calculate_overlap(sub[1], sub[2], hmm[1], hmm[2]) for hmm in hmm_results):
                 best = self.select_best_result(sub_results + hmm_results)
                 return [best]
 
@@ -479,7 +377,7 @@ class OverviewGenerator:
             if "_" in hmm[0]:
                 sub_names = {s[0] for s in sub_results}
                 if len(sub_names) == 1:
-                    if all(self.annotations_overlap(hmm, sub) for sub in sub_results):
+                    if all(self.calculate_overlap(hmm[1], hmm[2], sub[1], sub[2]) for sub in sub_results):
                         best = self.select_best_result([hmm] + sub_results)
                         return [best]
 
@@ -497,7 +395,7 @@ class OverviewGenerator:
                 for j, sub2 in enumerate(sub_results):
                     if j in processed_subs:
                         continue
-                    if any(self.annotations_overlap(g, sub2) for g in group):
+                    if any(self.calculate_overlap(g[1], g[2], sub2[1], sub2[2]) for g in group):
                         group.append(sub2)
                         processed_subs.add(j)
                         changed = True
@@ -509,16 +407,14 @@ class OverviewGenerator:
         for sub_group in sub_groups:
             group = sub_group.copy()
             for i, hmm in enumerate(hmm_results):
-                if any(self.annotations_overlap(sub, hmm) for sub in sub_group):
+                if any(self.calculate_overlap(sub[1], sub[2], hmm[1], hmm[2]) for sub in sub_group):
                     group.append(hmm)
                     processed_hmms.add(i)
             all_groups.append(group)
 
-        # Every remaining HMM hit is its own region. Grouping HMM hits with each
-        # other here would re-collapse an architecture that domain resolution
-        # already accepted — the exact bug that made a CBM sitting inside a
-        # catalytic domain's insertion disappear from Recommend Results even
-        # though dbCAN_hmm_results.tsv kept it.
+        # Every remaining HMM hit is its own region: grouping HMM hits with each
+        # other here would drop a domain that dbCAN_hmm_results.tsv kept (e.g. a
+        # pair allowed by a coexistence policy).
         for i, hmm in enumerate(hmm_results):
             if i in processed_hmms:
                 continue
@@ -547,7 +443,6 @@ class OverviewGenerator:
     # ---------------------------
     def run(self):
         try:
-            self.load_alignment_details()
             loaded_data = self.load_data()
             if not loaded_data:
                 logger.warning("No annotation result files found. Creating empty overview.")

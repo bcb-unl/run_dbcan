@@ -151,10 +151,12 @@ Unreleased
    The expression plot commands exit with status 1 when nothing can be drawn;
    ``CGC_expression_heatmap`` writes ``<expression-dir>/plots/CGC_expression_heatmap.pdf`` by default; gene
    colours follow the CGC figure palette.
-#. pyHMMER domain overlaps are resolved on match-state intervals in every HMM library (dbCAN, dbCAN-sub, TF, STP,
-   Pfam), order-independently; ``--dbcan-legacy-overlap`` restores the alignment-span rule. The intervals are
-   written to ``*_alignment_details.tsv`` next to each HMM result table, and ``overview.tsv`` no longer merges two
-   dbCAN HMM domains with each other.
+#. Overlapping pyHMMER domains (dbCAN, dbCAN-sub, TF, STP, Pfam) are resolved per protein on a conflict graph, best
+   i-Evalue first, with the 5.2.9 alignment-span overlap rule; the result no longer depends on row order. 5.2.9
+   compared each domain only with the last one kept and could lose one, e.g. the N-terminal Pkinase half of
+   *Xylona heveae* KZF26007.1 (``STP_hmm_results.tsv``: 593 instead of 592 rows); see
+   :ref:`overlapping-domains`. The Pfam table of the CGC steps is no longer filtered a second time (no effect on the
+   result), and ``overview.tsv`` no longer groups two dbCAN HMM domains with each other.
 #. Experimental ``--dbcan-taxon-profile fungi``, ``--dbcan-family-cutoff-file``,
    ``--dbcan-overlap-coexistence-file``. In ``easy_CGC``/``easy_substrate`` the fungi profile also turns on
    ``--fungi`` (TF HMM instead of TF DIAMOND) unless ``--fungi``/``--no-fungi`` is given.

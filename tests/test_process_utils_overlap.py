@@ -77,10 +77,8 @@ def test_pair_specific_coexistence_preserves_only_allowlisted_pairs():
     assert ("gt84_competes", "GH192.hmm") in observed
 
 
-def _matched_fixture():
-    """A long catalytic domain (1-400) whose matched intervals leave a gap 251-339
-    (an unmatched insertion), and a short accessory domain (300-334) sitting inside
-    that gap."""
+def _span_fixture():
+    """A long catalytic domain (1-400) and a short accessory domain (300-334) inside its span."""
     return pd.DataFrame(
         [
             {
@@ -89,7 +87,6 @@ def _matched_fixture():
                 "Target From": 1,
                 "Target To": 400,
                 "i-Evalue": 1e-120,
-                "Matched Intervals": "1:250,340:400",
             },
             {
                 "HMM Name": "CBM18.hmm",
@@ -97,25 +94,15 @@ def _matched_fixture():
                 "Target From": 300,
                 "Target To": 334,
                 "i-Evalue": 1e-30,
-                "Matched Intervals": "300:334",
             },
         ]
     )
 
 
-def test_ali_span_overlap_deletes_accessory_domain_in_insertion():
-    # Legacy ali-span rule: the long domain's span 1-400 covers the short domain
-    # 300-334, so the accessory domain is deleted (worse i-Evalue).
-    result = filter_overlaps(_matched_fixture())
+def test_ali_span_overlap_deletes_accessory_domain_inside_the_span():
+    # Alignment-span rule (as in 5.2.9): the long domain's span 1-400 covers the
+    # short domain 300-334, so the accessory domain is deleted (worse i-Evalue).
+    result = filter_overlaps(_span_fixture())
     kept = set(zip(result["Target Name"], result["HMM Name"]))
     assert ("gh18_cbm18", "GH18.hmm") in kept
     assert ("gh18_cbm18", "CBM18.hmm") not in kept
-
-
-def test_matched_region_overlap_keeps_accessory_domain_in_insertion():
-    # Matched-region rule: the short domain sits in the long domain's unmatched
-    # insertion (gap 251-339), so the matched intervals do not overlap and both survive.
-    result = filter_overlaps(_matched_fixture(), matched_overlap=True)
-    kept = set(zip(result["Target Name"], result["HMM Name"]))
-    assert ("gh18_cbm18", "GH18.hmm") in kept
-    assert ("gh18_cbm18", "CBM18.hmm") in kept

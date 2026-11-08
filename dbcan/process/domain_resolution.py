@@ -1,110 +1,35 @@
 """Centralised HMM domain-resolution logic.
 
-Three concepts are deliberately kept apart here, because conflating them is
-exactly what the historical overlap filter got wrong:
+Two concepts are kept apart here:
 
-``alignment geometry``
-    The continuous ``Target From``/``Target To`` span HMMER reports for a
-    domain alignment.
+``geometric overlap``
+    How much two domain alignments of one protein share, measured on the
+    continuous ``Target From``/``Target To`` span HMMER reports, with the 5.2.9
+    arithmetic (see :func:`geometric_overlap`).
 
-``match-state evidence``
-    The subset of that span whose residues are aligned to a profile *match*
-    state.  A target residue aligned to an HMM *insert* state sits between two
-    consensus match positions: it is inside the alignment span, but the profile
-    carries no consensus-column evidence over it.  A long catalytic profile can
-    therefore geometrically span an inserted accessory domain (a CBM, say)
-    without having any match-state evidence there.
+``domain conflict``
+    Two models competing for the same region.  Substantial overlap is the
+    evidence for a conflict; an explicit coexistence policy can still allow two
+    overlapping models to be reported together, and hits from different
+    annotation sources never compete.
 
-``biological domain conflict``
-    Two models genuinely competing for the same conserved region.  Geometric
-    overlap is only the *evidence* for a conflict; an explicit coexistence
-    policy can still allow two substantially overlapping models to be reported
-    together, and hits from unrelated annotation sources never compete at all.
-
-Note that an insert state is an HMM alignment concept, not a biological one: a
-lineage-specific loop or an inserted structural region may still belong to the
-domain biologically.  Match-state occupancy is used here because it is the
-evidence the *profile* actually provides, not because inserted residues are
-"not part of the domain".
+Conflicts are resolved on a per-protein conflict graph, best i-Evalue first.
+5.2.9 compared each hit only with the most recently kept one, so a domain split
+by an insertion (e.g. a protein kinase with two Pkinase halves around an
+insert) could lose a half that conflicts with nothing that is finally kept,
+depending on row order.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Sequence, Set, Tuple
-
-Interval = Tuple[int, int]
-Intervals = Tuple[Interval, ...]
+from dataclasses import dataclass
+from typing import List, Optional, Sequence, Set, Tuple
 
 #: Default fraction of the shorter domain that must be covered before two hits
 #: are treated as competitors.  The historical rule is a strict ``>``: an
 #: overlap of exactly this fraction is *not* a conflict.
 DEFAULT_OVERLAP_RATIO_THRESHOLD = 0.5
-
-_INTERVAL_SEP = ","
-_BOUND_SEP = ":"
-
-
-# ---------------------------------------------------------------------------
-# Interval arithmetic (1-based, inclusive)
-# ---------------------------------------------------------------------------
-def format_intervals(intervals: Iterable[Sequence[int]]) -> str:
-    """Serialise 1-based inclusive intervals as ``"start:end,start:end"``."""
-    return _INTERVAL_SEP.join(f"{int(a)}{_BOUND_SEP}{int(b)}" for a, b in intervals)
-
-
-def parse_intervals(value, ali_from, ali_to) -> Intervals:
-    """Parse a ``"start:end,..."`` string into 1-based inclusive intervals.
-
-    Falls back to the single alignment span when the value is absent or empty,
-    so a hit without match-state metadata behaves exactly like the legacy
-    ali-span rule instead of silently disappearing.
-    """
-    text = "" if value is None else str(value).strip()
-    if not text or text.lower() == "nan":
-        return ((int(ali_from), int(ali_to)),)
-    intervals: List[Interval] = []
-    for part in text.split(_INTERVAL_SEP):
-        if _BOUND_SEP not in part:
-            continue
-        a, b = part.split(_BOUND_SEP, 1)
-        try:
-            intervals.append((int(float(a)), int(float(b))))
-        except (TypeError, ValueError):
-            continue
-    if not intervals:
-        return ((int(ali_from), int(ali_to)),)
-    return tuple(intervals)
-
-
-def intervals_length(intervals: Iterable[Sequence[int]]) -> int:
-    """Total residues covered by 1-based inclusive intervals."""
-    return sum(int(b) - int(a) + 1 for a, b in intervals)
-
-
-def intervals_overlap(a_intervals: Sequence[Sequence[int]], b_intervals: Sequence[Sequence[int]]) -> int:
-    """Residues shared by two sets of 1-based inclusive intervals.
-
-    Both inputs are treated as disjoint interval sets (which is how
-    ``_matched_intervals`` builds them).  A linear merge is used instead of
-    per-residue sets so long domains stay cheap.
-    """
-    if not a_intervals or not b_intervals:
-        return 0
-    a_sorted = sorted((int(a), int(b)) for a, b in a_intervals)
-    b_sorted = sorted((int(a), int(b)) for a, b in b_intervals)
-    total = 0
-    i = j = 0
-    while i < len(a_sorted) and j < len(b_sorted):
-        a0, a1 = a_sorted[i]
-        b0, b1 = b_sorted[j]
-        total += max(0, min(a1, b1) - max(a0, b0) + 1)
-        if a1 <= b1:
-            i += 1
-        else:
-            j += 1
-    return total
 
 
 def base_hmm_family(value) -> str:
@@ -130,7 +55,7 @@ def _as_float(value, default: float) -> float:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class DomainHit:
-    """One HMM domain alignment, with geometry and match-state evidence apart.
+    """One HMM domain alignment of one target protein.
 
     ``index`` is the stable identity of the row this hit came from.  It is used
     to restore input order in the output and as the last resort tie-break, so
@@ -147,22 +72,11 @@ class DomainHit:
     ali_from: int = 0
     ali_to: int = 0
 
-    matched_intervals: Intervals = field(default=())
-
     i_evalue: float = math.inf
     bitscore: float = 0.0
     coverage: float = 0.0
 
     index: int = 0
-
-    @property
-    def effective_intervals(self) -> Intervals:
-        """Match-state intervals, or the alignment span if none are known."""
-        return self.matched_intervals or ((self.ali_from, self.ali_to),)
-
-    @property
-    def matched_length(self) -> int:
-        return intervals_length(self.effective_intervals)
 
     @property
     def base_family(self) -> str:
@@ -189,20 +103,13 @@ class DomainHit:
 # ---------------------------------------------------------------------------
 # Conflict determination
 # ---------------------------------------------------------------------------
-def geometric_overlap(a: DomainHit, b: DomainHit, use_matched: bool) -> Tuple[int, int, int]:
-    """Return ``(overlap, length_a, length_b)`` under the requested semantics."""
-    if use_matched:
-        ia = a.effective_intervals
-        ib = b.effective_intervals
-        return (
-            intervals_overlap(ia, ib),
-            max(1, intervals_length(ia)),
-            max(1, intervals_length(ib)),
-        )
-    # Legacy alignment-span arithmetic, preserved verbatim (including its
-    # historical off-by-one: neither the overlap nor the lengths add the +1 an
-    # inclusive span would need).  Legacy mode exists for reproducibility, so
-    # this must not be "fixed" here.
+def geometric_overlap(a: DomainHit, b: DomainHit) -> Tuple[int, int, int]:
+    """Return ``(overlap, length_a, length_b)`` of two alignment spans.
+
+    5.2.9 arithmetic, kept on purpose: neither the overlap nor the lengths add
+    the +1 an inclusive span would need (historical off-by-one), so results stay
+    comparable with 5.2.9.
+    """
     overlap = min(a.ali_to, b.ali_to) - max(a.ali_from, b.ali_from)
     return (overlap, max(1, a.ali_to - a.ali_from), max(1, b.ali_to - b.ali_from))
 
@@ -211,14 +118,13 @@ def overlaps_substantially(
     a: DomainHit,
     b: DomainHit,
     overlap_ratio_threshold: float = DEFAULT_OVERLAP_RATIO_THRESHOLD,
-    use_matched: bool = False,
 ) -> bool:
     """Pure geometry: does either hit lose more than the threshold fraction?
 
     The comparison is strict (``>``), so an overlap of exactly the threshold
     fraction is not substantial.  This is the historical dbCAN behaviour.
     """
-    overlap, len_a, len_b = geometric_overlap(a, b, use_matched)
+    overlap, len_a, len_b = geometric_overlap(a, b)
     if overlap <= 0:
         return False
     return (overlap / len_a) > overlap_ratio_threshold or (overlap / len_b) > overlap_ratio_threshold
@@ -236,7 +142,6 @@ def competes(
     b: DomainHit,
     overlap_ratio_threshold: float = DEFAULT_OVERLAP_RATIO_THRESHOLD,
     coexistence_pairs: Optional[Set[frozenset]] = None,
-    use_matched: bool = False,
     cross_source_conflicts: bool = False,
 ) -> bool:
     """True competition = substantial overlap AND no policy allowing both.
@@ -248,7 +153,7 @@ def competes(
     """
     if not cross_source_conflicts and a.source != b.source:
         return False
-    if not overlaps_substantially(a, b, overlap_ratio_threshold, use_matched):
+    if not overlaps_substantially(a, b, overlap_ratio_threshold):
         return False
     return not may_coexist(a, b, coexistence_pairs)
 
@@ -260,7 +165,6 @@ def build_conflict_graph(
     hits: Sequence[DomainHit],
     overlap_ratio_threshold: float = DEFAULT_OVERLAP_RATIO_THRESHOLD,
     coexistence_pairs: Optional[Set[frozenset]] = None,
-    use_matched: bool = False,
     cross_source_conflicts: bool = False,
 ) -> List[Set[int]]:
     """Adjacency list over hit positions; an edge means "true competitors"."""
@@ -269,10 +173,8 @@ def build_conflict_graph(
     if n < 2:
         return adjacency
 
-    # Match-state intervals are always contained in the alignment span, so
-    # disjoint ali spans can never overlap in match-state terms either.  A
-    # sweep over ali_from therefore only tests genuinely nearby pairs instead
-    # of all n^2 of them.
+    # Hits whose spans do not overlap cannot conflict, so a sweep over
+    # ali_from only tests nearby pairs instead of all n^2 of them.
     order = sorted(range(n), key=lambda k: (hits[k].ali_from, hits[k].ali_to, k))
     for pos, i in enumerate(order):
         for j in order[pos + 1:]:
@@ -283,7 +185,6 @@ def build_conflict_graph(
                 hits[j],
                 overlap_ratio_threshold=overlap_ratio_threshold,
                 coexistence_pairs=coexistence_pairs,
-                use_matched=use_matched,
                 cross_source_conflicts=cross_source_conflicts,
             ):
                 adjacency[i].add(j)
@@ -315,7 +216,6 @@ def resolve_domain_hits(
     hits: Sequence[DomainHit],
     overlap_ratio_threshold: float = DEFAULT_OVERLAP_RATIO_THRESHOLD,
     coexistence_pairs: Optional[Set[frozenset]] = None,
-    use_matched: bool = False,
     cross_source_conflicts: bool = False,
 ) -> List[DomainHit]:
     """Resolve one target protein's domain architecture.
@@ -337,7 +237,6 @@ def resolve_domain_hits(
         hits,
         overlap_ratio_threshold=overlap_ratio_threshold,
         coexistence_pairs=coexistence_pairs,
-        use_matched=use_matched,
         cross_source_conflicts=cross_source_conflicts,
     )
 
@@ -386,7 +285,6 @@ def hit_from_mapping(row, index: int = 0, source: str = "", columns=None) -> Dom
         hmm_to=int(_as_float(_get("hmm_to", 0), 0.0)),
         ali_from=ali_from,
         ali_to=ali_to,
-        matched_intervals=parse_intervals(_get("matched_intervals", None), ali_from, ali_to),
         i_evalue=_as_float(_get("i_evalue", math.inf), math.inf),
         bitscore=_as_float(_get("bitscore", 0.0), 0.0),
         coverage=_as_float(_get("coverage", 0.0), 0.0),

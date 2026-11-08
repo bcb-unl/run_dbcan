@@ -136,18 +136,14 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
     # overview.tsv merges only the methods run now, not result files left by an earlier run.
     if getattr(overviewconfig, 'methods', None) is None:
         overviewconfig.methods = tuple(methods)
-    from dbcan.process.process_utils import alignment_details_path
-    stale, hmm_tables = [], []
+    stale = []
     if 'diamond' in methods:
         stale.append(Path(diamondconfig.output_dir) / diamondconfig.output_file)
     if 'hmm' in methods:
-        hmm_tables.append(Path(dbcanconfig.output_dir) / dbcanconfig.output_file)
+        stale.append(Path(dbcanconfig.output_dir) / dbcanconfig.output_file)
     if 'dbCANsub' in methods:
-        hmm_tables += [Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RESULT_FILE,
-                       Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RAW_FILE]
-    # *_alignment_details.tsv sidecars too: a --dbcan-legacy-overlap run writes none, so an old one
-    # must not be read by the overview as if it described this run's domains.
-    stale += hmm_tables + [alignment_details_path(p) for p in hmm_tables]
+        stale += [Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RESULT_FILE,
+                  Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RAW_FILE]
     _remove_stale_results(stale)
     if 'diamond' in methods:
         logging.info("DIAMOND CAZy...")

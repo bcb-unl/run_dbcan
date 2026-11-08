@@ -21,7 +21,6 @@ from dbcan.configs.family_cutoff import (
     load_dbcan_family_cutoff_policy,
     load_dbcan_overlap_coexistence_policy,
 )
-from dbcan.process.domain_resolution import format_intervals
 from dbcan.process.process_utils import process_results
 from dbcan.process.process_dbcan_sub import DBCANSUBProcessor
 from dbcan.utils.memory_monitor import MemoryMonitor, get_memory_monitor
@@ -63,10 +62,6 @@ class PyHMMERProcessor(ABC):
     def __init__(self, config: PyHMMERConfig):
         self.config = config
         self._hmm_profile_count: Optional[int] = None
-        # Match-state-aware overlap applies to every pyhmmer library (dbCAN,
-        # dbCAN-sub, TF, STP, Pfam); on by default, opt out with
-        # --dbcan-legacy-overlap / config.matched_overlap = False.
-        self.matched_overlap = bool(getattr(config, "matched_overlap", True))
         self._validate_basic()
 
     def _output_hmm_name(self, hmm_name: str) -> str:
@@ -147,51 +142,10 @@ class PyHMMERProcessor(ABC):
         """Apply the legacy global filter; dbCAN overrides this when a policy is active."""
         return i_evalue < self.e_value_threshold and coverage > self.coverage_threshold
 
-    @staticmethod
-    def _matched_interval_pairs(aln) -> List[tuple]:
-        """Match-state target intervals of a domain alignment (1-based, inclusive).
-
-        Walks the aligned model/target column pair reported by HMMER:
-
-        * a target residue consumes exactly one target coordinate;
-        * a delete-state column has no target residue, so it consumes none;
-        * a target residue whose model column is ``'.'`` is aligned to an HMM
-          *insert* state and contributes no match-state evidence;
-        * consecutive match-state residues are compressed into one interval, so
-          a domain with an internal insertion becomes several disjoint intervals.
-
-        ``ABC.....DEF`` / ``ABCxyzuvDEF`` starting at 1 therefore yields
-        ``[(1, 3), (9, 11)]`` — the inserted ``xyzuv`` residues are excluded but
-        still consume coordinates 4-8.
-        """
-        hmm_seq = aln.hmm_sequence
-        target_seq = aln.target_sequence
-        tpos = aln.target_from
-        intervals: List[list] = []
-        for hc, tc in zip(hmm_seq, target_seq):
-            if not tc.isalpha():        # gap: a delete column consumes no target residue
-                continue
-            if hc != '.':               # match state (not an insert)
-                if intervals and tpos == intervals[-1][1] + 1:
-                    intervals[-1][1] = tpos
-                else:
-                    intervals.append([tpos, tpos])
-            tpos += 1
-        return [(a, b) for a, b in intervals]
-
-    @classmethod
-    def _matched_intervals(cls, aln) -> str:
-        """Serialised match-state intervals, e.g. ``"1:250,340:400"``."""
-        return format_intervals(cls._matched_interval_pairs(aln))
-
     def _domain_to_row(self, domain, hmm_file_stem: str):
         """Convert an accepted pyhmmer domain to the legacy output row."""
         aln = domain.alignment
-        # HMM coordinate-span coverage. NOTE: this is not match-state occupancy —
-        # delete states inside [hmm_from, hmm_to] are counted as covered. The
-        # thresholds (dbCAN default 0.35) are calibrated against this definition,
-        # so it is deliberately left unchanged. TODO: benchmark a match-state
-        # occupancy variant before considering a switch.
+        # HMM coordinate-span coverage, as in 5.2.9 (the 0.35 default is calibrated on it).
         coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
         exact_hmm_name = _safe_decode(aln.hmm_name)
         # GT2_* profiles are merged to GT2 for dbCAN.hmm only (MERGE_GT2_PROFILES);
@@ -201,7 +155,7 @@ class PyHMMERProcessor(ABC):
         bitscore = domain.score
         if not self._passes_domain(exact_hmm_name, i_evalue, coverage, bitscore):
             return None
-        row = [
+        return [
             output_hmm_name,
             aln.hmm_length,
             _safe_decode(aln.target_name),
@@ -214,11 +168,6 @@ class PyHMMERProcessor(ABC):
             coverage,
             hmm_file_stem,
         ]
-        # Internal-only extra column consumed by domain resolution; it is dropped
-        # again before the public result table is written.
-        if self.matched_overlap:
-            row.append(self._matched_intervals(aln))
-        return row
 
     def _domains_for_hit(self, hit):
         """Return legacy included domains; an opt-in policy may inspect the reported tail."""
@@ -645,7 +594,6 @@ class PyHMMERProcessor(ABC):
             str(self.output_file),
             temp_hits_file=raw_hits_file,
             coexistence_pairs=self.overlap_coexistence_pairs,
-            matched_overlap=self.matched_overlap,
         )
 
     @property
@@ -664,11 +612,6 @@ class PyHMMERDBCANProcessor(PyHMMERProcessor):
         self.family_cutoff_policy = None
         self.overlap_coexistence_policy = None
         super().__init__(config)
-        if not self.matched_overlap:
-            logger.warning(
-                "Using legacy ali-span overlap resolution (--dbcan-legacy-overlap); "
-                "matched-region overlap is disabled"
-            )
         # A named taxon profile (e.g. --dbcan-taxon-profile fungi) bundles the
         # family-cutoff and coexistence policies shipped in dbcan/data/taxon_profiles.
         # Explicit --dbcan-*-file arguments still take precedence over the bundle.

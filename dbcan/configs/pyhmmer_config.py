@@ -26,12 +26,6 @@ class PyHMMERConfig(BaseConfig):
     # Large input handling
     large_mode: bool = False  # force streaming-safe mode (avoid preloading targets/HMMs aggressively)
     large_input_threshold_mb: int = 5000  # auto-enable large_mode when input fasta exceeds this size (MB)
-    # Resolve domain overlaps on profile match-state intervals instead of the
-    # continuous alignment span. On by default (a correctness fix that stops a long
-    # catalytic domain from deleting a short accessory domain lying inside its
-    # insert-state region); --dbcan-legacy-overlap restores the old ali-span rule
-    # for every pyhmmer library, for reproducibility only.
-    matched_overlap: bool = True
 
 # dbCAN
 @dataclass
