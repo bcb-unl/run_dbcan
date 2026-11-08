@@ -59,7 +59,15 @@ class DBCANSUBProcessor:
         if not self.mapping_file_path.exists():
             logger.warning(f"Can't find substrate mapping file: {self.mapping_file_path}")
             return {}
-        df = read_tsv(self.mapping_file_path, id_columns=(), comment=None, dtype=str, quoting=0)
+        # leading '#' lines (version / provenance notes) are skipped, whatever their number of tabs
+        n_comment = 0
+        with open(self.mapping_file_path, encoding='utf-8', errors='replace') as fh:
+            for line in fh:
+                if not line.startswith('#'):
+                    break
+                n_comment += 1
+        df = read_tsv(self.mapping_file_path, id_columns=(), comment=None, dtype=str, quoting=0,
+                      skiprows=n_comment)
         # drop leading comment lines that pandas took as the header
         while len(df.columns) and str(df.columns[0]).startswith('#'):
             df.columns = [str(c).strip() for c in df.iloc[0]]

@@ -120,3 +120,18 @@ def test_per_subfamily_table_from_the_web_server_takes_precedence(tmp_path):
     assert p.get_substrates("GT1_e9.hmm|GT1:30|2.4.1.-:2", subs, table) == "-"
     # without the table: family-level fallback of CBM1 for every EC
     assert p.get_substrates(name, subs) == "cellulose,chitin;cellulose,chitin;cellulose,chitin"
+
+
+def test_mapping_with_version_comment_and_extra_columns(tmp_path):
+    """A versioned mapping file: a '#' provenance line without tabs and extra columns
+    (Substrate_specific, Source, Change) after the 5 classic ones."""
+    (tmp_path / "fam-substrate-mapping.tsv").write_text(
+        "# fam-substrate-mapping version 2026-11-09 | merged from db_current and dbCAN-sub web 2025-08-26\n"
+        "Substrate_high_level\tSubstrate_specific\tFamily\tName\tEC_Number\tSource\tChange\n"
+        "alpha-glucan\tstarch\tGH13\tneopullulanase\t3.2.1.135\tboth\tspecific name from web\n"
+        "chitin;peptidoglycan\tchitin;peptidoglycan\tCBM50\tLysM\t\tboth\t\n"
+    )
+    p = P(SimpleNamespace(output_dir=str(tmp_path), db_dir=str(tmp_path)))
+    subs = p.load_substrate_mapping()
+    assert subs[("GH13", "3.2.1.135")] == ["alpha-glucan"]
+    assert p.get_substrates("GH13_e1.hmm|GH13:5|3.2.1.135:2", subs) == "alpha-glucan"
