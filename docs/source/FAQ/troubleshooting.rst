@@ -81,8 +81,11 @@ CGC prediction
       ``--num_null_gene 2`` genes of each other. Relax it, for example with
       ``--additional_genes TC --additional_genes TF --additional_genes STP --additional_logic any``.
 
-**--feature_type has no effect.**
-   Known limitation: ``cgc_finder`` currently uses all lines of ``cgc.gff`` regardless of ``--feature_type``.
+**--feature_type has no effect / "is deprecated and ignored".**
+   ``cgc_finder`` uses every gene of ``cgc.gff``; the GFF feature type is chosen per ``--gff_type`` by
+   ``gff_process``. The option is only kept so that old command lines still run. The same applies to
+   ``--run_pfam``, ``--force_topology`` and the ``substrate_prediction`` options ``--pul``, ``-o``, ``-w``,
+   ``-rerun`` and ``-env``.
 
 Substrate prediction
 --------------------
@@ -117,10 +120,9 @@ Memory and run time
 -------------------
 
 **How many threads are used?**
-   ``--threads`` defaults to the number of logical CPUs of the machine and is used for DIAMOND and pyHMMER. On shared
-   servers or cluster jobs, set it to the number of cores you were allocated. Gene prediction with pyrodigal
-   currently uses all CPUs regardless of ``--threads`` (known limitation). ``substrate_prediction`` run on its own
-   always uses all CPUs for DIAMOND.
+   ``--threads`` defaults to the number of logical CPUs of the machine and is used for gene prediction (pyrodigal),
+   DIAMOND and pyHMMER. On shared servers or cluster jobs, set it to the number of cores you were allocated.
+   ``substrate_prediction`` run on its own always uses all CPUs for DIAMOND.
 
 **The HMM search runs out of memory on a very large input.**
    * ``dbCAN-sub.hmm`` is 5.1 GB. HMM profiles are loaded into memory only when about five times the HMM file size
@@ -147,5 +149,6 @@ Optional tools
 --------------
 
 **SignalP or DeepTMHMM columns are missing.**
-   Both tools must be installed separately. DeepTMHMM currently runs only when ``--run_signalp`` is also given, and
-   failures are logged without stopping ``CAZyme_annotation``. See :doc:`../user_guide/signalp6_deeptmhmm`.
+   Both tools must be installed separately and are only run with ``--run_signalp`` / ``--run_deeptmhmm`` (each works
+   on its own). A requested tool that cannot run makes ``CAZyme_annotation`` exit with a non-zero status; the log
+   says which one. See :doc:`../user_guide/signalp6_deeptmhmm`.

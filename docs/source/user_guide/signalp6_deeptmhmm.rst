@@ -13,13 +13,14 @@ Both tools run after the CAZyme search, on the proteins of ``overview.tsv`` that
 
 .. note::
 
-   Known limitations of the current release:
-
-   * DeepTMHMM is only started when ``--run_signalp`` is also given; ``--run_deeptmhmm`` alone is skipped.
-   * ``--force_topology`` currently has no effect: on every run the **SignalP** / **DeepTMHMM** columns are
-     recomputed and overwritten for the tools that produced results.
-   * If SignalP or DeepTMHMM fails, the error is logged and ``CAZyme_annotation`` still finishes; check the log and
-     the ``signalp6_out`` / ``deeptmhmm_out`` folders.
+   * Each tool runs when its own flag is given: ``--run_signalp`` and ``--run_deeptmhmm`` can be used alone or
+     together.
+   * If a requested tool cannot run (``signalp6`` not on ``PATH``, ``--deeptmhmm_dir`` missing or without
+     ``predict.py``) or fails, ``CAZyme_annotation`` exits with a non-zero status after the CAZyme results are
+     written. When both tools are requested and only one fails, the column of the other one is still added to
+     ``overview.tsv``. Check the log and the ``signalp6_out`` / ``deeptmhmm_out`` folders.
+   * The **SignalP** / **DeepTMHMM** columns are recomputed on every run (``overview.tsv`` is rewritten by each
+     ``CAZyme_annotation`` run). ``--force_topology`` is deprecated: it is still accepted but ignored.
 
 Why separate installation?
 ---------------------------
@@ -88,8 +89,7 @@ Some DeepTMHMM checkpoints are pickled objects (not “weights only”). If you 
 
 **Column overwrite**
 
-``--force_topology`` is intended to force recomputation of existing **SignalP** / **DeepTMHMM** values, but it currently
-has no effect because the columns are always recomputed (see the known limitations above).
+The columns are recomputed on every run; the deprecated ``--force_topology`` flag is accepted but ignored.
 
 Example (both tools enabled)
 -----------------------------

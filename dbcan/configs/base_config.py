@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, fields
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 
 @dataclass
@@ -17,6 +17,8 @@ class GeneralConfig(BaseConfig):
     output_dir: str = None
     mode: str = None
     db_dir: str = None
+    # Worker threads for gene prediction (pyrodigal); None or <= 0 uses all CPUs.
+    threads: Optional[int] = None
 
     #thread
 
@@ -25,6 +27,9 @@ class GeneralConfig(BaseConfig):
 @dataclass
 class OverviewGeneratorConfig(BaseConfig):
     output_dir: str
+    # Methods run in this CAZyme_annotation call (--methods). Only their result files are merged;
+    # None merges every result file found (diamond.out, dbCAN_hmm_results.tsv, dbCANsub_hmm_results.tsv).
+    methods: Optional[Tuple[str, ...]] = None
 
 
 @dataclass

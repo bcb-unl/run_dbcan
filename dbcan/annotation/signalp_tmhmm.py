@@ -349,39 +349,47 @@ class SignalPTMHMMProcessor:
             df.to_csv(overview_path, sep="\t", index=False)
             logger.info("Updated overview with topology predictions")
         except Exception as e:
-            logger.error(f"Error updating overview: {e}")
+            raise RuntimeError(f"Error updating {overview_path} with topology predictions: {e}") from e
 
     def run(self):
         if not self.run_signalp and not self.run_deeptmhmm:
             logger.info("No topology annotation tool requested; skipping.")
             return {}
-        try:
-            df = self.load_overview()
-        except Exception as e:
-            logger.error("Failed to load overview: %s", e)
-            return {}
+        df = self.load_overview()
         gene_ids = self.collect_all_gene_ids(df)
         if not gene_ids:
             logger.info("No gene IDs to process for topology annotation")
             return {}
 
         fasta = self.extract_fasta(gene_ids)
+        if fasta.stat().st_size == 0:
+            logger.warning("No CAZyme sequences for topology annotation; adding empty columns only.")
+            self.update_overview_with_topology({}, {})
+            return {}
         signalp_out_dir = None
         deeptmhmm_out_dir = None
         signalp_results = {}
         deeptmhmm_results = {}
 
+        failed = []
         if self.run_signalp:
             signalp_out_dir = self.run_signalp_predict(fasta)
-        if signalp_out_dir:
-            signalp_results = self.parse_signalp_results(signalp_out_dir)
+            if signalp_out_dir:
+                signalp_results = self.parse_signalp_results(signalp_out_dir)
+            else:
+                failed.append("SignalP6")
 
         if self.run_deeptmhmm:
             deeptmhmm_out_dir = self.run_deeptmhmm_predict(fasta)
-        if deeptmhmm_out_dir:
-            deeptmhmm_results = self.parse_deeptmhmm_results(deeptmhmm_out_dir)
+            if deeptmhmm_out_dir:
+                deeptmhmm_results = self.parse_deeptmhmm_results(deeptmhmm_out_dir)
+            else:
+                failed.append("DeepTMHMM")
 
+        # Write the columns of the tools that worked even if another one failed.
         self.update_overview_with_topology(signalp_results, deeptmhmm_results)
+        if failed:
+            raise RuntimeError(f"{' and '.join(failed)} failed; see the log above for details.")
 
         results = {}
         if signalp_out_dir:

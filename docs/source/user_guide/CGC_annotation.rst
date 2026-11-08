@@ -79,7 +79,10 @@ Genes with several labels (for example ``CAZyme|GH13_31+TC|8.A.9.1.1``) are hand
 
    You can use either rule individually or combine both for stricter CGC prediction criteria.
    ``--extend_mode bp`` or ``--extend_mode gene`` (with ``--extend_bp`` / ``--extend_gene_count``) adds flanking
-   genes to each reported CGC after detection.
+   genes to each reported CGC after detection. CGCs are detected (and validated) on their core genes first; the
+   extensions are then trimmed so that every gene belongs to at most one CGC: an extension stops before the core of
+   the neighbouring CGC, and a gene that both neighbouring extensions would reach goes to the CGC whose core is
+   nearer in genes (a tie goes to the upstream CGC). Extended genes do not count for the CGC rules.
 
 Advanced Usage
 ------------------
@@ -156,7 +159,9 @@ The CGC finder generates several output files:
 
 .. note::
 
-   ``--feature_type`` is accepted but currently has no effect: all lines of ``cgc.gff`` are used (known limitation).
+   ``--feature_type`` is deprecated: it is hidden from ``--help`` and ignored (a warning is logged when it is
+   given). ``cgc_finder`` uses every gene of ``cgc.gff``; the feature type (``CDS`` or ``gene``) of each GFF dialect
+   is chosen by ``gff_process`` from ``--gff_type``.
 
 Annotating null genes with Pfam (optional)
 -------------------------------------------
@@ -172,7 +177,8 @@ Annotating null genes with Pfam (optional)
 With ``--null_from_gff``, the proteins of all ``null`` genes in ``cgc.gff`` are written to ``null_proteins.faa``
 and only these are searched; without it, all proteins in ``uniInput.faa`` are searched, which is slower. The hits
 (``Pfam_hmm_results.tsv``) are then added to the null genes in new copies of the CGC files:
-``cgc_standard_out.pfam_annotated.tsv`` and ``cgc.pfam_annotated.gff``.
+``cgc_standard_out.pfam_annotated.tsv`` and ``cgc.pfam_annotated.gff``. ``Pfam_null_cgc`` always runs the Pfam
+search; the old ``--run_pfam`` flag is still accepted but ignored.
 
 .. admonition:: Next Steps
 

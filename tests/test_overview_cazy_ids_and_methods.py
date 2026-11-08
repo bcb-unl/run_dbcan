@@ -1,0 +1,100 @@
+"""overview.tsv: CAZy family parsing of DIAMOND subject IDs, and merging only the selected --methods."""
+import logging
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+import dbcan.constants.diamond_constants as D
+from dbcan.configs.base_config import OverviewGeneratorConfig
+from dbcan.IO.OverviewGenerator import OverviewGenerator
+from dbcan.IO.table import read_tsv
+
+
+@pytest.mark.parametrize(
+    "sseqid, expected",
+    [
+        ("CAD7272370.1|GH33", "GH33"),
+        # GenBank accessions that start with a class prefix are not families
+        ("AAK49401.1|GH19", "GH19"),
+        ("CEA12345.1|CE4", "CE4"),
+        ("GTB00001.1|GT2", "GT2"),
+        # new CAZyDB headers repeat the subfamily and carry an EC number
+        ("1803517A|GH13_6|GH13_6|3.2.1.1", "GH13_6"),
+        ("XYZ.1|GH5_2|CBM1|GH5_2", "GH5_2+CBM1"),
+        # JGI headers: families, numeric protein id, source file
+        ("CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta", "CE16"),
+        ("GH15|CBM20|716895|Lacbi81306_1_GeneCatalog_proteins_20140617.aa.fasta", "GH15+CBM20"),
+        ("CBM13|CBM13|CBM13|PL1|1000032|Neolan1_GeneCatalog_proteins_20200610.aa.fasta", "CBM13+PL1"),
+        # nothing that looks like a family: unchanged
+        ("Q12345|unknown", "Q12345|unknown"),
+        ("", ""),
+    ],
+)
+def test_extract_cazy_id(sseqid, expected):
+    assert OverviewGenerator.extract_cazy_id(sseqid) == expected
+
+
+HMM_COLS = ["HMM Name", "HMM Length", "Target Name", "Target Length", "i-Evalue",
+            "HMM From", "HMM To", "Target From", "Target To", "Coverage", "HMM File Name"]
+SUB_COLS = ["Subfam Name", "Subfam Composition", "Subfam EC", "Substrate", "HMM Length", "Target Name",
+            "Target Length", "i-Evalue", "HMM From", "HMM To", "Target From", "Target To", "Coverage",
+            "HMM File Name"]
+
+
+def _write_all_results(out: Path):
+    """Result files of all three methods, as left behind by an earlier full run."""
+    pd.DataFrame([["p1", "AAK49401.1|GH5_2", 50, 300, 1, 0, 1, 300, 1, 300, 1e-120, 500]],
+                 columns=D.CAZY_COLUMN_NAMES).to_csv(out / "diamond.out", sep="\t", index=False)
+    pd.DataFrame([["GH5_2", 300, "p1", 400, 1e-50, 1, 290, 10, 300, 0.96, "dbCAN"]],
+                 columns=HMM_COLS).to_csv(out / "dbCAN_hmm_results.tsv", sep="\t", index=False)
+    pd.DataFrame([["GH5_e12", "GH5:10", "3.2.1.4:3", "cellulose", 300, "p1", 400, 1e-50, 1, 290, 10, 300,
+                   0.96, "dbCAN-sub"]],
+                 columns=SUB_COLS).to_csv(out / "dbCANsub_hmm_results.tsv", sep="\t", index=False)
+
+
+def test_overview_all_methods_by_default(tmp_path):
+    _write_all_results(tmp_path)
+    OverviewGenerator(OverviewGeneratorConfig(output_dir=str(tmp_path))).run()
+    row = read_tsv(tmp_path / "overview.tsv").set_index("Gene ID").loc["p1"]
+    assert row["#ofTools"] == 3
+    assert row["DIAMOND"] == "GH5_2"
+
+
+def test_overview_ignores_stale_files_of_unselected_methods(tmp_path, caplog):
+    _write_all_results(tmp_path)
+    caplog.set_level(logging.INFO, logger="dbcan.IO.OverviewGenerator")
+    OverviewGenerator(OverviewGeneratorConfig(output_dir=str(tmp_path), methods=("hmm",))).run()
+    row = read_tsv(tmp_path / "overview.tsv").set_index("Gene ID").loc["p1"]
+    assert row["#ofTools"] == 1
+    assert row["DIAMOND"] == "-"
+    assert row["dbCAN_sub"] == "-"
+    assert row["dbCAN_hmm"] == "GH5_2(10-300)"
+    assert "Ignoring diamond.out" in caplog.text
+    assert "Ignoring dbCANsub_hmm_results.tsv" in caplog.text
+
+
+def test_cazyme_annotation_passes_methods_to_overview(tmp_path):
+    """run_dbCAN_CAZyme_annotation hands its methods to the overview step."""
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    import dbcan.core as core
+
+    _write_all_results(tmp_path)
+    cfg = OverviewGeneratorConfig(output_dir=str(tmp_path))
+    hmm_cfg = SimpleNamespace(output_dir=str(tmp_path), output_file="dbCAN_hmm_results.tsv")
+    with patch.object(core, "run_dbCAN_hmmer"):
+        core.run_dbCAN_CAZyme_annotation(
+            SimpleNamespace(output_dir=str(tmp_path), output_file="diamond.out"),
+            hmm_cfg,
+            SimpleNamespace(output_dir=str(tmp_path)),
+            cfg,
+            ("hmm",),
+        )
+    assert cfg.methods == ("hmm",)
+    assert read_tsv(tmp_path / "overview.tsv").set_index("Gene ID").loc["p1", "#ofTools"] == 1
+
+
+def test_unknown_method_is_an_error(tmp_path):
+    with pytest.raises(ValueError):
+        OverviewGenerator(OverviewGeneratorConfig(output_dir=str(tmp_path), methods=("blast",))).run()

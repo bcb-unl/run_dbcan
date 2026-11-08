@@ -249,6 +249,11 @@ def substrate_prediction_cmd(ctx, log_level, log_file, verbose, **kwargs):
     # Accepted for compatibility with older command lines; substrate_prediction only reads --output_dir.
     kwargs.pop("input_raw_data", None)
     kwargs.pop("mode", None)
+    from dbcan.annotation.cgc_substrate_prediction import parse_extra_pairs
+    try:
+        parse_extra_pairs(kwargs.get("extra_pair_type"), kwargs.get("extra_pair_type_num"))
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="'-ept' / '-eptn'")
     cgcsubconfig = create_config(CGCSubstrateConfig, **kwargs)
     run_dbCAN_CGCFinder_substrate(cgcsubconfig)
     synplotconfig = create_config(SynPlotConfig, **kwargs)
