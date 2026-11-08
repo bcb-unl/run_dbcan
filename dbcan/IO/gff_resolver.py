@@ -821,6 +821,15 @@ def _resolve_legacy(path: Path, gff_type: str, idx: ProteinIndex) -> ResolutionR
                         if value:
                             pid, prov = value.split(",")[0], "CDS.protein_id"
                             break
+        if noncoding_type is None and not kids and gff_type != G.GFF_FORMAT_JGI:
+            # A childless gene row whose biotype is not protein-coding (e.g. E. coli ralA,
+            # gene_biotype=other) is a non-coding locus, not a protein missing from the FASTA.
+            # The processors still write it with protein_id=unknown; only the report changes.
+            biotype = f.attrs.get("gene_biotype") or f.attrs.get("gene_type") or ""
+            if biotype and biotype != G.GFF_PROTEIN_CODING_BIOTYPE:
+                rows.append(GeneResolution(gid, f.seqid, f.start, f.end, f.strand, G.GFF_UNKNOWN_ANNOTATION,
+                                           G.GFF_STATUS_NONCODING, "", biotype, order=f.order))
+                continue
         if noncoding_type is not None:
             rows.append(GeneResolution(gid, f.seqid, f.start, f.end, f.strand, G.GFF_NA_PROTEIN_ID,
                                        G.GFF_STATUS_NONCODING, "", noncoding_type, order=f.order))

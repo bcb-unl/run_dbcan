@@ -89,7 +89,7 @@ DBCAN_PUL_GFF = "cgc.gff"
 # dbcan_plot output names
 CGC_MAP_FILE_TEMPLATE = "{cgc}.cgc.{ext}"
 CGC_COVERAGE_FILE_TEMPLATE = "{cgc}.cgc-coverage.{ext}"
-CGC_SYNTENY_COVERAGE_FILE_TEMPLATE = "{cgc}-syntenic-cov.{ext}"
+CGC_SYNTENY_COVERAGE_FILE_TEMPLATE = "{cgc}_{pul}-syntenic-cov.{ext}"
 HEATMAP_FILE = "heatmap.pdf"
 HEATMAP_CLUSTER_FILE = "heatmap_cluster.pdf"
 BAR_PLOT_FILE = "bar_plot.pdf"

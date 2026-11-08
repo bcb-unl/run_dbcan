@@ -53,6 +53,9 @@ GFF_MIN_MATCH_DEFAULT = base_constants.GFF_MIN_MATCH_DEFAULT
 GFF_STATUS_MATCHED = "matched"
 GFF_STATUS_UNMATCHED = "unmatched"
 GFF_STATUS_NONCODING = "noncoding"
+# gene_biotype/gene_type value of protein-coding genes (a childless gene with another biotype is
+# reported as non-coding)
+GFF_PROTEIN_CODING_BIOTYPE = "protein_coding"
 GFF_RESOLUTION_COLUMNS = [
     "gene_id", "contig", "start", "end", "strand", "protein_id", "matched_by", "status",
     "n_transcripts", "isoform_proteins",

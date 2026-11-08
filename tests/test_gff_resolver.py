@@ -251,7 +251,7 @@ def test_check_runs_for_user_gff(tmp_path):
 
 
 @pytest.mark.parametrize("gff,faa,gff_type,matched,noncoding", [
-    ("EscheriaColiK12MG1655.gff", "EscheriaColiK12MG1655.faa", "NCBI_prok", 4140, 173),
+    ("EscheriaColiK12MG1655.gff", "EscheriaColiK12MG1655.faa", "NCBI_prok", 4140, 174),  # 174 includes ralA (gene_biotype=other, no children)
     ("Xylhe1_GeneCatalog_proteins_20130827.gff", "Xylhe1_GeneCatalog_proteins_20130827.aa.fasta", "JGI", 8205, 0),
 ])
 def test_report_for_original_types_on_full_genomes(tmp_path, gff, faa, gff_type, matched, noncoding):
@@ -405,3 +405,23 @@ def test_exact_protein_id_wins_over_an_earlier_weak_key(tmp_path):
         assert got["gB"] == ("PB", "CDS.protein_id")
         assert got["gA"][0] == "unknown"
         assert got["gC"][0] == "QC"           # weak keys still match in the second pass
+
+
+def test_childless_non_coding_biotype_gene_is_reported_as_noncoding(tmp_path):
+    """E. coli ralA: a gene row with gene_biotype=other and no children is a non-coding locus in
+    the NCBI_prok/NCBI_euk report, not a protein-coding gene missing from the FASTA."""
+    from dbcan.IO.gff_resolver import resolve_gff
+    gff = tmp_path / "g.gff"
+    gff.write_text(
+        "##gff-version 3\n"
+        "c1\tRefSeq\tgene\t1\t300\t.\t+\t.\tID=gene1;gene_biotype=protein_coding\n"
+        "c1\tRefSeq\tCDS\t1\t300\t.\t+\t0\tID=cds1;Parent=gene1;protein_id=P1.1\n"
+        "c1\tRefSeq\tgene\t400\t500\t.\t+\t.\tID=gene2;Name=ralA;gene_biotype=other\n"
+        "c1\tRefSeq\tgene\t600\t900\t.\t+\t.\tID=gene3;gene_biotype=protein_coding\n"
+    )
+    for gff_type in ("NCBI_prok", "NCBI_euk"):
+        res = resolve_gff(gff, gff_type, ["P1.1"])
+        status = {r.gene_id: r.status for r in res.rows}
+        assert status["gene2"] == "noncoding", gff_type
+        # a childless protein-coding gene is still a missing protein
+        assert status["gene3"] == "unmatched", gff_type
