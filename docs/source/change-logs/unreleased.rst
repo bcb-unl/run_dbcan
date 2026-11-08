@@ -132,3 +132,12 @@ Unreleased
 #. ``fam-substrate-mapping.tsv``: for an incomplete EC (``a.b.c.-``) with several substrates under the same family
    (25 keys, e.g. GH94 + 2.4.1.-) the last substrate alphabetically is used, as in 5.2.9. A per-subfamily
    substrate table (``dbCAN-sub-substrate.tsv``) in the database directory replaces this lookup.
+#. Three different ``fam-substrate-mapping.tsv`` files are in circulation: the S3 release ``db_v5-2-9_11-3-2026``
+   (1,018 rows), the HTTP ``db_current`` snapshot (1,024 rows; 33 (substrate, family, EC) triples not in S3, 21 the
+   other way round) and the dbCAN-sub web release ``fam-substrate-mapping-08262025.tsv`` (with the
+   ``new_Substrate_high_level``/``type`` columns). run_dbcan reads all three formats; the release should ship one of
+   them in both places.
+#. ``dbcan_asmfree``: ``CAZyID_subfam_mapping.tsv`` and ``subfam_EC_mapping.tsv`` are not downloaded by
+   ``run_dbcan database`` and are keyed by full CAZy FASTA headers, of which only about 56% match the headers of the
+   current ``CAZy.dmnd``. Both tables have to be regenerated from the current CAZy data (TODO for the next database
+   update).
