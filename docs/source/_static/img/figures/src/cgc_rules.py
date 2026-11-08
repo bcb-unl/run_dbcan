@@ -1,108 +1,135 @@
-"""Draw cgc_rules.png: how cgc_finder joins signature genes into CGCs (default settings),
-one gene = one role, and how the labels of one protein are used (gff_process / cgc_finder).
+"""Draw cgc_rules.png: how cgc_finder joins signature genes into CGCs (default settings), that each gene counts
+once, by its final Gene Type, and how gff_process chooses the labels.
+
+Same style as pipeline_overview.png (see _style.py). The gene arrows use the gene-type colours of the run_dbcan
+plots (CGC_FEATURE_COLORS); everything else is neutral.
 
 Run from the repository root:  python docs/source/_static/img/figures/src/cgc_rules.py
 """
-from pathlib import Path
+from matplotlib.patches import Polygon, Rectangle
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
-
+import _style as st
 from dbcan.constants.base_constants import CGC_FEATURE_COLORS as COL
 
-OUT = Path(__file__).resolve().parents[1] / "cgc_rules.png"
-INK, MUTED, OK, BAD = "#1F2A36", "#566573", "#1E8449", "#C0392B"
-
-fig, ax = plt.subplots(figsize=(10.4, 5.4), dpi=150)
-ax.set_xlim(0, 104)
-ax.set_ylim(0, 54)
-ax.axis("off")
+W = 8.8
+GENE_W, GENE_H, TIP = 0.44, 0.19, 0.12
+MONO = {"mono": True, "color": st.GREY, "size": st.S}
 
 
-def gene(x, y, kind, label="", w=5.6, h=2.6, fwd=True, stripe=None):
-    tip = 1.2
-    if fwd:
-        pts = [(x, y - h / 2), (x + w - tip, y - h / 2), (x + w, y), (x + w - tip, y + h / 2), (x, y + h / 2)]
-    else:
-        pts = [(x + tip, y - h / 2), (x + w, y - h / 2), (x + w, y + h / 2), (x + tip, y + h / 2), (x, y)]
-    ax.add_patch(Polygon(pts, closed=True, fc=COL[kind], ec="white", lw=0.8))
-    if stripe:  # a second label on the same gene
-        ax.add_patch(Polygon([(x + w * 0.62, y - h / 2), (x + w * 0.62, y + h / 2),
-                              (x + w * 0.80, y + h / 2), (x + w * 0.80, y - h / 2)],
-                             closed=True, fc=COL[stripe], ec="white", lw=0.6))
+def gene(ax, x, y, kind, label="", stripe=None):
+    """A forward gene arrow with its left end at x and its centre line at y."""
+    h = GENE_H / 2
+    ax.add_patch(Polygon([(x, y - h), (x + GENE_W - TIP, y - h), (x + GENE_W, y), (x + GENE_W - TIP, y + h),
+                          (x, y + h)], closed=True, fc=COL[kind], ec="none", zorder=2))
+    if stripe:  # a second hit on the same gene (a domain of another type)
+        ax.add_patch(Rectangle((x + 0.2, y - h), 0.075, GENE_H, fc=COL[stripe], ec="none", zorder=3))
     if label:
-        ax.text(x + w / 2, y + h / 2 + 1.0, label, ha="center", va="bottom", fontsize=7.4, color=INK)
-    return x + w
+        st.text(ax, x + GENE_W / 2, y - h - 0.12, label, size=st.S, ha="center")
 
 
-def row(x, y, genes, step=6.2):
-    ax.plot([x - 0.5, x + step * len(genes) - 0.4], [y, y], color="#BDC3C7", lw=1, zorder=0)
+def gene_row(ax, x, y, genes, step):
+    st.hline(ax, x - 0.08, x + step * (len(genes) - 1) + GENE_W + 0.08, y, color=st.RULE, zorder=1)
     for k, g in enumerate(genes):
-        gene(x + k * step, y, *g)
+        gene(ax, x + k * step, y, *g)
 
 
-def bracket(xa, xb, y, text, color):
-    ax.plot([xa, xa, xb, xb], [y + 0.8, y, y, y + 0.8], color=color, lw=1.3)
-    ax.text((xa + xb) / 2, y - 1.0, text, ha="center", va="top", fontsize=8, color=color, weight="bold")
+def bracket(ax, xa, xb, y, label, ok=True):
+    """Bracket under genes: solid ink = a CGC, dashed grey = rejected candidate."""
+    color = st.INK if ok else st.GREY
+    ax.plot([xa, xa, xb, xb], [y - 0.06, y, y, y - 0.06], color=color, lw=st.LW,
+            linestyle="-" if ok else (0, (3, 2)), solid_joinstyle="miter")
+    st.text(ax, (xa + xb) / 2, y + 0.17, label, size=st.S, color=color, ha="center",
+            weight="bold" if ok else "normal")
 
 
-def title(y, t, sub=""):
-    ax.text(1, y, t, fontsize=9.5, color=INK, weight="bold", va="center")
-    if sub:
-        ax.text(1, y - 2.5, sub, fontsize=7.8, color=MUTED, va="center")
+def panel_title(ax, x, y, letter, title):
+    st.text(ax, x, y, letter, size=st.L, weight="bold")
+    st.text(ax, x + 0.24, y, title, size=st.L, weight="bold")
 
 
-N = ("Other", "")
-# ---- A: joining rule
-title(52, "A  Joining rule (defaults)",
-      "signature genes are joined while at most --num_null_gene 2 other genes lie between them; "
-      "a CGC needs >= 1 CAZyme and >= 1 TC (--additional_genes TC)")
-ya, x = 41, 3
-row(x, ya, [("CAZyme", "GH13"), N, ("TC", "TC"), N, N, ("CAZyme", "GH31"),
-            N, N, N, ("CAZyme", "GH2"), ("CAZyme", "GH42"), N, ("TF", "TF")], step=6.2)
-s = 6.2
-bracket(x, x + 5 * s + 5.6, ya - 3.2, "CGC: GH13 + TC + GH31 (<= 2 null genes apart)", OK)
-ax.text(x + 7 * s + 2.8, ya - 4.2, "3 null genes:\ncluster ends", ha="center", va="top", fontsize=7.4, color=MUTED)
-bracket(x + 9 * s, x + 10 * s + 5.6, ya - 3.2, "no TC: not a CGC", BAD)
-ax.text(x + 12 * s + 2.8, ya - 4.2, "TF counts as a null\ngene by default", ha="center", va="top", fontsize=7.4,
-        color=MUTED)
+def legend(ax, x_right, y):
+    items = [("CAZyme", "CAZyme"), ("TC", "TC"), ("TF", "TF"), ("STP", "STP"), ("Other", "Null gene")]
+    renderer = ax.figure.canvas.get_renderer()
+    widths = []
+    for _, name in items:  # measure, then place right-aligned
+        t = st.text(ax, 0, 0, name, size=st.S)
+        widths.append(t.get_window_extent(renderer).width / ax.figure.dpi)
+        t.remove()
+    sw, gap = 0.22, 0.24
+    x = x_right - sum(sw + 0.07 + w for w in widths) - gap * (len(items) - 1)
+    for (kind, name), w in zip(items, widths):
+        ax.add_patch(Rectangle((x, y - 0.06), sw, 0.12, fc=COL[kind], ec="none"))
+        st.text(ax, x + sw + 0.07, y, name, size=st.S)
+        x += sw + 0.07 + w + gap
 
-# ---- B: one gene = one role
-title(29, "B  One gene = one role",
-      "CAZyme and each required extra type come from different genes")
-ax.text(1, 24, "(example: --additional_genes STP; STP domain outside the CAZyme domain)", fontsize=7.8,
-        color=MUTED, va="center")
-yb = 15.5
-row(3, yb, [N, ("CAZyme", "GH13 + STP", 5.6, 2.6, True, "STP"), N])
-bracket(3 + s, 3 + s + 5.6, yb - 3.2, "one gene only: not a CGC", BAD)
-row(30, yb, [("CAZyme", "GH13 + STP", 5.6, 2.6, True, "STP"), ("CAZyme", "GH31"), N])
-bracket(30, 30 + s + 5.6, yb - 3.2, "CGC: GH31 = CAZyme, GH13 gene = STP", OK)
 
-# ---- C: how the labels of one protein are used
-xc = 62
-ax.text(xc, 29, "C  How the labels of one protein are used", fontsize=9.5, color=INK, weight="bold", va="center")
-lines = [
-    ("CAZyme (#ofTools >= 2) + TC / TF(DIAMOND) / sulfatase hit", "cgc.gff: CAZyme only", "gff_process"),
-    ("not a CAZyme, several full-length hits", "cgc.gff: best bit score only", "gff_process"),
-    ("STP / fungal TF / peptidase domain on the CAZyme domain", "kept in cgc.gff; counts as CAZyme only",
-     "cgc_finder"),
-]
-for k, (a, b, step) in enumerate(lines):
-    y = 24.5 - k * 5.4
-    ax.text(xc, y, a, fontsize=7.6, color=INK, va="center")
-    ax.text(xc + 2, y - 2.2, "→ " + b, fontsize=7.8, color=OK, va="center", weight="bold")
-    ax.text(103.5, y - 2.2, step, fontsize=7.0, color=MUTED, va="center", ha="right", style="italic")
-ax.text(xc, 7.5, "all hits stay in total_cgc_info.tsv", fontsize=7.4, color=MUTED, va="center", style="italic")
+def draw():
+    H = 5.1
+    fig, ax = st.canvas(W, H)
+    N = ("Other",)
+    note = {"size": st.S, "color": st.GREY, "ha": "center"}   # notes under a gene row, as bracket()
 
-# legend
-lx = 3
-for k, kind in enumerate(["CAZyme", "TC", "TF", "STP", "Other"]):
-    ax.add_patch(Polygon([(lx, 2.2), (lx + 2.4, 2.2), (lx + 2.4, 3.8), (lx, 3.8)], fc=COL[kind], ec="none"))
-    ax.text(lx + 3, 3, "null gene" if kind == "Other" else kind, fontsize=7.6, color=INK, va="center")
-    lx += 11
+    # ---- A: joining rule
+    panel_title(ax, 0, 0.1, "A", "Joining rule (defaults)")
+    legend(ax, W, 0.1)
+    st.text(ax, 0.24, 0.4, "Signature genes are joined while at most 2 other genes lie between them "
+            "(--num_null_gene 2).")
+    st.text(ax, 0.24, 0.4 + 0.2, "A CGC needs at least 1 CAZyme and 1 TC (--additional_genes TC). "
+            "A TF gene counts as a null gene by default.")
+    step, x0, ya = 0.62, 0.32, 1.18
+    gene_row(ax, x0, ya, [("CAZyme", "GH13"), N, ("TC", "TC"), N, N, ("CAZyme", "GH31"), N, N, N,
+                          ("CAZyme", "GH2"), ("CAZyme", "GH42"), N, ("TF", "TF")], step)
+    gx = lambda k: x0 + k * step  # noqa: E731
+    yb = ya + 0.22
+    bracket(ax, gx(0), gx(5) + GENE_W, yb, "CGC: GH13 + TC + GH31")
+    st.text(ax, (gx(6) + gx(8) + GENE_W) / 2, yb + 0.17, "3 null genes: cluster ends", **note)
+    bracket(ax, gx(9), gx(10) + GENE_W, yb, "Not a CGC: no TC", ok=False)
+    st.text(ax, gx(12) + GENE_W / 2, yb + 0.17, "TF: null gene", **note)
 
-fig.savefig(OUT, dpi=150, bbox_inches="tight", pad_inches=0.08, facecolor="white")
-print(OUT, OUT.stat().st_size)
+    y_rule = 1.94
+    st.hline(ax, 0, W, y_rule, lw=0.5)
+
+    # ---- B: each gene counts once
+    yB = y_rule + 0.28
+    panel_title(ax, 0, yB, "B", "Each gene counts once, by its final Gene Type")
+    st.text(ax, 0.24, yB + 0.3, "With --additional_genes STP, a GH13 gene with an STP domain")
+    st.text(ax, 0.24, yB + 0.5, "has Gene Type CAZyme: it does not fill the STP role.")
+    stepB, xB = 0.9, 0.32
+    hit = ("CAZyme", "GH13 + STP", "STP")
+    for k, (genes, (ia, ib), label, ok) in enumerate([
+        ([hit, ("CAZyme", "GH31"), N], (0, 1), "Not a CGC: no STP gene", False),
+        ([hit, ("CAZyme", "GH31"), N, ("STP", "STP")], (0, 3), "CGC: GH13 + GH31 + STP", True),
+    ]):
+        y = yB + 1.1 + k * 0.98
+        gene_row(ax, xB, y, genes, stepB)
+        bracket(ax, xB + ia * stepB, xB + ib * stepB + GENE_W, y + 0.22, label, ok=ok)
+
+    # ---- C: how labels are chosen
+    xC = 4.75
+    st.vline(ax, xC - 0.3, y_rule + 0.18, H - 0.05, color=st.RULE, lw=0.5)
+    panel_title(ax, xC, yB, "C", "How labels are chosen (gff_process)")
+    xr = xC + 2.55              # second column of the table
+    t0 = yB + 0.36
+    st.hline(ax, xC, W, t0, color=st.INK)
+    st.text(ax, xC, t0 + 0.17, "Hits on one gene", size=st.S, color=st.GREY)
+    st.runs(ax, xr, t0 + 0.17, [("Label in ", {}), ("cgc.gff", {"mono": True})], size=st.S, color=st.GREY)
+    st.hline(ax, xC, W, t0 + 0.34, lw=0.5)
+    rows = [(["CAZyme (#ofTools ≥ 2) and a TC,", "TF (DIAMOND) or sulfatase hit"], "CAZyme only"),
+            (["Not a CAZyme; several full-length", "hits (TC, TF DIAMOND, sulfatase)"], "Best bit score only")]
+    y = t0 + 0.53
+    for left, right in rows:
+        for k, s in enumerate(left):
+            st.text(ax, xC, y + k * 0.2, s)
+        st.text(ax, xr, y, right, weight="bold")
+        y += 0.2 * len(left) + 0.16
+    st.hline(ax, xC, W, y - 0.06, color=st.INK)
+    y += 0.22
+    st.text(ax, xC, y, "Gene Type column: one type per gene, by priority")
+    st.text(ax, xC, y + 0.21, "CAZyme > TC > TF > STP > Sulfatase > Peptidase", weight="bold")
+    st.runs(ax, xC, y + 0.52, [("All hits stay in ", {}), ("total_cgc_info.tsv", MONO), (".", {})],
+            size=st.S, color=st.GREY)
+    return fig
+
+
+if __name__ == "__main__":
+    st.save(draw(), "cgc_rules.png")

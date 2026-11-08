@@ -20,10 +20,11 @@ CGC rules
 
 .. figure:: ../_static/img/figures/cgc_rules.png
    :width: 100%
-   :alt: How cgc_finder joins CAZymes and signature genes into CGCs
+   :alt: How cgc_finder joins CAZymes and signature genes into CGCs, and how gff_process labels the genes
 
-   **A** default joining rule; **B** each gene counts once, by its final Gene Type; **C** how the labels of one
-   protein are kept in ``cgc.gff`` (:ref:`gff_process <cgc-information-generation>`).
+   **A** default joining rule; **B** each gene counts once, by its final Gene Type: a CAZyme with an STP domain does
+   not fill the STP role; **C** how :ref:`gff_process <cgc-information-generation>` chooses the labels of a gene in
+   ``cgc.gff``, and the ``Gene Type`` priority. Gene colours as in the run_dbcan CGC plots.
 
 #. **Signature genes**: CAZymes (``#ofTools`` >= 2) and genes whose Gene Type is one of the ``--additional_genes``
    types (default ``TC``). All other genes, including TF/STP genes that are not listed, count as null genes.
