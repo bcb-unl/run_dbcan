@@ -138,6 +138,14 @@ Substrate prediction generates the following output files:
   above its best dbCAN-PUL match, homologous genes linked by grey ribbons (darker = higher identity; only the DIAMOND
   hits that pass ``-evalue``/``-iden``/``-cov`` are drawn). See :ref:`cgc_visualization`.
 
+  .. figure:: ../_static/img/figures/cgc_synteny_ecoli_CGC7_PUL0751.png
+     :width: 100%
+     :alt: Synteny plot of E. coli CGC7 and dbCAN-PUL PUL0751
+
+     ``synteny_pdf/NC_000913.3_CGC7_PUL0751-syntenic.pdf`` of *E. coli* K-12 MG1655, shown as PNG: CGC7 shares
+     three genes (97-100 % identity) with PUL0751, the source of its lactose prediction. More examples are in the
+     :ref:`figure_gallery`.
+
   The synteny figures are drawn after ``substrate_prediction.tsv`` has been written. If one of them cannot be made
   (most often because ``<db_dir>/dbCAN-PUL/<PUL>.out/cgc.gff`` is missing from the database directory),
   ``substrate_prediction`` and ``easy_substrate`` stop with an error and a **non-zero exit status**, even though

@@ -160,3 +160,30 @@ table:
 
 Options that no longer have an effect (``-1/--r1``, ``-2/--r2``, ``--db-dir``) are still accepted
 and print a warning.
+
+Charts: ``dbcan_plot bar_plot`` and ``heatmap_plot``
+----------------------------------------------------
+
+``dbcan_plot`` draws the ``*_abund`` tables of several samples (one file per sample, comma-separated, named with
+``--samples``). Both charts keep ``--top`` rows (default 20): with two or more files, the rows with the largest
+absolute difference between the **first two** files; ``--col``/``--value`` choose rows by name instead. The output is
+a PDF (``--pdf``). The options are listed in :ref:`cgc_visualization`.
+
+.. code-block:: shell
+
+   dbcan_plot bar_plot -i ctrl1_abund/fam_abund.out,treat1_abund/fam_abund.out --samples ctrl1,treat1 \
+       --top 15 --pdf fam_bar.pdf -o figures
+   dbcan_plot heatmap_plot -i ctrl1_abund/fam_abund.out,ctrl2_abund/fam_abund.out,treat1_abund/fam_abund.out \
+       --samples ctrl1,ctrl2,treat1 --top 15 --pdf fam_heatmap.pdf -o figures
+
+.. figure:: ../_static/img/figures/abund_fam_bar.png
+   :width: 60%
+   :alt: Bar chart of CAZyme family abundance (TPM) in two samples
+
+   ``bar_plot`` of ``fam_abund.out`` (TPM) of two samples of simulated *E. coli* RNA-seq reads.
+
+.. figure:: ../_static/img/figures/abund_fam_heatmap.png
+   :width: 50%
+   :alt: Heatmap of CAZyme family abundance (TPM) in six samples
+
+   ``heatmap_plot`` of ``fam_abund.out`` (TPM) of six samples. The :ref:`figure_gallery` gives the full commands.

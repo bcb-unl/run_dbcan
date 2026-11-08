@@ -97,6 +97,9 @@ Unreleased
    named inside the innermost ring and the ticks are labelled on the largest sector only.
 #. ``dbcan_plot``: ``-o`` is honoured by every plot; ``--vertical-bar`` draws vertical bars; ``seaborn-v0_8*`` styles
    are accepted.
+#. Documentation: new :ref:`figure_gallery` page with one example of every figure (circos, overview, CGC map,
+   coverage, synteny, synteny with coverage, bar chart, heatmap) and the command that made it, drawn from real runs
+   of *E. coli*, *Xylona heveae* and PUL0008; the CGC figure, substrate prediction and abundance pages show them too.
 
 .. rubric:: Fixes
 
