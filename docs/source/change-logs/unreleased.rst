@@ -51,7 +51,8 @@ Unreleased
    column keeps only CAZy family tokens, once each; an EC without a count is written ``EC:1``; the ``Substrate``
    column looks the EC up across the eHMM's composition families, falls back to the family-level substrate, and uses
    ``dbCAN-sub-substrate.tsv`` from the database directory when present (same result as the dbCAN-sub web server).
-   Only the tools selected with ``--methods`` are merged.
+   Only the tools selected with ``--methods`` are merged; a result table with rows left by an earlier run of an
+   unselected tool is ignored with a warning (the empty placeholder table is ignored silently).
 #. dbCAN-sub subfamily names are no longer rewritten by the ``GT2_*`` rename (it applies to ``dbCAN.hmm`` only).
 #. CGC signatures: TC, TF (DIAMOND), Sulfatase and Peptidase are full-length DIAMOND searches and keep the best hit
    per protein without a coordinate overlap test against dbCAN domains. Peptidase hits are filtered by subject
@@ -156,7 +157,8 @@ Unreleased
    compared each domain only with the last one kept and could lose one, e.g. the N-terminal Pkinase half of
    *Xylona heveae* KZF26007.1 (``STP_hmm_results.tsv``: 593 instead of 592 rows); see
    :ref:`overlapping-domains`. The Pfam table of the CGC steps is no longer filtered a second time (no effect on the
-   result), and ``overview.tsv`` no longer groups two dbCAN HMM domains with each other.
+   result), and ``overview.tsv`` no longer groups two dbCAN HMM domains with each other (no change on the
+   *E. coli* K-12 and *X. heveae* test genomes: no such pair overlaps by more than half).
 #. Experimental ``--dbcan-taxon-profile fungi``, ``--dbcan-family-cutoff-file``,
    ``--dbcan-overlap-coexistence-file``. In ``easy_CGC``/``easy_substrate`` the fungi profile also turns on
    ``--fungi`` (TF HMM instead of TF DIAMOND) unless ``--fungi``/``--no-fungi`` is given.
