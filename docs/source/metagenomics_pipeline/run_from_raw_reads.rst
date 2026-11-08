@@ -554,7 +554,7 @@ P10. Read count calculation for all proteins of each sample using dbcan_utils  (
     cd ..
 
 
-How to filter the mapped reads are the key step of the abundance calculation. Several parameters can be set to filter the reads. The command dbcan_utils provides --overlap_base_ratio, --mapping_quality and --identity to filter the mapped reads which will may produce more reliable abundance. The default values for these three parameters are 0.2, 30 and 0.98, respectively. Read counts are saved in depth.txt files of each sample.
+How to filter the mapped reads are the key step of the abundance calculation. Several parameters can be set to filter the reads. The command dbcan_utils provides --overlap_base_ratio, --mapping_quality and --identity to filter the mapped reads which will may produce more reliable abundance. The default values for these three parameters are 0.2, 30 and 0.98, respectively (with MAPQ >= 30, genes present in several identical copies get 0 reads). Read pairs are counted once (``--count-mode fragments``). Read counts are saved in depth.txt files of each sample. See :doc:`/user_guide/abundance` for all options.
 
 
 
@@ -603,6 +603,12 @@ We developed a set of Python scripts as dbcan_utils (included in the run_dbcan p
 - **RPM** = # of mapped reads to a gene G / (total # of mapped reads to all genes/106).
 
 - **TPM** = [# of mapped reads to a gene G / (gene G length/1000)] / sum [# of mapped reads to each gene / (the gene length/1000)].
+
+.. note::
+   ``cal_coverage`` counts each read pair once by default (``--count-mode fragments``), ignores
+   secondary, supplementary, QC-fail and duplicate alignments, and accepts NCBI GFFs and run_dbcan's
+   ``cgc.gff`` as well as Prodigal GFFs. ``-a`` accepts RPM, TPM, FPKM and RPKM (the same formula as FPKM),
+   and ``-o`` sets the output directory of the ``*_abund`` functions. See :doc:`/user_guide/abundance`.
 
 
 Box 7. Example output of dbcan_utils
