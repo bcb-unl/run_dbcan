@@ -161,7 +161,8 @@ The CGC is drawn above the dbCAN-PUL (read from ``<db_dir>/dbCAN-PUL/<PUL>.out/c
 two tracks and the title gives ``CGC vs PUL`` and the PUL substrate. The reference is shifted so homologous genes sit
 under each other and, with ``--synteny-revcomp`` (default on), it is drawn reverse-complemented when most homologous
 gene pairs lie on opposite strands. Homologous genes are joined by ribbons whose grey level is the protein identity
-(colour bar ``identity (%)``). Only DIAMOND hits from ``PUL_blast.out`` that pass the per-hit cut-offs of
+(colour bar ``identity (%)``), and the identity is printed on each ribbon between the two tracks (a weak link that
+runs hidden under stronger ribbons gets no number). Only DIAMOND hits from ``PUL_blast.out`` that pass the per-hit cut-offs of
 substrate prediction are drawn: ``substrate_prediction`` uses its own ``-evalue``/``-iden``/``-cov`` values and
 ``dbcan_plot`` takes ``--evalue-cutoff`` (default 0.01), ``--identity-cutoff`` (percent, default 0) and
 ``--coverage-cutoff`` (fraction, default 0). ``--pul`` compares the CGC with another dbCAN-PUL than its best hit.

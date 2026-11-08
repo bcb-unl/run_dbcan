@@ -81,6 +81,11 @@ COVERAGE_YLABEL = "read depth"
 SYNTENY_IDENTITY_RAMP = ("#E6E6E6", "#BDBDBD", "#6E6E6E")
 SYNTENY_IDENTITY_MIN = 20.0
 SYNTENY_IDENTITY_MAX = 100.0
+# % identity printed on each homology link, between the two tracks
+SYNTENY_LINK_LABEL_FORMAT = "{:.0f}%"
+SYNTENY_LINK_LABEL_FONT_SIZE = 8.0
+SYNTENY_LINK_LABEL_WHITE_FROM = 80.0     # identity (%) from which the ribbon is dark enough for white text
+SYNTENY_LINK_LABEL_LEVELS = (0.0, 0.55, -0.55)   # y offsets (data units) tried to keep labels apart
 SYNTENY_PDF_DIR = "synteny_pdf"
 SYNTENY_FILE_TEMPLATE = "{cgc}_{pul}-syntenic.{ext}"
 DBCAN_PUL_DIR = "dbCAN-PUL"

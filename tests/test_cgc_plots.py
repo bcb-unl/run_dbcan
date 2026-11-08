@@ -550,3 +550,45 @@ def test_gene_track_helper_draws_the_cgc_map_track_into_any_axis():
         plt.close(fig)
     with pytest.raises(V.PlotInputError):
         gene_track([], W)
+
+
+def test_synteny_links_show_identity_and_hidden_links_stay_unlabelled():
+    """Every visible ribbon carries its % identity between the tracks; a weak link drawn under a
+    stronger ribbon at every label height gets no number (it would sit on the wrong ribbon)."""
+    import matplotlib
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+    from dbcan.plot.syntenic_plot import Link, draw_link_labels
+
+    def gene(pid, s, e):
+        return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="CAZyme", roles=[("CAZyme", "GH1")])
+
+    q1, q2 = gene("q1", 0, 1000), gene("q2", 1000, 2000)
+    s1, s2 = gene("s1", 0, 1000), gene("s2", 1000, 2000)
+    links = [Link(q1, s1, 96.4, 900), Link(q2, s2, 88.0, 800),
+             Link(q1, s2, 41.0, 100)]          # paralog crossing under both strong ribbons
+    fig, ax = plt.subplots()
+    ax.set_xlim(-100, 2300)
+    n = draw_link_labels(ax, links, lambda g: (g.start, g.end, g.strand), 2.7, 0.5, 2400 / 6.0)
+    texts = sorted(t.get_text() for t in ax.texts)
+    plt.close(fig)
+    assert texts == ["88%", "96%"] and n == 2
+
+
+def test_synteny_paralog_label_shown_where_its_ribbon_is_visible():
+    import matplotlib
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+    from dbcan.plot.syntenic_plot import Link, draw_link_labels
+
+    def gene(pid, s, e):
+        return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="CAZyme", roles=[("CAZyme", "GH1")])
+
+    q1, q2, s1, s2 = gene("q1", 0, 1000), gene("q2", 1600, 2600), gene("s1", 0, 1000), gene("s2", 1600, 2600)
+    links = [Link(q1, s1, 96.0, 900), Link(q2, s2, 88.0, 800), Link(q1, s2, 41.0, 100)]
+    fig, ax = plt.subplots()
+    ax.set_xlim(-100, 2700)
+    draw_link_labels(ax, links, lambda g: (g.start, g.end, g.strand), 2.7, 0.5, 2800 / 6.0)
+    texts = sorted(t.get_text() for t in ax.texts)
+    plt.close(fig)
+    assert texts == ["41%", "88%", "96%"]    # the crossing link is visible in the gap

@@ -8,7 +8,8 @@ One renderer (:func:`plot_synteny`) is shared by ``run_dbcan substrate_predictio
   ``revcomp`` is on (default) and most homologous pairs lie on opposite strands, it is
   drawn reverse-complemented.
 * Links are the DIAMOND hits (PUL_blast.out) that pass the substrate-prediction per-hit
-  cut-offs (E-value, identity, query coverage); their grey level is the % identity.
+  cut-offs (E-value, identity, query coverage); their grey level is the % identity, which is also
+  printed on each link.
 * Text is minimal: the two track names on the left, a title (CGC vs PUL) and the
   substrate. Gene colours use the shared dbCAN palette.
 """
@@ -139,6 +140,70 @@ def _ribbon(ax, qx0, qx1, sx0, sx1, ytop, ybot, color, zorder):
     ax.add_patch(PathPatch(MPath(verts, codes), facecolor=color, edgecolor="none", zorder=zorder))
 
 
+def _ribbon_x_at(qx: float, sx: float, ytop: float, ybot: float, y: float) -> float:
+    """x of the ribbon centre line (the cubic Bezier drawn by _ribbon) at height y."""
+    ym = (ytop + ybot) / 2
+    best_t, best_d = 0.5, float("inf")
+    for i in range(201):
+        t = i / 200
+        u = 1 - t
+        yt = ytop * u ** 3 + 3 * ym * u * u * t + 3 * ym * u * t * t + ybot * t ** 3
+        if abs(yt - y) < best_d:
+            best_t, best_d = t, abs(yt - y)
+    t, u = best_t, 1 - best_t
+    return qx * u ** 3 + 3 * qx * u * u * t + 3 * sx * u * t * t + sx * t ** 3
+
+
+def _ribbon_span_at(link_x, ytop: float, ybot: float, y: float):
+    """(left, right) x of a ribbon (qx0, qx1, sx0, sx1) at height y."""
+    qx0, qx1, sx0, sx1 = link_x
+    return (_ribbon_x_at(qx0, sx0, ytop, ybot, y), _ribbon_x_at(qx1, sx1, ytop, ybot, y))
+
+
+def draw_link_labels(ax, links, pmap, ytop: float, ybot: float, x_per_in: float) -> int:
+    """Write the % identity of every link on its own ribbon, between the two tracks.
+
+    Ribbons are drawn in order of increasing identity, so a weak (paralogous) link can be hidden
+    under stronger ones. A label is placed only where its ribbon is visible (not covered by a
+    ribbon drawn later) and where it does not overlap another label; the heights in
+    P.SYNTENY_LINK_LABEL_LEVELS are tried in turn. A link that is hidden at every height gets no
+    label. Returns the number of labels written."""
+    ym = (ytop + ybot) / 2
+    fs = P.SYNTENY_LINK_LABEL_FONT_SIZE
+    pad = 0.06 * x_per_in
+    order = sorted(links, key=lambda l: l.pident)          # same order as the ribbons
+    xs = []
+    for l in order:
+        a, b, _ = pmap(l.s)
+        xs.append((l.q.start, l.q.end, a, b))
+    placed = {lvl: [] for lvl in P.SYNTENY_LINK_LABEL_LEVELS}
+    n = 0
+    for i in sorted(range(len(order)), key=lambda k: order[k].q.mid):
+        l = order[i]
+        text = P.SYNTENY_LINK_LABEL_FORMAT.format(l.pident)
+        half = V.text_width_data_in(text, fs) * x_per_in / 2 + pad
+        qmid, smid = (xs[i][0] + xs[i][1]) / 2, (xs[i][2] + xs[i][3]) / 2
+        for lvl in P.SYNTENY_LINK_LABEL_LEVELS:
+            y = ym + lvl
+            x = _ribbon_x_at(qmid, smid, ytop, ybot, y)
+            if any(not (x + half <= x0 or x - half >= x1) for x0, x1 in placed[lvl]):
+                continue
+            covered = False
+            for j in range(i + 1, len(order)):
+                lo, hi = sorted(_ribbon_span_at(xs[j], ytop, ybot, y))
+                if x + half > lo and x - half < hi:
+                    covered = True
+                    break
+            if covered:
+                continue
+            placed[lvl].append((x - half, x + half))
+            color = "white" if l.pident >= P.SYNTENY_LINK_LABEL_WHITE_FROM else P.PLOT_INK
+            ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=color, zorder=1.5)
+            n += 1
+            break
+    return n
+
+
 def reference_transform(cgc_genes, pul_genes, links, revcomp: bool):
     """Return (map(gene)->(x0, x1, strand), flipped) placing the PUL under the CGC."""
     opp = sum(l.bitscore for l in links if l.q.strand != l.s.strand)
@@ -221,6 +286,7 @@ def plot_synteny(cgc_genes: Sequence[V.Gene], cgcid: str, pul_genes: Sequence[V.
         _ribbon(ax, l.q.start, l.q.end, a, b, Y_CGC - GENE_H / 2, GENE_H / 2,
                 IDENTITY_CMAP(norm(min(max(l.pident, P.SYNTENY_IDENTITY_MIN), P.SYNTENY_IDENTITY_MAX))),
                 zorder=1.2)
+    draw_link_labels(ax, links, pmap, Y_CGC - GENE_H / 2, GENE_H / 2, (xhi - xlo) / ax_w)
     for g in cgc_genes:
         V.draw_gene(ax, g.start, g.end, g.strand, g.gtype, Y_CGC, GENE_H, head)
     for g, (a, b, st) in zip(pul_genes, placed):
