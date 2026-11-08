@@ -162,8 +162,8 @@ two tracks and the title gives ``CGC vs PUL`` and the PUL substrate. The referen
 under each other and, with ``--synteny-revcomp`` (default on), it is drawn reverse-complemented when most homologous
 gene pairs lie on opposite strands. Homologous genes are joined by ribbons whose grey level is the protein identity
 (colour bar ``identity (%)``), and the identity is printed on each ribbon in a small tag outlined in the ribbon's grey. Tags of the
-one-to-one gene pairs form one row half-way between the tracks; tags of multiple matches sit towards the ends of their
-ribbon, where it runs alone. Ribbons are narrower than the genes
+one-to-one gene pairs form one row half-way between the tracks; tags of multiple matches sit above that row, near the CGC end of
+their ribbon. Ribbons are narrower than the genes
 (about a third of the gene width), and a gene with several hits (multiple matches, e.g. two paralogous GH32 genes
 hitting each other's counterpart) gives each ribbon its own slot, ordered by the partner's position, so every link
 stays visible. Only DIAMOND hits from ``PUL_blast.out`` that pass the per-hit cut-offs of

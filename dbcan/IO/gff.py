@@ -6,6 +6,7 @@ from typing import Dict, Any
 
 import pandas as pd
 from dbcan.IO.table import read_tsv
+import dbcan.constants.process_utils_constants as PU
 from Bio import SeqIO
 from BCBio import GFF
 from tqdm import tqdm
@@ -225,17 +226,26 @@ class GFFProcessor:
 
             logger.info(f"Loading CGC signature data from {self.cgc_sig_path}")
             try:
+                with open(self.cgc_sig_path) as fh:
+                    header = fh.readline().rstrip("\n").split("\t")
+                usecols = list(G.GFF_CGC_SIG_COLUMNS)
+                names = [G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL]
+                if PU.SIGNATURE_SOURCE_COLUMN in header:
+                    usecols.append(header.index(PU.SIGNATURE_SOURCE_COLUMN))
+                    names.append(PU.SIGNATURE_SOURCE_COLUMN)
                 cgc_sig_chunks = read_tsv(
                     self.cgc_sig_path,
                     id_columns=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
-                    usecols=G.GFF_CGC_SIG_COLUMNS,
+                    usecols=usecols,
                     header=None,
                     skiprows=1,
-                    names=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
+                    names=names,
                     chunksize=100_000
                 )
                 cgc_sig_df_list = []
                 chunk_count = 0
+                cazyme_ids = set(overview_df[G.GFF_PROTEIN_ID_COL])
+                dropped_full_length = 0
                 for chunk in cgc_sig_chunks:
                     chunk_count += 1
                     for col in (G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL):
@@ -243,10 +253,21 @@ class GFFProcessor:
                     before_rows = len(chunk)
                     chunk = chunk.dropna(subset=[G.GFF_PROTEIN_ID_COL])
                     chunk[G.GFF_CGC_ANNOTATION_COL] = chunk[G.GFF_TYPE_COL] + '|' + chunk[G.GFF_FUNCTION_ANNOTATION_COL]
+                    if PU.SIGNATURE_SOURCE_COLUMN in chunk.columns:
+                        # A full-length database label (TC, TF DIAMOND, sulfatase) cannot be placed on the
+                        # protein, so it cannot be told apart from the CAZyme domain: CAZyme wins.
+                        drop = (chunk[PU.SIGNATURE_SOURCE_COLUMN].isin(PU.FULL_LENGTH_SIGNATURE_SOURCES)
+                                & chunk[G.GFF_PROTEIN_ID_COL].isin(cazyme_ids))
+                        dropped_full_length += int(drop.sum())
+                        chunk = chunk[~drop]
                     cgc_sig_df_list.append(chunk[[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]])
                 cgc_sig_df = pd.concat(cgc_sig_df_list, ignore_index=True) if cgc_sig_df_list else pd.DataFrame(
                     columns=[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]
                 )
+                if dropped_full_length:
+                    logger.info("%d TC/TF(DIAMOND)/sulfatase label(s) on CAZyme proteins not used in cgc.gff "
+                                "(full-length database hits; they stay in %s)", dropped_full_length,
+                                self.cgc_sig_path.name)
                 logger.info(f"CGC signature chunks read: {chunk_count}, total rows: {len(cgc_sig_df)}; "
                             f"TC rows: {(cgc_sig_df[G.GFF_CGC_ANNOTATION_COL].str.startswith('TC|').sum() if not cgc_sig_df.empty else 0)}")
             except Exception as e:

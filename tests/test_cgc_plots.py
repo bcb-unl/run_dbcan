@@ -639,4 +639,4 @@ def test_pair_tags_form_one_row_and_multiple_match_tags_go_to_the_ends():
     plt.close(fig)
     mid = (2.7 + 0.5) / 2
     assert ys["87%"] == [pytest.approx(mid)] and ys["88%"] == [pytest.approx(mid)]
-    assert all(abs(y - mid) > 0.3 for y in ys["50%"])
+    assert all(y > mid + 0.3 for y in ys["50%"])      # both above the row, near the CGC track

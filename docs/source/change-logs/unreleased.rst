@@ -25,6 +25,12 @@ Unreleased
 
 .. rubric:: Changed outputs
 
+#. ``cgc.gff``: on a CGC CAZyme (``#ofTools`` >= 2) TC, TF (DIAMOND) and sulfatase labels are no longer used:
+   they come from full-length protein databases and cannot be placed relative to the CAZyme domain, so the CAZyme
+   annotation wins (the hits stay in ``total_cgc_info.tsv``). Domain-level labels (STP, fungal TF HMM, peptidase)
+   are kept. *E. coli* K-12: 24 CAZyme genes lose such a label and CGC44 (the LPS core glycosyltransferase cluster,
+   a CGC only through ``GT121 + TC 9.B.67`` on WaaL) is no longer called (53 -> 52 CGCs); *Xylona*: 27 genes,
+   CGC111 (``GT48 + TC 9.B.119`` on FKS1) is no longer called (111 -> 110). Substrate predictions are unchanged.
 #. Sulfatase (SulfAtlas DIAMOND) hits must also cover at least 70 % of the SulfAtlas protein
    (``--subject_coverage_threshold_sulfatase``). SulfAtlas entries are full-length proteins, often sulfatases fused
    to GH or other domains; without this filter a GH32 or GH2 protein that only matched the glycoside hydrolase part

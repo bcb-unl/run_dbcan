@@ -22,9 +22,15 @@ To identify and analyze CGCs, users must first prepare annotation information by
 .. note::
 
    The DIAMOND databases contain full-length proteins, so a TC, TF (DIAMOND), sulfatase or peptidase hit is a
-   protein-level label; its query interval is an alignment span, not a domain. Annotations from different sources
-   are therefore never filtered against each other: one protein can be, for example, ``TC`` and ``STP`` at the same
-   time. Each DIAMOND search keeps one best hit per protein; STP and TF HMM domains are resolved within their own
+   protein-level label; its query interval is an alignment span, not a domain, so it cannot be compared with a
+   CAZyme domain. On a protein that is a CGC CAZyme (``#ofTools`` >= 2) the CAZyme annotation therefore wins: its
+   TC, TF (DIAMOND) and sulfatase labels are not written to ``cgc.gff`` (they stay in ``total_cgc_info.tsv``). For
+   example a GH13 protein that also hits TC 8.A.9 (the rBAT/SLC3 family of TCDB, itself a GH13 homologue) is a
+   CAZyme only, and a cluster of glycosyltransferases cannot become a CGC because one of them is also in TCDB.
+   Domain-level labels (STP, fungal TF HMM, MEROPS peptidase units) are kept, and CGCFinder ignores them only when
+   they lie on the CAZyme domain. On proteins without a CAZyme annotation, labels from different sources are kept
+   side by side (one protein can be, for example, ``TC`` and ``STP``); such a gene still fills only one role when
+   CGCs are called. Each DIAMOND search keeps one best hit per protein; STP and TF HMM domains are resolved within their own
    HMM library. The peptidase database is built from MEROPS ``pepunit.lib`` (peptidase units); hits to MEROPS
    peptidase *inhibitor* units (families ``I*``) are not reported as ``Peptidase`` (they stay in the raw
    ``diamond.out.peptidase`` file). In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of

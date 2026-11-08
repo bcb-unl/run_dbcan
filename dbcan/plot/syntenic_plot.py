@@ -207,8 +207,9 @@ def draw_link_labels(ax, links, ports, ytop: float, ybot: float, x_per_in: float
 
     Tags of the one-to-one gene pairs (split_primary_links) form one row half-way between the
     tracks, sliding along their ribbon only if two tags would touch. Tags of the multiple matches
-    (a further hit of an already paired gene) go where their ribbon runs alone, towards its ends
-    (P.SYNTENY_SECONDARY_LABEL_POSITIONS), so they never sit in the row of the pair tags.
+    (a further hit of an already paired gene) all go near the CGC end of their ribbon, above the
+    row of pair tags (P.SYNTENY_SECONDARY_LABEL_POSITIONS), where the ribbon crosses the fewest
+    other ribbons; the lower end is used only when every upper place is taken.
     Returns the number of labels written."""
     fs = P.SYNTENY_LINK_LABEL_FONT_SIZE
     half_h = (fs * 1.45 / 72) / U / 2                     # tag half-height in data units
@@ -251,15 +252,16 @@ def draw_link_labels(ax, links, ports, ytop: float, ybot: float, x_per_in: float
             box = (x - half_w, x + half_w, y - half_h, y + half_h)
             if not all(box[1] <= b[0] or box[0] >= b[1] or box[3] <= b[2] or box[2] >= b[3] for b in boxes):
                 continue
-            cost = ribbons_hit(box, id(l)) if sec else 0
+            # secondary tags: any upper place beats any lower one, then fewest crossed ribbons
+            cost = (pos > 0.5, ribbons_hit(box, id(l))) if sec else (False, 0)
             if best is None or cost < best[0]:
                 best = (cost, x, y, box)
-            if cost == 0:
+            if cost == (False, 0):
                 break
         if best is None:
             y = (ytop + ybot) / 2
             x = _ribbon_x_at(qc, sc, ytop, ybot, y)
-            best = (0, x, y, (x - half_w, x + half_w, y - half_h, y + half_h))
+            best = ((False, 0), x, y, (x - half_w, x + half_w, y - half_h, y + half_h))
         _, x, y, box = best
         boxes.append(box)
         ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=P.PLOT_INK, zorder=1.6,

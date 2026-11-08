@@ -66,7 +66,7 @@ def same_region_categories(output_dir, threshold: float = PU.SAME_REGION_OVERLAP
         return {}
     cazy = cazyme_domain_intervals(overview)
     df = read_tsv(sig)
-    if "Source" not in df.columns:
+    if PU.SIGNATURE_SOURCE_COLUMN not in df.columns:
         logger.warning("CGC same-region check skipped: %s has no Source column (re-run gff_process)", sig.name)
         return {}
     df = df[df[PU.TARGET_NAME_COLUMN].isin(cazy.keys())]
@@ -74,7 +74,7 @@ def same_region_categories(output_dir, threshold: float = PU.SAME_REGION_OVERLAP
     for (prot, cat), rows in df.groupby([PU.TARGET_NAME_COLUMN, "Type"], sort=False):
         independent = False
         for _, r in rows.iterrows():
-            if r["Source"] not in PU.DOMAIN_LEVEL_SIGNATURE_SOURCES:
+            if r[PU.SIGNATURE_SOURCE_COLUMN] not in PU.DOMAIN_LEVEL_SIGNATURE_SOURCES:
                 independent = True
                 break
             span = (int(r[PU.TARGET_FROM_COLUMN]), int(r[PU.TARGET_TO_COLUMN]))
