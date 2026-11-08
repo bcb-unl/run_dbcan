@@ -123,6 +123,28 @@ def parse_roles(annotation: str) -> List[Tuple[str, str]]:
     return [(t, ";".join(d)) for t, d in sorted(merged.items(), key=lambda kv: order.get(kv[0], 99))]
 
 
+def gene_type(annotation: str) -> str:
+    """The final Gene Type of a ``CGC_annotation``: the label type with the highest priority
+    (CAZyme > TC > TF > STP > Sulfatase > Peptidase).
+
+    'CAZyme|GH13_31+TC|8.A.9.1.1' -> 'CAZyme'; 'TC|3.A.1.14.3+STP|Peripla_BP_2' -> 'TC'. Spellings are
+    normalized (SULFATLAS -> Sulfatase); other types ('Other|tRNA', a custom '<Type>|<name>') rank
+    after the six signature types and are kept as written; 'null' or empty gives 'null'. This is the
+    'Gene Type' column of cgc_standard_out.tsv and the only role the gene plays in CGC calling.
+    """
+    types: List[str] = []
+    for part in (annotation or "").split("+"):
+        part = part.strip()
+        if not part or part.lower() in ("null", "na", "-"):
+            continue
+        name = part.partition("|")[0].strip()
+        types.append(B.CGC_GENE_TYPE_ALIASES.get(name.lower(), name))
+    if not types:
+        return B.NULL
+    order = B.CGC_GENE_TYPE_PRIORITY
+    return min(types, key=lambda t: order.get(t, len(order)))  # min keeps the first of equal ranks
+
+
 def role_family(annotation: str, gene_type: str = "", tc_levels: Optional[int] = None) -> str:
     """Family/ID of the role ``gene_type`` (default: the highest-priority role) of an annotation.
 

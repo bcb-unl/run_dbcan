@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Prefer I/O module to parse GFF (compatible with both cases and function names)
 from dbcan.IO.gff import read_gff_to_df as io_read_gff_df
+from dbcan.IO.cgc_ids import gene_type
 
 
 class CGCFinder:
@@ -148,34 +149,21 @@ class CGCFinder:
             import traceback; traceback.print_exc()
             return False
 
-    @staticmethod
-    def annotation_categories(annotation_str) -> frozenset:
-        """Signature categories of a CGC_annotation string, e.g.
-        'CAZyme|CE1_e5+Peptidase|S09.940' -> {'CAZyme', 'Peptidase'} (exact match, no substrings)."""
-        if not isinstance(annotation_str, str) or not annotation_str or annotation_str == 'null':
-            return frozenset()
-        return frozenset(part.split('|', 1)[0] for part in annotation_str.split('+') if part)
-
     def mark_signature_genes(self):
-        """Mark core (CAZyme) genes and the additional signature categories each gene can provide.
+        """Give each gene its one CGC role: its final Gene Type (see :meth:`get_gene_type`).
 
-        A category that lies on the gene's own CAZyme domain (domain-level STP/TF HMM/peptidase
-        hit overlapping the CAZyme domain, see dbcan.process.cgc_signature_overlap) is the same
-        region classified twice and does not count as an additional signature.
+        A gene is core iff its Gene Type is CAZyme; it is an additional signature iff its Gene Type
+        is another type listed in --additional_genes. The other labels of a multi-label gene
+        ('CAZyme|GH23_e1056+STP|SBP_bac_3', 'TC|3.A.1.14.3+STP|Peripla_BP_2') stay in the
+        annotation text but fill no role.
         """
         try:
-            from dbcan.process.cgc_signature_overlap import same_region_categories
-
-            same_region = same_region_categories(self.output_dir)
-            wanted = set(self.additional_genes or [])
-            cats = self.df[C.CGC_ANNOTATION_COLUMN].map(self.annotation_categories)
             core_types = set(C.CGC_CORE_SIG_TYPES)
-            self.df[C.IS_CORE_COLUMN] = cats.map(lambda c: bool(c & core_types))
-            proteins = self.df[C.PROTEIN_ID_COLUMN].astype(str)
-            self.df[C.ADDITIONAL_CATEGORIES_COLUMN] = [
-                frozenset((c & wanted) - same_region.get(pid, set())) for c, pid in zip(cats, proteins)
-            ]
-            self.df[C.IS_ADDITIONAL_COLUMN] = self.df[C.ADDITIONAL_CATEGORIES_COLUMN].map(bool)
+            wanted = set(self.additional_genes) - core_types
+            gene_types = self.df[C.CGC_ANNOTATION_COLUMN].map(self.get_gene_type)
+            self.df[C.GENE_ROLE_COLUMN] = gene_types
+            self.df[C.IS_CORE_COLUMN] = gene_types.isin(core_types)
+            self.df[C.IS_ADDITIONAL_COLUMN] = gene_types.isin(wanted)
             self.df[C.IS_SIGNATURE_COLUMN] = self.df[C.IS_CORE_COLUMN] | self.df[C.IS_ADDITIONAL_COLUMN]
 
             logger.info(f"Marked signatures: core={int(self.df[C.IS_CORE_COLUMN].sum())}, "
@@ -359,68 +347,37 @@ class CGCFinder:
         labels = idx_array[left_pos:right_pos + 1]
         return contig_df.loc[labels]
 
-    @staticmethod
-    def _distinct_genes_cover(slots) -> bool:
-        """True if every slot (a set of candidate gene positions) gets its own gene.
-
-        Bipartite matching (augmenting paths); clusters are small, so this is cheap.
-        """
-        owner = {}
-
-        def assign(i, seen):
-            for g in slots[i]:
-                if g in seen:
-                    continue
-                seen.add(g)
-                if g not in owner or assign(owner[g], seen):
-                    owner[g] = i
-                    return True
-            return False
-
-        return all(assign(i, set()) for i in range(len(slots)))
-
     def validate_cluster(self, cluster_df):
-        """A CGC needs its core CAZymes and each required additional category on *different* genes.
+        """Check the CGC rule on a candidate window; every gene counts once, by its Gene Type.
 
-        One multi-label gene (e.g. 'CAZyme|GH13_31+TC|8.A.9.1.1') can fill only one role, so a
-        cluster cannot be formed by a single gene acting as both the CAZyme and the transporter.
+        ``CAZyme`` in --additional_genes asks for one CAZyme more than --min_core_cazyme; alone it
+        means "at least two CAZymes" (CAZyme pairs).
         """
         if len(cluster_df) < max(1, self.min_cluster_genes):
             return False
-        is_core = cluster_df[C.IS_CORE_COLUMN].tolist()
-        add_cats = cluster_df[C.ADDITIONAL_CATEGORIES_COLUMN].tolist()
-        core_genes = {i for i, c in enumerate(is_core) if c}
-        cazyme_count = len(core_genes)
+        roles = cluster_df[C.GENE_ROLE_COLUMN]
+        cazyme_count = int(cluster_df[C.IS_CORE_COLUMN].sum())
+        wanted = list(dict.fromkeys(self.additional_genes))
+        core_types = set(C.CGC_CORE_SIG_TYPES)
 
-        if len(self.additional_genes) == 1 and self.additional_genes[0] == "CAZyme":
+        if wanted == ["CAZyme"]:
             return cazyme_count >= max(2, self.min_core_cazyme)
+        if cazyme_count < self.min_core_cazyme:
+            return False
+        if not wanted:
+            return True
 
-        core_slots = [core_genes] * max(0, self.min_core_cazyme)
-        if not self.additional_genes:
-            return cazyme_count >= self.min_core_cazyme
-
-        genes_by_cat = {}
-        for i, cats in enumerate(add_cats):
-            for cat in cats:
-                genes_by_cat.setdefault(cat, set()).add(i)
-
+        present = {cat for cat in wanted if cat not in core_types and (roles == cat).any()}
+        if any(cat in core_types for cat in wanted) and cazyme_count >= self.min_core_cazyme + 1:
+            present.add("CAZyme")
         if self.additional_logic == 'all':
-            slots = core_slots + [genes_by_cat.get(cat, set()) for cat in dict.fromkeys(self.additional_genes)]
-            return self._distinct_genes_cover(slots)
-
-        from itertools import combinations
-        k = max(1, self.additional_min_categories)
-        present = [cat for cat in dict.fromkeys(self.additional_genes) if genes_by_cat.get(cat)]
-        return any(
-            self._distinct_genes_cover(core_slots + [genes_by_cat[c] for c in combo])
-            for combo in combinations(present, k)
-        )
+            return len(present) == len(wanted)
+        return len(present) >= max(1, self.additional_min_categories)
 
     @staticmethod
     def get_gene_type(annotation_str):
-        PRIORITY = C.PRIORITY
-        types = [ann.split('|')[0] for ann in annotation_str.split('+')]
-        return sorted(types, key=lambda t: PRIORITY.get(t, 99))[0] if types else C.NULL_GENE_TYPE
+        """Final Gene Type of a CGC_annotation (shared with substrate prediction and plots)."""
+        return gene_type(annotation_str)
 
     def process_cluster(self, cluster_df, cgc_id):
         return [{
