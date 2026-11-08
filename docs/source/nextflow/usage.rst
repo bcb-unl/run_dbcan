@@ -176,23 +176,40 @@ They are loaded in sequence, so later profiles can overwrite earlier profiles.
 If ``-profile`` is not specified, the pipeline will run locally and expect all required software to be installed and available on the system ``PATH``. This approach is *not* recommended, as it can lead to inconsistent results across different machines due to variations in software versions and system configurations.
 
 - ``test``
+
   - A profile with a complete configuration for automated testing
   - Includes links to test data so needs no other parameters
+
 - ``docker``
+
   - A generic configuration profile to be used with `Docker <https://docker.com/>`_
+
 - ``singularity``
+
   - A generic configuration profile to be used with `Singularity <https://sylabs.io/docs/>`_
+
 - ``podman``
+
   - A generic configuration profile to be used with `Podman <https://podman.io/>`_
+
 - ``shifter``
+
   - A generic configuration profile to be used with `Shifter <https://nersc.gitlab.io/development/shifter/how-to-use/>`_
+
 - ``charliecloud``
+
   - A generic configuration profile to be used with `Charliecloud <https://hpc.github.io/charliecloud/>`_
+
 - ``apptainer``
+
   - A generic configuration profile to be used with `Apptainer <https://apptainer.org/>`_
+
 - ``wave``
+
   - A generic configuration profile to enable `Wave <https://seqera.io/wave/>`_ containers. Use together with one of the above (requires Nextflow ``24.03.0-edge`` or later).
+
 - ``conda``
+
   - A generic configuration profile to be used with `Conda <https://conda.io/docs/>`_. Please only use Conda as a last resort when containerization solutions (Docker, Singularity, Podman, Shifter, Charliecloud, or Apptainer) are not available or feasible.
 
 Analysis Modes

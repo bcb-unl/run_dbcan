@@ -58,6 +58,9 @@ One row per CGC with a prediction, sorted by contig and CGC number (``CGC2`` bef
    * - ``dbCAN-sub substrate``, ``dbCAN-sub substrate score``
      - Highest-scoring dbCAN-sub substrate(s) (ties joined with ``,``) and the score
 
+For many CGCs only one of the two methods gives a substrate; when both do and they disagree, prefer the
+dbCAN-PUL call (homology to an experimentally characterized PUL).
+
 Here a ``,`` between two substrates is a separator, but a ``,`` between digits belongs to a name
 (``alpha-1,4-glucan``). ``dbcan_utils CGC_substrate_abund`` splits them the same way.
 
