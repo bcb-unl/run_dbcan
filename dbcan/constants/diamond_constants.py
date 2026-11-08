@@ -96,6 +96,10 @@ SULFATLAS_COLUMN_NAMES = [
 ]
 DIAMOND_SULFATLAS_EVALUE_DEFAULT = 1e-4
 DIAMOND_SULFATLAS_COVERAGE_DEFAULT = 35
+# SulfAtlas holds full-length proteins, many of them sulfatase domains fused to other domains
+# (e.g. GH2/GH32). A protein that aligns only to the non-sulfatase part of such an entry would
+# take its S1_x label, so a hit must also cover most of the SulfAtlas protein (--subject-cover).
+DIAMOND_SULFATLAS_SUBJECT_COVERAGE_DEFAULT = 70
 
 # Peptidase Constants
 PEPTIDASE = base_constants.PEPTIDASE

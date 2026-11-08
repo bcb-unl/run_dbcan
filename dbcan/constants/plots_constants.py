@@ -91,7 +91,9 @@ SYNTENY_LINK_SLOT_FILL = 0.8             # with several links on one gene: fract
 SYNTENY_LINK_EDGE_COLOR = "white"        # hairline that separates crossing links
 SYNTENY_LINK_EDGE_LW = 0.5
 # where a % tag sits along its ribbon (0 = CGC track, 1 = PUL track); later positions are tried when tags collide
-SYNTENY_LINK_LABEL_POSITIONS = (0.5, 0.32, 0.68, 0.2, 0.8)
+SYNTENY_LINK_LABEL_POSITIONS = (0.5, 0.36, 0.64, 0.24, 0.76)
+# tags of multiple matches (secondary links): towards the ends of the ribbon, where it runs alone
+SYNTENY_SECONDARY_LABEL_POSITIONS = (0.2, 0.8, 0.12, 0.88, 0.3, 0.7, 0.5)
 SYNTENY_PDF_DIR = "synteny_pdf"
 SYNTENY_FILE_TEMPLATE = "{cgc}_{pul}-syntenic.{ext}"
 DBCAN_PUL_DIR = "dbCAN-PUL"

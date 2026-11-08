@@ -184,37 +184,83 @@ def link_ports(links, pmap) -> Dict[int, Tuple[float, float, float, float]]:
     return {id(l): (*q_end[id(l)], *s_end[id(l)]) for l in links}
 
 
+def split_primary_links(links):
+    """One-to-one pairing of homologous genes: links are taken by decreasing bitscore and a link is
+    primary when neither its CGC gene nor its PUL gene is paired yet. The rest (a further hit of an
+    already paired gene: multiple matches, paralogues) are secondary."""
+    used_q, used_s, primary, secondary = set(), set(), [], []
+    for l in sorted(links, key=lambda l: (-l.bitscore, -l.pident)):
+        kq, ks = (l.q.contig, l.q.start, l.q.end), (l.s.contig, l.s.start, l.s.end)
+        if kq in used_q or ks in used_s:
+            secondary.append(l)
+        else:
+            primary.append(l)
+            used_q.add(kq)
+            used_s.add(ks)
+    return primary, secondary
+
+
 def draw_link_labels(ax, links, ports, ytop: float, ybot: float, x_per_in: float, colors=None) -> int:
     """Write the % identity of every link ON its ribbon: a small white tag, outlined in the
     ribbon's grey, centred on the ribbon's centre line, so the ribbon visibly runs into and out of
-    its own tag. Tags start half-way between the tracks; when two would overlap, a tag slides
-    along its own ribbon (P.SYNTENY_LINK_LABEL_POSITIONS). Returns the number of labels written."""
+    its own tag.
+
+    Tags of the one-to-one gene pairs (split_primary_links) form one row half-way between the
+    tracks, sliding along their ribbon only if two tags would touch. Tags of the multiple matches
+    (a further hit of an already paired gene) go where their ribbon runs alone, towards its ends
+    (P.SYNTENY_SECONDARY_LABEL_POSITIONS), so they never sit in the row of the pair tags.
+    Returns the number of labels written."""
     fs = P.SYNTENY_LINK_LABEL_FONT_SIZE
     half_h = (fs * 1.45 / 72) / U / 2                     # tag half-height in data units
     pad_x = 0.05 * x_per_in
     colors = colors or {}
+    edges = {id(l): ports[id(l)] for l in links}
+
+    def ribbons_hit(box, own):
+        x0, x1, y0, y1 = box
+        hit = 0
+        for l in links:
+            if id(l) == own:
+                continue
+            qx0, qx1, sx0, sx1 = edges[id(l)]
+            for y in (y0, (y0 + y1) / 2, y1):
+                lo = min(_ribbon_x_at(qx0, sx0, ytop, ybot, y), _ribbon_x_at(qx1, sx1, ytop, ybot, y))
+                hi = max(_ribbon_x_at(qx0, sx0, ytop, ybot, y), _ribbon_x_at(qx1, sx1, ytop, ybot, y))
+                if x1 > lo and x0 < hi:
+                    hit += 1
+                    break
+        return hit
+
     boxes: List[Tuple[float, float, float, float]] = []
     n = 0
-    for l in sorted(links, key=lambda l: (-l.pident, l.q.mid)):
+    primary, secondary = split_primary_links(links)
+    is_secondary = {id(l) for l in secondary}
+    order = sorted(primary, key=lambda l: l.q.mid) + sorted(secondary, key=lambda l: (-l.pident, l.q.mid))
+    for l in order:
+        sec = id(l) in is_secondary
         qx0, qx1, sx0, sx1 = ports[id(l)]
         qc, sc = (qx0 + qx1) / 2, (sx0 + sx1) / 2
         text = P.SYNTENY_LINK_LABEL_FORMAT.format(l.pident)
         half_w = V.text_width_data_in(text, fs) * x_per_in / 2 + pad_x
-        choice = None
-        for pos in P.SYNTENY_LINK_LABEL_POSITIONS:
+        best = None
+        for pos in (P.SYNTENY_SECONDARY_LABEL_POSITIONS if sec else P.SYNTENY_LINK_LABEL_POSITIONS):
             y = ytop - pos * (ytop - ybot)
             if y + half_h > ytop or y - half_h < ybot:
                 continue
             x = _ribbon_x_at(qc, sc, ytop, ybot, y)
             box = (x - half_w, x + half_w, y - half_h, y + half_h)
-            if all(box[1] <= b[0] or box[0] >= b[1] or box[3] <= b[2] or box[2] >= b[3] for b in boxes):
-                choice = (x, y, box)
+            if not all(box[1] <= b[0] or box[0] >= b[1] or box[3] <= b[2] or box[2] >= b[3] for b in boxes):
+                continue
+            cost = ribbons_hit(box, id(l)) if sec else 0
+            if best is None or cost < best[0]:
+                best = (cost, x, y, box)
+            if cost == 0:
                 break
-        if choice is None:
+        if best is None:
             y = (ytop + ybot) / 2
             x = _ribbon_x_at(qc, sc, ytop, ybot, y)
-            choice = (x, y, (x - half_w, x + half_w, y - half_h, y + half_h))
-        x, y, box = choice
+            best = (0, x, y, (x - half_w, x + half_w, y - half_h, y + half_h))
+        _, x, y, box = best
         boxes.append(box)
         ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=P.PLOT_INK, zorder=1.6,
                 bbox=dict(boxstyle="round,pad=0.18", facecolor="white",

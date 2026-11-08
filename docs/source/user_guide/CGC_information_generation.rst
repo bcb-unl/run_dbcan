@@ -30,6 +30,14 @@ To identify and analyze CGCs, users must first prepare annotation information by
    ``diamond.out.peptidase`` file). In ``cgc.gff`` all labels of a protein are joined with ``+``; the ``Gene Type`` column of
    ``cgc_standard_out.tsv`` shows the first of CAZyme > TC > TF > STP > Sulfatase > Peptidase.
 
+   SulfAtlas entries are full-length proteins, and many of them are sulfatases fused to other domains (for example
+   GH2 or GH32). A protein that aligns only to the non-sulfatase part of such an entry would take its sulfatase
+   family (a GH32 protein labelled ``S1_7``). A sulfatase hit must therefore also cover most of the SulfAtlas
+   protein: ``--subject_coverage_threshold_sulfatase`` (DIAMOND ``--subject-cover``, percent, default 70; 0 turns
+   it off), in addition to ``--coverage_threshold_sulfatase`` (``--query-cover``, default 35). On *E. coli* K-12
+   this keeps 6 of 113 sulfatase hits and on *Xylona heveae* 10 of 267; the CGCs and their substrate predictions
+   do not change.
+
 4. Marks CAZymes using ``overview.tsv``: only proteins with ``#ofTools`` >= 2 count as CAZymes, annotated with their ``Recommend Results``
 5. Integrates these annotations into the user-submitted GFF file to generate a ``cgc.gff`` file
 

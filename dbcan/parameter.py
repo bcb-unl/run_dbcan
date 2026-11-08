@@ -500,6 +500,16 @@ def diamond_sulfatase_options(func):
         default=35,
         show_default=True,
     )(func)
+    func = click.option(
+        '--subject_coverage_threshold_sulfatase',
+        type=click.FloatRange(0, 100),
+        help='DIAMOND --subject-cover for Sulfatase: minimum coverage of the SulfAtlas protein in percent '
+             '(0–100). SulfAtlas entries are full-length proteins, often sulfatases fused to other domains; '
+             'this keeps a protein that only matches the non-sulfatase part of such an entry from taking '
+             'its sulfatase family. 0 turns the filter off.',
+        default=70,
+        show_default=True,
+    )(func)
     return func
 
 def diamond_peptidase_options(func):

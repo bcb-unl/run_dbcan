@@ -46,3 +46,24 @@ def test_full_length_databases_keep_query_coverage(tmp_path):
 def test_invalid_coverage_mode_is_rejected(tmp_path):
     with pytest.raises(ValueError, match="coverage_mode"):
         _cmd(PeptidaseDiamondProcessor, DiamondPeptidaseConfig, tmp_path, coverage_mode="both")
+
+
+def test_sulfatase_filters_on_query_and_subject_coverage(tmp_path):
+    """SulfAtlas entries are full-length proteins, many of them sulfatases fused to other domains
+    (GH2, GH32, ...). A GH32 protein that only aligns to the GH32 part of such an entry (subject
+    coverage ~30 %) must not take its S1_7 label, so the hit must also cover most of the entry."""
+    from dbcan.annotation.diamond import SulfatlasDiamondProcessor
+    from dbcan.configs.diamond_config import DiamondSulfataseConfig
+    cmd = _cmd(SulfatlasDiamondProcessor, DiamondSulfataseConfig, tmp_path)
+    assert cmd[cmd.index("--query-cover") + 1] == "35"
+    assert cmd[cmd.index("--subject-cover") + 1] == "70"
+    off = _cmd(SulfatlasDiamondProcessor, DiamondSulfataseConfig, tmp_path, subject_coverage_threshold=None)
+    assert "--subject-cover" not in off
+
+
+def test_sulfatase_subject_coverage_option_reaches_the_config():
+    from dbcan.configs.diamond_config import DiamondSulfataseConfig
+    from dbcan.parameter import create_config
+    cfg = create_config(DiamondSulfataseConfig, namespace="sulfatase", db_dir="d", output_dir="o",
+                        subject_coverage_threshold_sulfatase=80.0)
+    assert cfg.subject_coverage_threshold == 80.0

@@ -17,6 +17,9 @@ class DiamondConfig(BaseConfig):
     # 'query': --query-cover (full-length protein databases: CAZy, TCDB, TF, SulfAtlas)
     # 'subject': --subject-cover (domain-level databases: MEROPS peptidase units)
     coverage_mode: str = "query"
+    # optional second filter on the other side: --subject-cover when coverage_mode is 'query'
+    # (full-length databases whose entries can be multi-domain fusions, e.g. SulfAtlas)
+    subject_coverage_threshold: Optional[float] = None
 
 
 @dataclass
@@ -51,6 +54,7 @@ class DiamondSulfataseConfig(DiamondConfig):
     label: Optional[str] = D.SULFATASE
     e_value_threshold: float = D.DIAMOND_SULFATLAS_EVALUE_DEFAULT
     coverage_threshold: float = D.DIAMOND_SULFATLAS_COVERAGE_DEFAULT
+    subject_coverage_threshold: Optional[float] = D.DIAMOND_SULFATLAS_SUBJECT_COVERAGE_DEFAULT
 
 @dataclass
 class DiamondPeptidaseConfig(DiamondConfig):

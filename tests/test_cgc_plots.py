@@ -622,3 +622,21 @@ def test_synteny_single_link_is_centred_and_tagged_on_its_ribbon():
     # the tag sits ON its ribbon (centre line, half-way) and is outlined in the ribbon's grey
     assert t.get_text() == "93%" and t.get_position()[0] == pytest.approx(500)
     assert tuple(edge[:3]) == pytest.approx(tuple(ribbon[:3]))
+
+
+def test_pair_tags_form_one_row_and_multiple_match_tags_go_to_the_ends():
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    from dbcan.plot.syntenic_plot import draw_links
+
+    links = _hourglass_case()          # q1-s1 87 %, q2-s2 88 % (pairs) + two 50 % cross hits
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.set_xlim(-100, 2100)
+    draw_links(ax, links, lambda g: (g.start, g.end, g.strand), mcolors.Normalize(20, 100), 2200 / 6.0)
+    ys = {t.get_text(): [] for t in ax.texts}
+    for t in ax.texts:
+        ys[t.get_text()].append(t.get_position()[1])
+    plt.close(fig)
+    mid = (2.7 + 0.5) / 2
+    assert ys["87%"] == [pytest.approx(mid)] and ys["88%"] == [pytest.approx(mid)]
+    assert all(abs(y - mid) > 0.3 for y in ys["50%"])

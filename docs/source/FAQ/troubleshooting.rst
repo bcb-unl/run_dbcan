@@ -69,6 +69,8 @@ Thresholds
 **DIAMOND coverage options use percent, HMM options use fractions.**
    ``--coverage_threshold_tc``, ``--coverage_threshold_tf_diamond`` and ``--coverage_threshold_sulfatase`` are
    passed to DIAMOND ``--query-cover`` (full-length protein databases) and use 0-100 (default 35).
+   Sulfatase hits must also pass ``--subject_coverage_threshold_sulfatase`` (DIAMOND ``--subject-cover``, 0-100,
+   default 70), because SulfAtlas entries are often sulfatases fused to other domains.
    ``--coverage_threshold_peptidase`` is passed to ``--subject-cover``: the peptidase database holds MEROPS
    peptidase units (domains), so the coverage is measured on the unit (0-100, default 35).
    The pyHMMER coverage options use 0-1 (default 0.35).
