@@ -43,6 +43,26 @@ def read_deg(path: Path) -> Dict[str, float]:
     return out
 
 
+def _text_len_r(text: str, size: float, height: bool = False) -> float:
+    """Width (or height) of ``text`` at ``size`` pt in circos radius units (r = 100 is the outer ring)."""
+    from matplotlib.font_manager import FontProperties
+    from matplotlib.textpath import TextPath
+
+    ext = TextPath((0, 0), text, size=size, prop=FontProperties()).get_extents()
+    pts = ext.height if height else ext.width
+    return pts / 72.0 / (C.CGC_CIRCLE_DIAMETER_IN / 2) * 100.0
+
+
+def _fit_radial_text(text: str, size: float, room_r: float) -> str:
+    """``text``, shortened with '…' until it fits in ``room_r`` radius units."""
+    if _text_len_r(text, size) <= room_r:
+        return text
+    keep = len(text)
+    while keep > 1 and _text_len_r(text[:keep] + "…", size) > room_r:
+        keep -= 1
+    return text[:keep] + "…"
+
+
 class CGCCircosPlot:
     def __init__(self, config):
         self.config = config
@@ -127,13 +147,13 @@ class CGCCircosPlot:
             axis.axis(fc="black", ec="none")
             if size > major:
                 show = not multi or sector.name == labelled
-                axis.xticks_by_interval(major, outer=False, tick_length=1.5, label_size=C.CGC_TICK_LABEL_SIZE,
+                axis.xticks_by_interval(major, outer=False, tick_length=C.CGC_TICK_LENGTH,
+                                        label_margin=C.CGC_TICK_LABEL_MARGIN, label_size=C.CGC_TICK_LABEL_SIZE,
                                         label_orientation="horizontal", show_label=show,
                                         label_formatter=lambda v, s=major, m=multi: (
                                             "" if (m and v == 0) else V.fmt_axis_tick(v, s, total)))
-            if multi and size * deg_per_bp >= C.CGC_CONTIG_LABEL_MIN_DEG:
-                sector.text(sector.name, r=C.CGC_CONTIG_LABEL_R_DEG if self.deg is not None else C.CGC_CONTIG_LABEL_R,
-                            orientation="vertical", size=C.CGC_CONTIG_LABEL_SIZE, color=P.PLOT_INK_MUTED)
+            if multi:
+                self._contig_name(sector, size * deg_per_bp)
 
             rng = sector.add_track(C.CGC_RANGE_TRACK_RANGE)
             rng.axis(fc=C.CGC_TRACK_BG_COLOR, ec="none")
@@ -190,6 +210,24 @@ class CGCCircosPlot:
         self._legend(fig, cgc_genes)
         return V.save_figure(fig, self.output_dir, C.CGC_CIRCOS_FILE_TEMPLATE, {}, C.CGC_PLOT_FORMATS,
                              P.PLOT_DEFAULT_DPI)
+
+    def _contig_name(self, sector, sector_deg: float) -> None:
+        """Radial contig name inside the innermost ring. Its OUTER end is anchored a gap below that
+        ring and the text runs towards the centre (pycirclize's own vertical text starts at r and
+        runs outwards, across the rings). Too long names are shortened with '…'; sectors too narrow
+        for the text height at the name's inner end stay unnamed."""
+        from pycirclize.utils.plot import get_label_params_by_rad
+
+        inner_ring = C.DEG_LOG2FC_RANGE[0] if self.deg is not None else C.CGC_CAZYME_TRACK_RANGE[0]
+        r_out = inner_ring - C.CGC_CONTIG_LABEL_GAP
+        label = _fit_radial_text(sector.name, C.CGC_CONTIG_LABEL_SIZE, r_out - C.CGC_CONTIG_LABEL_MIN_R)
+        r_in = r_out - _text_len_r(label, C.CGC_CONTIG_LABEL_SIZE)
+        need_deg = math.degrees(_text_len_r("Hg", C.CGC_CONTIG_LABEL_SIZE, height=True) / max(r_in, 1.0))
+        if sector_deg < max(C.CGC_CONTIG_LABEL_MIN_DEG, need_deg):
+            return
+        params = get_label_params_by_rad(sector.x_to_rad(sector.center), "vertical", outer=False)
+        sector.text(label, r=r_out, adjust_rotation=False, size=C.CGC_CONTIG_LABEL_SIZE,
+                    color=P.PLOT_INK_MUTED, **params)
 
     def _legend_rows(self) -> int:
         n = len(V.types_present([g for gs in self.cgcs.values() for g in gs])) + 2
