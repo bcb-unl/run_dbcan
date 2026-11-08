@@ -23,6 +23,7 @@ from dbcan.constants.utils_constants import (
     OVERVIEW_FILE,
 )
 from dbcan.core import DbcanStepError
+from dbcan.IO.cgc_ids import role_family
 from dbcan.IO.gff import _split_gff_attributes
 from dbcan.main import setup_logging
 from dbcan.parameter import dbcan_utils_options, logging_options
@@ -264,7 +265,19 @@ class cgc_standard_line:
         self.gene_start = int(lines[4])
         self.gene_end = int(lines[5])
         self.strand = lines[6]
-        self.protfam = lines[7].split("|")[1] if lines[7] != "null" and "|" in lines[7] else (lines[7] if lines[7] != "null" else "null")
+        self.annotation = lines[7]
+        # family/ID of the Gene Type role (multi-role 'CAZyme|GH13_31+TC|8.A.9.1.1' -> 'GH13_31')
+        self.protfam = role_family(lines[7], self.gene_type)
+
+    @property
+    def fams_label(self) -> str:
+        """CGC_abund 'Fams' entry: the CAZyme family, '<type>|<ID>' for TC/TF/STP/... members,
+        the bare type when there is no ID (null genes). Never contains ';' (the column separator)."""
+        if self.gene_type == U.CGC_CAZYME_TYPE:
+            return self.protfam
+        if self.protfam and self.protfam != U.CGC_NULL_TYPE and self.gene_type != U.CGC_NULL_TYPE:
+            return f"{self.gene_type}|{self.protfam}"
+        return self.gene_type
 
     def __repr__(self):
         return "\t".join([str(getattr(self, k)) for k in vars(self)])
@@ -496,9 +509,11 @@ class CAZyme_Abundance_estimate:
         cgcsubstrate2cgcid_homo: Dict[str, List[str]] = {}
         cgcsubstrate2cgcid_major: Dict[str, List[str]] = {}
         for cgcid, rec in self.cgcid2cgc_substrate.items():
-            homo = (rec.homo_sub or "").strip()
-            if homo and homo not in ("X", "-"):
-                cgcsubstrate2cgcid_homo.setdefault(homo, []).append(cgcid)
+            # dbCAN-PUL substrates ('arabinan,galactan', 'alpha-1,4-glucan;starch'): same rule
+            # as the dbCAN-sub column
+            for s in split_substrates(rec.homo_sub):
+                if s != "X":
+                    cgcsubstrate2cgcid_homo.setdefault(s, []).append(cgcid)
             for s in split_substrates(rec.major_voting_sub):
                 cgcsubstrate2cgcid_major.setdefault(s, []).append(cgcid)
 
@@ -579,7 +594,7 @@ class CAZyme_Abundance_estimate:
             for i in self._order(abunds):
                 cgcid = cgcids[i]
                 records = self.cgcid2cgc_standard.get(cgcid, [])
-                fams = ";".join(rec.protfam if rec.gene_type == "CAZyme" else rec.gene_type for rec in records)
+                fams = ";".join(rec.fams_label for rec in records)
                 f.write(f"{cgcid}\t{round(abunds[i], 3)}\t{';'.join(self.cgcid2seqid.get(cgcid, []))}\t"
                         f"{';'.join(str(round(a, 3)) for a in self.cgcid2seqabund.get(cgcid, []))}\t{fams}\n")
 
@@ -614,6 +629,9 @@ class GeneRegion:
     # 0-based half-open intervals, merged, per contig
     intervals: List[Tuple[str, int, int]] = field(default_factory=list)
     read_count: int = 0
+    # per interval: largest end of the intervals (of any gene) that come before it on its contig,
+    # see assign_alignment_owners(); -1 = none
+    prev_end: List[int] = field(default_factory=list)
 
     @property
     def length(self) -> int:
@@ -774,63 +792,128 @@ def _read_on_gene_strand(read: pysam.AlignedSegment, gene_strand: str, strandedn
     return minus == (gene_strand == "-")
 
 
-def read_passes(cfg: CoverageConfig, read: pysam.AlignedSegment, gene: GeneRegion, stats: Counter) -> bool:
-    """Whether one alignment counts for a gene. Rejection reasons are tallied in ``stats``."""
-    if read.is_unmapped:
-        return False
+def alignment_reject_reason(cfg: CoverageConfig, read: pysam.AlignedSegment) -> Optional[str]:
+    """Gene-independent rejection reason of an alignment (flags, MAPQ), or None."""
     if read.is_secondary or read.is_supplementary:
-        stats["secondary_or_supplementary"] += 1
-        return False
+        return "secondary_or_supplementary"
     if read.is_qcfail:
-        stats["qc_fail"] += 1
-        return False
+        return "qc_fail"
     if read.is_duplicate and not cfg.include_duplicates:
-        stats["duplicate"] += 1
-        return False
+        return "duplicate"
     if read.mapping_quality < cfg.mapping_quality:
-        stats["low_mapq"] += 1
-        return False
+        return "low_mapq"
+    return None
+
+
+def identity_reason(cfg: CoverageConfig, read: pysam.AlignedSegment) -> Optional[str]:
+    """'low_identity' (rejected), 'no_identity_tag' (filter not applicable, kept) or None."""
+    if cfg.identity <= 0:
+        return None
+    ident = alignment_identity(read)
+    if ident is None:
+        return "no_identity_tag"
+    return "low_identity" if ident < cfg.identity else None
+
+
+def gene_reject_reason(cfg: CoverageConfig, read: pysam.AlignedSegment, gene: GeneRegion) -> Optional[str]:
+    """Rejection reason of an alignment for one gene (strand, overlap), or None."""
     if not _read_on_gene_strand(read, gene.strand, cfg.strandedness):
-        stats["wrong_strand"] += 1
-        return False
+        return "wrong_strand"
     overlap = 0
     for contig, s, e in gene.intervals:
         if contig == read.reference_name:
             overlap += read.get_overlap(s, e) or 0
     if overlap <= 0:
-        return False
+        return "no_overlap"
     # read length including soft/hard clips (as before); long reads: relative to the shorter of read and gene
     read_len = read.infer_read_length() or read.query_length or read.query_alignment_length or 1
     denom = min(gene.length, read_len) if cfg.hifi else read_len
     if overlap / max(denom, 1) < cfg.overlap_base_ratio:
-        stats["low_overlap"] += 1
+        return "low_overlap"
+    return None
+
+
+def read_passes(cfg: CoverageConfig, read: pysam.AlignedSegment, gene: GeneRegion, stats: Counter) -> bool:
+    """Whether one alignment counts for a gene; the rejection reason is tallied in ``stats``."""
+    if read.is_unmapped:
         return False
-    if cfg.identity > 0:
-        ident = alignment_identity(read)
-        if ident is None:
-            stats["no_identity_tag"] += 1  # identity filter not applicable; read is kept
-        elif ident < cfg.identity:
-            stats["low_identity"] += 1
-            return False
-    return True
+    reason = alignment_reject_reason(cfg, read) or gene_reject_reason(cfg, read, gene)
+    if reason is None:
+        reason = identity_reason(cfg, read)
+        if reason == "no_identity_tag":
+            stats[reason] += 1
+            reason = None
+    if reason is not None and reason != "no_overlap":
+        stats[reason] += 1
+    return reason is None
+
+
+def assign_alignment_owners(genes: List[GeneRegion]) -> None:
+    """Set ``prev_end`` of every gene interval, so that each alignment has ONE owner interval.
+
+    An alignment [rs, re) fetched for interval I = [s, e) is owned by I when no interval that
+    comes before I (sorted by contig, start, end, gene order) overlaps it, i.e. when the largest
+    end of those intervals is <= rs. Gene-independent statistics (flags, MAPQ, identity) are
+    tallied only by the owner, so each alignment is counted once however many genes or exons it
+    overlaps, also across worker processes.
+    """
+    items = sorted((c, s, e, gi, ii) for gi, g in enumerate(genes) for ii, (c, s, e) in enumerate(g.intervals))
+    for g in genes:
+        g.prev_end = [-1] * len(g.intervals)
+    contig, running = None, -1
+    for c, s, e, gi, ii in items:
+        if c != contig:
+            contig, running = c, -1
+        genes[gi].prev_end[ii] = running
+        running = max(running, e)
 
 
 def count_gene(cfg: CoverageConfig, bam: pysam.AlignmentFile, gene: GeneRegion, refs: set, stats: Counter) -> int:
-    """Reads (or fragments: both mates of a pair count once) assigned to one gene."""
+    """Reads (or fragments: both mates of a pair count once) assigned to one gene.
+
+    ``stats`` gets each rejected alignment once (keys: secondary_or_supplementary, qc_fail,
+    duplicate, low_mapq, low_identity; no_identity_tag = kept without identity filter), from the
+    owner interval only (see assign_alignment_owners), and alignment/gene pairs rejected for this
+    gene once per gene (keys 'pair:wrong_strand', 'pair:low_overlap').
+    """
     fragments = cfg.count_mode == U.COUNT_MODE_FRAGMENTS
     seen = set()
-    for contig, s, e in gene.intervals:
+    tested = set()
+    floors = gene.prev_end if len(gene.prev_end) == len(gene.intervals) else [-1] * len(gene.intervals)
+    for (contig, s, e), floor in zip(gene.intervals, floors):
         if contig not in refs:
             continue
         for read in bam.fetch(contig, s, e):
+            if read.is_unmapped:
+                continue
             if fragments and read.is_paired:
                 key = read.query_name
             else:
                 key = (read.query_name, read.is_read1, read.is_read2)
-            if key in seen:
+            aln = (read.query_name, read.flag, read.reference_start)
+            if aln in tested:           # a spliced read fetched again for the next exon
                 continue
-            if read_passes(cfg, read, gene, stats):
-                seen.add(key)
+            tested.add(aln)
+            owned = read.reference_start >= floor
+            reason = alignment_reject_reason(cfg, read)
+            if reason is not None:
+                if owned:
+                    stats[reason] += 1
+                continue
+            counted = key in seen       # the other mate already counted this fragment
+            ident = identity_reason(cfg, read) if (owned or not counted) else None
+            if owned and ident is not None:
+                stats[ident] += 1
+            if counted:
+                continue
+            reason = gene_reject_reason(cfg, read, gene)
+            if reason is not None:
+                if reason != "no_overlap":
+                    stats["pair:" + reason] += 1
+                continue
+            if ident == "low_identity":
+                continue
+            seen.add(key)
     return len(seen)
 
 
@@ -877,6 +960,7 @@ def cal_coverage(cfg: CoverageConfig) -> List[GeneRegion]:
     if absent:
         logger.warning(f"{len(absent)} genes lie on contigs absent from the BAM header and get count 0, examples: {absent[:5]}")
 
+    assign_alignment_owners(genes)
     stats: Counter = Counter()
     threads = max(1, int(cfg.threads or 1))
     if threads >= 2 and len(genes) > 1:
@@ -901,8 +985,13 @@ def cal_coverage(cfg: CoverageConfig) -> List[GeneRegion]:
     total = sum(g.read_count for g in genes)
     unit = "fragments" if cfg.count_mode == U.COUNT_MODE_FRAGMENTS else "reads"
     logger.info(f"Counted {total} {unit} on {sum(1 for g in genes if g.read_count)} of {len(genes)} genes -> {cfg.output}")
-    if stats:
-        logger.info("Alignments rejected (per gene tested): " + ", ".join(f"{k}={v}" for k, v in sorted(stats.items())))
+    aln_stats = {k: v for k, v in stats.items() if not k.startswith("pair:") and k != "no_identity_tag"}
+    pair_stats = {k[5:]: v for k, v in stats.items() if k.startswith("pair:")}
+    if aln_stats:
+        logger.info("Alignments rejected (each alignment once): " + ", ".join(f"{k}={v}" for k, v in sorted(aln_stats.items())))
+    if pair_stats:
+        logger.info("Alignment/gene pairs rejected (an alignment can still count for another gene): "
+                    + ", ".join(f"{k}={v}" for k, v in sorted(pair_stats.items())))
     if stats.get("no_identity_tag"):
         logger.warning(f"{stats['no_identity_tag']} alignments carry no NM/MD tag and no =/X CIGAR, so the --identity "
                        f"filter was not applied to them (they were counted). Add tags with 'samtools calmd' to filter them.")
@@ -1004,6 +1093,9 @@ def cli(function, log_level, log_file, verbose, input_path, bedtools_file, gff_f
         if function in U.ABUND_FUNCTIONS:
             if not bedtools_file:
                 raise click.UsageError(f"{function} requires -bt/--bedtools (the cal_coverage output)")
+            if not input_path or not os.path.exists(input_path):
+                raise click.UsageError(f"-i/--input {input_path or '(not given)'} does not exist; give the "
+                                       f"run_dbcan output directory (the one with {OVERVIEW_FILE}).")
             input_dir = input_path if os.path.isdir(input_path) else (os.path.dirname(os.path.abspath(input_path)) or ".")
             cfg = AbundanceConfig(
                 input_dir=input_dir,

@@ -4,6 +4,8 @@ CGC_RESULT_FILE = base_constants.CGC_RESULT_FILE
 CGC_SUB_PREDICTION_FILE = base_constants.CGC_SUB_PREDICTION_FILE
 DBCAN_SUB_RESULT_FILE = base_constants.DBCAN_SUB_HMM_RESULT_FILE
 OVERVIEW_FILE = base_constants.OVERVIEW_FILE
+CGC_CAZYME_TYPE = base_constants.CAZYME   # cgc_standard_out.tsv Gene Type values
+CGC_NULL_TYPE = base_constants.NULL
 
 # ---------------------------------------------------------------------------
 # dbcan_utils abundance outputs (written into -o/--output, default: current directory)

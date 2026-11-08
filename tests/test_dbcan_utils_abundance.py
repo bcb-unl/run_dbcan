@@ -414,7 +414,7 @@ def test_cgc_abund_skips_placeholders_and_stays_aligned(tmp_path):
     run_abundance(AbundanceConfig(str(d), depth, str(tmp_path / "o"), "RPM"), "CGC_abund")
     t = _table(tmp_path / "o" / "CGC_abund.out")
     abund, seqids, seq_abund, fams = t["c1|CGC1"]
-    assert seqids == "gA;gB" and fams == "GH13_21;TC"
+    assert seqids == "gA;gB" and fams == "GH13_21;TC|1.A.1"
     assert [float(x) for x in seq_abund.split(";")] == pytest.approx([600000.0, 200000.0])
     assert float(abund) == pytest.approx(400000.0)
     assert t["c1|CGC2"][1] == "gD"
@@ -457,3 +457,69 @@ def test_cli_exit_codes_and_output_dir(tmp_path, edge_bam):
     assert runner.invoke(cli, ["fam_abund", "-i", str(d), "-bt", bad, "-o", str(outdir)]).exit_code != 0
     assert runner.invoke(cli, ["fam_abund", "-i", str(d), "-o", str(outdir)]).exit_code != 0
     assert runner.invoke(cli, ["cal_coverage", "-i", edge_bam, "-o", str(depth)]).exit_code != 0
+
+
+@pytest.mark.parametrize("threads", [1, 2])
+def test_rejected_alignments_are_counted_once(tmp_path, caplog, threads):
+    """A rejected alignment that overlaps two genes (gB/gC) or two exons of one gene is tallied once."""
+    import logging
+    b = BamBuilder()
+    b.add("mapq_two_genes", 1501, mapq=0)            # gB and gC
+    b.add("mm_two_genes", 1505, mism=5)              # identity 0.95 < 0.98, gB and gC
+    b.add("mapq_two_exons", 451, mapq=0)             # both exons of g2 (401-500, 551-700)
+    b.add("dup_one_gene", 2401, flag=0x400)          # gD only
+    b.add("ok", 2401)
+    bam = b.write(tmp_path / "rej.bam")
+    gff = tmp_path / "x.gff"
+    rows = [(gid, s, e, st) for gid, s, e, st in GENES if gid != "gA"]
+    with open(gff, "w") as fh:
+        for gid, s, e, st in rows:
+            fh.write(f"c1\tsim\tCDS\t{s}\t{e}\t.\t{st}\t0\tID={gid}\n")
+        fh.write("c1\tsim\tCDS\t401\t500\t.\t+\t0\tID=g2\n")
+        fh.write("c1\tsim\tCDS\t551\t700\t.\t+\t0\tID=g2\n")
+    caplog.set_level(logging.INFO, logger="dbcan.utils.utils")
+    out = tmp_path / "d.txt"
+    cal_coverage(CoverageConfig(input=bam, gff=str(gff), output=str(out), threads=threads, overlap_base_ratio=0.05))
+    assert _counts(out)["gD"] == (100, 1)
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("Alignments rejected"))
+    assert line == "Alignments rejected (each alignment once): duplicate=1, low_identity=1, low_mapq=2"
+
+
+def test_cgc_abund_fams_of_multi_role_and_signature_members(tmp_path):
+    d = _dbcan_dir(tmp_path)
+    (d / "cgc_standard_out.tsv").write_text(
+        "CGC#\tGene Type\tContig ID\tProtein ID\tGene Start\tGene Stop\tGene Strand\tGene Annotation\n"
+        "CGC1\tCAZyme\tc1\tgA\t101\t1000\t+\tCAZyme|GH32_e132+Sulfatase|S1_7\n"
+        "CGC1\tSTP\tc1\tgB\t1001\t1600\t+\tSTP|HTH_1+STP|LysR_substrate\n"
+        "CGC1\tnull\tc1\tgC\t1601\t2000\t+\tnull\n"
+        "CGC1\tTC\tc1\tgD\t2401\t2500\t+\tTC|3.A.1.1.27+STP|SBP_bac_1\n"
+    )
+    depth = _depth(tmp_path, [("gA", 1000, 300), ("gB", 500, 100), ("gC", 1000, 0), ("gD", 100, 100)])
+    run_abundance(AbundanceConfig(str(d), depth, str(tmp_path / "o"), "RPM"), "CGC_abund")
+    _abund, seqids, seq_abund, fams = _table(tmp_path / "o" / "CGC_abund.out")["c1|CGC1"]
+    assert seqids.split(";") == ["gA", "gB", "gC", "gD"]
+    assert fams.split(";") == ["GH32_e132", "STP|HTH_1+LysR_substrate", "null", "TC|3.A.1.1.27"]
+    assert len(seq_abund.split(";")) == 4
+
+
+def test_cgc_substrate_abund_splits_pul_substrates(tmp_path):
+    d = _dbcan_dir(tmp_path)
+    (d / "substrate_prediction.tsv").write_text(
+        "#cgcid\tPULID\tdbCAN-PUL substrate\tbitscore\tsignature pairs\tdbCAN-sub substrate\tdbCAN-sub substrate score\n"
+        "c1|CGC1\tPUL1\tarabinan,galactan\t100\tCAZyme-CAZyme\tstarch\t2.0\n"
+        "c1|CGC2\tPUL2\talpha-1,4-glucan;galactan\t100\tCAZyme-CAZyme\t\t\n"
+    )
+    depth = _depth(tmp_path, [("gA", 1000, 300), ("gB", 500, 100), ("gD", 100, 100)])
+    run_abundance(AbundanceConfig(str(d), depth, str(tmp_path / "o"), "RPM"), "CGC_substrate_abund")
+    homo = _table(tmp_path / "o" / "CGC_substrate_PUL_homology.out")
+    assert set(homo) == {"arabinan", "galactan", "alpha-1,4-glucan"}
+    assert homo["galactan"][1] == "c1|CGC1;c1|CGC2"
+
+
+def test_missing_input_dir_names_the_path(tmp_path):
+    depth = _depth(tmp_path, [("gA", 1000, 300)])
+    missing = tmp_path / "no_such_run"
+    r = CliRunner().invoke(cli, ["fam_abund", "-i", str(missing), "-bt", depth, "-o", str(tmp_path / "o")])
+    assert r.exit_code == 2
+    out = " ".join(r.output.replace("\u2502", " ").split())
+    assert str(missing) in out and "/overview.tsv" not in out
