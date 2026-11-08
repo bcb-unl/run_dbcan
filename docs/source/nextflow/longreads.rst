@@ -16,39 +16,47 @@ Workflow
 The long reads workflow consists of the following main steps:
 
 1. **Quality Control** (FastQC, optional for DNA)
+
    - FastQC quality assessment (primarily for RNA-seq data)
    - DNA long reads typically skip QC/trimming steps as they are less affected by adapters
 
 2. **Taxonomic Filtering** (Kraken2, optional)
+
    - Taxonomic classification using Kraken2 (applied to RNA-seq data)
    - Extraction of reads matching specified taxonomy
    - Can be skipped with ``--skip_kraken_extraction``
 
 3. **Assembly** (Flye)
+
    - Long-read metagenomic assembly using Flye
    - Supports multiple Flye modes for different sequencing technologies
    - Configurable via ``--flye_mode`` parameter
 
 4. **Gene Prediction** (Pyrodigal)
+
    - Prodigal-based gene finding optimized for metagenomic data
    - Generates protein sequences (FAA) and gene annotations (GFF)
 
 5. **CAZyme Annotation** (run_dbCAN)
+
    - CAZyme identification using dbCAN database
    - CGC (CAZyme Gene Cluster) detection
    - Substrate prediction
 
 6. **Read Mapping** (Minimap2 for DNA, BWA-MEM for RNA)
+
    - Mapping of long DNA reads back to assembled contigs using Minimap2
    - Mapping of RNA reads (if provided) using BWA-MEM for expression analysis
    - Coverage calculation for genes and CGCs
 
 7. **Abundance Calculation**
+
    - Gene-level abundance calculation based on read coverage
    - CGC abundance and visualization
    - Generation of bar plots and heatmaps
 
 8. **Report Generation** (MultiQC)
+
    - Aggregated quality control and analysis reports
 
 Usage
@@ -175,6 +183,7 @@ Assembly Results
 ~~~~~~~~~~~~~~~~
 
 - ``flye/``
+
   - ``*_assembly.fasta.gz``: Assembled contigs in FASTA format (gzipped)
   - Assembly statistics and reports
 
@@ -182,6 +191,7 @@ Gene Prediction
 ~~~~~~~~~~~~~~~
 
 - ``pyrodigal/``
+
   - ``*.faa.gz``: Predicted protein sequences (gzipped)
   - ``*.gff.gz``: Gene annotations in GFF format (gzipped)
 
@@ -189,6 +199,7 @@ CAZyme Annotation
 ~~~~~~~~~~~~~~~~~
 
 - ``rundbcan/``
+
   - ``*_dbcan/``: Directory containing all run_dbCAN results
   
     Files in this directory:
@@ -206,10 +217,12 @@ Read Mapping
 ~~~~~~~~~~~~
 
 - ``minimap2/``: Minimap2 alignment files for long DNA reads
+
   - ``*.bam``: Aligned reads
   - ``*.bam.bai``: BAM index files
 
 - ``bwa_index_mem/``: BWA-MEM alignment files for RNA reads (if provided)
+
   - ``*.bam``: Aligned reads
   - ``*.bam.bai``: BAM index files
 
@@ -217,17 +230,19 @@ Coverage and Abundance
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 - ``dbcan_utils_cal_coverage/``
-  - ``*_depth.txt``: Gene coverage depth files
+
+  - ``*_depth.txt``: read count of every gene (``dbcan_utils cal_coverage``: gene ID, length, count)
 
 - ``dbcan_utils_cal_abund/``
+
   - ``*_abund/``: Abundance calculation results
   
-    Files in this directory:
-    
-    - ``*_abund.txt``: Gene abundance values
-    - ``*_cgc_abund.txt``: CGC abundance values
+    Files in this directory: the ``dbcan_utils`` tables ``fam_abund.out``, ``subfam_abund.out``,
+    ``EC_abund.out``, ``fam_substrate_abund.out``, ``CGC_abund.out``, ``CGC_substrate_PUL_homology.out`` and
+    ``CGC_substrate_majority_voting.out`` (columns: :ref:`protocol step P12 <mg-p12>`).
 
 - ``dbcan_plot/``
+
   - ``*_pdf/``: Visualization plots
   
     Files in this directory:
@@ -238,6 +253,7 @@ Coverage and Abundance
     - ``subfamily.pdf``: Subfamily distribution
 
 - ``cgc_depth_plot/``
+
   - ``*_cgc_depth.tsv``: CGC depth coverage data
   - ``*_cgc_depth.pdf``: CGC depth plots
 

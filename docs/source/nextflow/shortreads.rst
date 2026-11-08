@@ -16,43 +16,52 @@ Workflow
 The short reads workflow consists of the following main steps:
 
 1. **Quality Control** (FastQC + TrimGalore)
+
    - FastQC quality assessment of raw sequencing reads
    - TrimGalore adapter trimming and quality filtering
 
 2. **Taxonomic Filtering** (Kraken2, optional)
+
    - Taxonomic classification using Kraken2
    - Extraction of reads matching specified taxonomy (default: human reads, tax ID 9606)
    - Can be skipped with ``--skip_kraken_extraction``
 
 3. **Read Processing** (optional)
+
    - **Subsampling**: Downsample reads before assembly (see :ref:`shortreads-subsample`)
    - **Co-assembly**: Combine all samples for joint assembly (see :ref:`shortreads-coassembly`)
 
 4. **Assembly** (MEGAHIT)
+
    - Metagenomic assembly using MEGAHIT
    - Default minimum contig length: 1000 bp
    - Memory usage limited to 50% of available memory
 
 5. **Gene Prediction** (Pyrodigal)
+
    - Prodigal-based gene finding optimized for metagenomic data
    - Generates protein sequences (FAA) and gene annotations (GFF)
 
 6. **CAZyme Annotation** (run_dbCAN)
+
    - CAZyme identification using dbCAN database
    - CGC (CAZyme Gene Cluster) detection
    - Substrate prediction
 
 7. **Read Mapping** (BWA-MEM)
+
    - Mapping of DNA reads back to assembled contigs
    - Mapping of RNA reads (if provided) for expression analysis
    - Coverage calculation for genes and CGCs
 
 8. **Abundance Calculation**
+
    - Gene-level abundance calculation based on read coverage
    - CGC abundance and visualization
    - Generation of bar plots and heatmaps
 
 9. **Report Generation** (MultiQC)
+
    - Aggregated quality control and analysis reports
 
 Usage
@@ -148,6 +157,7 @@ Assembly Results
 ~~~~~~~~~~~~~~~~
 
 - ``megahit/``
+
   - ``*_contigs.fa.gz``: Assembled contigs in FASTA format (gzipped)
   - Assembly statistics and reports
 
@@ -155,6 +165,7 @@ Gene Prediction
 ~~~~~~~~~~~~~~~
 
 - ``pyrodigal/``
+
   - ``*.faa.gz``: Predicted protein sequences (gzipped)
   - ``*.gff.gz``: Gene annotations in GFF format (gzipped)
 
@@ -162,6 +173,7 @@ CAZyme Annotation
 ~~~~~~~~~~~~~~~~~
 
 - ``rundbcan/``
+
   - ``*_dbcan/``: Directory containing all run_dbCAN results
   
     Files in this directory:
@@ -180,6 +192,7 @@ Read Mapping
 
 - ``bwa/``: BWA index files
 - ``bwa_index_mem/``: BAM files from read mapping
+
   - ``*.bam``: Aligned reads
   - ``*.bam.bai``: BAM index files
 
@@ -187,17 +200,19 @@ Coverage and Abundance
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 - ``dbcan_utils_cal_coverage/``
-  - ``*_depth.txt``: Gene coverage depth files
+
+  - ``*_depth.txt``: read count of every gene (``dbcan_utils cal_coverage``: gene ID, length, count)
 
 - ``dbcan_utils_cal_abund/``
+
   - ``*_abund/``: Abundance calculation results
   
-    Files in this directory:
-    
-    - ``*_abund.txt``: Gene abundance values
-    - ``*_cgc_abund.txt``: CGC abundance values
+    Files in this directory: the ``dbcan_utils`` tables ``fam_abund.out``, ``subfam_abund.out``,
+    ``EC_abund.out``, ``fam_substrate_abund.out``, ``CGC_abund.out``, ``CGC_substrate_PUL_homology.out`` and
+    ``CGC_substrate_majority_voting.out`` (columns: :ref:`protocol step P12 <mg-p12>`).
 
 - ``dbcan_plot/``
+
   - ``*_pdf/``: Visualization plots
   
     Files in this directory:
@@ -208,6 +223,7 @@ Coverage and Abundance
     - ``subfamily.pdf``: Subfamily distribution
 
 - ``cgc_depth_plot/``
+
   - ``*_cgc_depth.tsv``: CGC depth coverage data
   - ``*_cgc_depth.pdf``: CGC depth plots
 
