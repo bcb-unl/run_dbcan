@@ -552,85 +552,69 @@ def test_gene_track_helper_draws_the_cgc_map_track_into_any_axis():
         gene_track([], W)
 
 
-def test_synteny_links_show_identity_and_hidden_links_stay_unlabelled():
-    """Every visible ribbon carries its % identity between the tracks; a weak link drawn under a
-    stronger ribbon at every label height gets no number (it would sit on the wrong ribbon)."""
+def _hourglass_case():
     import matplotlib
     matplotlib.use("Agg", force=True)
-    import matplotlib.pyplot as plt
-    from dbcan.plot.syntenic_plot import Link, draw_link_labels
-
-    def gene(pid, s, e):
-        return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="CAZyme", roles=[("CAZyme", "GH1")])
-
-    q1, q2 = gene("q1", 0, 1000), gene("q2", 1000, 2000)
-    s1, s2 = gene("s1", 0, 1000), gene("s2", 1000, 2000)
-    links = [Link(q1, s1, 96.4, 900), Link(q2, s2, 88.0, 800),
-             Link(q1, s2, 41.0, 100)]          # paralog crossing under both strong ribbons
-    fig, ax = plt.subplots()
-    ax.set_xlim(-100, 2300)
-    n = draw_link_labels(ax, links, lambda g: (g.start, g.end, g.strand), 2.7, 0.5, 2400 / 6.0)
-    texts = sorted(t.get_text() for t in ax.texts)
-    plt.close(fig)
-    assert texts == ["88%", "96%"] and n == 2
-
-
-def test_synteny_paralog_label_shown_where_its_ribbon_is_visible():
-    import matplotlib
-    matplotlib.use("Agg", force=True)
-    import matplotlib.pyplot as plt
-    from dbcan.plot.syntenic_plot import Link, draw_link_labels
-
-    def gene(pid, s, e):
-        return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="CAZyme", roles=[("CAZyme", "GH1")])
-
-    q1, q2, s1, s2 = gene("q1", 0, 1000), gene("q2", 1600, 2600), gene("s1", 0, 1000), gene("s2", 1600, 2600)
-    links = [Link(q1, s1, 96.0, 900), Link(q2, s2, 88.0, 800), Link(q1, s2, 41.0, 100)]
-    fig, ax = plt.subplots()
-    ax.set_xlim(-100, 2700)
-    draw_link_labels(ax, links, lambda g: (g.start, g.end, g.strand), 2.7, 0.5, 2800 / 6.0)
-    texts = sorted(t.get_text() for t in ax.texts)
-    plt.close(fig)
-    assert texts == ["41%", "88%", "96%"]    # the crossing link is visible in the gap
-
-
-def test_multiple_matches_draw_only_the_one_to_one_pairs():
-    """Two similar genes hitting each other's counterpart (paralogues): only the one-to-one best
-    pairs are drawn and labelled; the cross hits are left out so nothing is hidden."""
-    import matplotlib
-    matplotlib.use("Agg", force=True)
-    import matplotlib.colors as mcolors
-    import matplotlib.pyplot as plt
-    from dbcan.plot.syntenic_plot import Link, draw_links, split_primary_links
+    from dbcan.plot.syntenic_plot import Link
 
     def gene(pid, s, e):
         return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="CAZyme", roles=[("CAZyme", "GH32")])
 
     q1, q2 = gene("q1", 0, 1000), gene("q2", 1000, 2000)
     s1, s2 = gene("s1", 0, 1000), gene("s2", 1000, 2000)
-    links = [Link(q1, s1, 87.0, 900), Link(q2, s2, 88.0, 950), Link(q1, s2, 50.0, 300), Link(q2, s1, 50.0, 290)]
-    primary, secondary = split_primary_links(links)
-    assert sorted((l.q.pid, l.s.pid) for l in primary) == [("q1", "s1"), ("q2", "s2")]
-    assert sorted((l.q.pid, l.s.pid) for l in secondary) == [("q1", "s2"), ("q2", "s1")]
-    fig, ax = plt.subplots()
+    # two paralogous genes: best pairs q1-s1 / q2-s2 plus the cross hits
+    return [Link(q1, s1, 87.0, 900), Link(q2, s2, 88.0, 950), Link(q1, s2, 50.0, 300), Link(q2, s1, 50.0, 290)]
+
+
+def test_synteny_draws_every_link_as_a_narrow_ribbon_with_its_identity():
+    """Multiple matches are drawn too: every link is a ribbon narrower than its genes, a gene with
+    several links gives each its own slot (no two ribbons share an end), and every link gets its
+    % identity beside it without overlapping labels."""
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    from dbcan.plot.syntenic_plot import draw_links, link_ports
+
+    links = _hourglass_case()
+    pmap = lambda g: (g.start, g.end, g.strand)
+    ports = link_ports(links, pmap)
+    for l in links:
+        qx0, qx1, sx0, sx1 = ports[id(l)]
+        assert l.q.start <= qx0 < qx1 <= l.q.end and qx1 - qx0 <= P.SYNTENY_LINK_WIDTH_FRACTION * 1000 + 1e-9
+        assert l.s.start <= sx0 < sx1 <= l.s.end
+    # the two links leaving q1 sit side by side, ordered by partner (s1 left of s2)
+    q1_links = sorted((l for l in links if l.q.pid == "q1"), key=lambda l: ports[id(l)][0])
+    assert [l.s.pid for l in q1_links] == ["s1", "s2"]
+    assert ports[id(q1_links[0])][1] <= ports[id(q1_links[1])][0]
+
+    fig, ax = plt.subplots(figsize=(6, 3))
     ax.set_xlim(-100, 2100)
-    drawn = draw_links(ax, links, lambda g: (g.start, g.end, g.strand), mcolors.Normalize(20, 100), 2200 / 6.0)
+    ax.set_ylim(-1, 4)
+    drawn = draw_links(ax, links, pmap, mcolors.Normalize(20, 100), 2200 / 6.0)
+    fig.canvas.draw()
+    boxes = [t.get_window_extent() for t in ax.texts]
     texts = sorted(t.get_text() for t in ax.texts)
     n_ribbons = len(ax.patches)
     plt.close(fig)
-    assert len(drawn) == 2 and n_ribbons == 2
-    assert texts == ["87%", "88%"]
+    assert len(drawn) == 4 and n_ribbons == 4
+    assert texts == ["50%", "50%", "87%", "88%"]
+    assert not any(a.overlaps(b) for i, a in enumerate(boxes) for b in boxes[i + 1:])
 
 
-def test_one_to_one_pairing_falls_back_to_the_next_free_partner():
-    from dbcan.plot.syntenic_plot import Link, split_primary_links
+def test_synteny_single_link_is_centred_and_labelled_beside_it():
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    from dbcan.plot.syntenic_plot import Link, draw_links, link_ports
 
-    def gene(pid, s):
-        return V.Gene(contig="c", start=s, end=s + 900, strand="+", pid=pid, gtype="TC", roles=[("TC", "1.A")])
+    def gene(pid, s, e):
+        return V.Gene(contig="c", start=s, end=e, strand="+", pid=pid, gtype="TC", roles=[("TC", "1.A")])
 
-    q1, q2, s1, s2 = gene("q1", 0), gene("q2", 1000), gene("s1", 0), gene("s2", 1000)
-    # q2's best hit is s1, but s1 is taken by the stronger q1-s1 pair: q2 pairs with s2
-    links = [Link(q1, s1, 95, 900), Link(q2, s1, 60, 400), Link(q2, s2, 55, 350)]
-    primary, secondary = split_primary_links(links)
-    assert sorted((l.q.pid, l.s.pid) for l in primary) == [("q1", "s1"), ("q2", "s2")]
-    assert [(l.q.pid, l.s.pid) for l in secondary] == [("q2", "s1")]
+    link = Link(gene("q", 0, 1000), gene("s", 0, 1000), 93.0, 800)
+    pmap = lambda g: (g.start, g.end, g.strand)
+    qx0, qx1, sx0, sx1 = link_ports([link], pmap)[id(link)]
+    assert (qx0 + qx1) / 2 == pytest.approx(500) and (sx0 + sx1) / 2 == pytest.approx(500)
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.set_xlim(-100, 1100)
+    draw_links(ax, [link], pmap, mcolors.Normalize(20, 100), 1200 / 6.0)
+    t = ax.texts[0]
+    plt.close(fig)
+    assert t.get_text() == "93%" and t.get_position()[0] > qx1

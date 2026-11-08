@@ -9,8 +9,8 @@ One renderer (:func:`plot_synteny`) is shared by ``run_dbcan substrate_predictio
   drawn reverse-complemented.
 * Links are the DIAMOND hits (PUL_blast.out) that pass the substrate-prediction per-hit
   cut-offs (E-value, identity, query coverage); their grey level is the % identity, which is also
-  printed on each link. Genes are paired one-to-one by bitscore; further hits of an already paired
-  gene (multiple matches, paralogues) are not drawn (they stay in PUL_blast.out).
+  printed beside each link. Ribbons are narrower than the genes and a gene with several links gives
+  each its own slot, so crossing links and multiple matches of one gene stay visible.
 * Text is minimal: the two track names on the left, a title (CGC vs PUL) and the
   substrate. Gene colours use the shared dbCAN palette.
 """
@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.colors as mcolors
+from matplotlib import patheffects
 import matplotlib.pyplot as plt
 from matplotlib.path import Path as MPath
 from matplotlib.patches import PathPatch
@@ -138,27 +139,12 @@ def _ribbon(ax, qx0, qx1, sx0, sx1, ytop, ybot, color, zorder):
              (qx1, ytop), (qx0, ytop)]
     codes = [MPath.MOVETO, MPath.CURVE4, MPath.CURVE4, MPath.CURVE4, MPath.LINETO, MPath.CURVE4,
              MPath.CURVE4, MPath.CURVE4, MPath.CLOSEPOLY]
-    ax.add_patch(PathPatch(MPath(verts, codes), facecolor=color, edgecolor="none", zorder=zorder))
-
-
-def split_primary_links(links):
-    """One-to-one pairing of homologous genes: links are taken by decreasing bitscore and a link is
-    primary when neither its CGC gene nor its PUL gene is paired yet. The rest (a further hit of an
-    already paired gene, e.g. paralogues) are secondary and are not drawn."""
-    used_q, used_s, primary, secondary = set(), set(), [], []
-    for l in sorted(links, key=lambda l: (-l.bitscore, -l.pident)):
-        kq, ks = (l.q.contig, l.q.start, l.q.end), (l.s.contig, l.s.start, l.s.end)
-        if kq in used_q or ks in used_s:
-            secondary.append(l)
-        else:
-            primary.append(l)
-            used_q.add(kq)
-            used_s.add(ks)
-    return primary, secondary
+    ax.add_patch(PathPatch(MPath(verts, codes), facecolor=color, edgecolor=P.SYNTENY_LINK_EDGE_COLOR,
+                           lw=P.SYNTENY_LINK_EDGE_LW, zorder=zorder))
 
 
 def _ribbon_x_at(qx: float, sx: float, ytop: float, ybot: float, y: float) -> float:
-    """x of the ribbon centre line (the cubic Bezier drawn by _ribbon) at height y."""
+    """x at height y of a ribbon edge running from qx (CGC track) to sx (PUL track)."""
     ym = (ytop + ybot) / 2
     best_t, best_d = 0.5, float("inf")
     for i in range(201):
@@ -171,63 +157,82 @@ def _ribbon_x_at(qx: float, sx: float, ytop: float, ybot: float, y: float) -> fl
     return qx * u ** 3 + 3 * qx * u * u * t + 3 * sx * u * t * t + sx * t ** 3
 
 
-def _ribbon_span_at(link_x, ytop: float, ybot: float, y: float):
-    """(left, right) x of a ribbon (qx0, qx1, sx0, sx1) at height y."""
-    qx0, qx1, sx0, sx1 = link_x
-    return (_ribbon_x_at(qx0, sx0, ytop, ybot, y), _ribbon_x_at(qx1, sx1, ytop, ybot, y))
+def link_ports(links, pmap) -> Dict[int, Tuple[float, float, float, float]]:
+    """Ends of each link ribbon: (qx0, qx1, sx0, sx1).
+
+    A ribbon is narrower than its genes (P.SYNTENY_LINK_WIDTH_FRACTION of the gene width), so
+    crossing ribbons never hide each other. A gene with several links (multiple matches) gets one
+    slot per link, ordered by the partner's position, so the ribbons leave the gene side by side."""
+    def slots(items, lo, hi):
+        k = len(items)
+        slot = (hi - lo) / k
+        w = min(P.SYNTENY_LINK_WIDTH_FRACTION * (hi - lo), P.SYNTENY_LINK_SLOT_FILL * slot)
+        return {id(l): (lo + (i + 0.5) * slot - w / 2, lo + (i + 0.5) * slot + w / 2) for i, l in enumerate(items)}
+
+    smid = {id(l): sum(pmap(l.s)[:2]) / 2 for l in links}
+    by_q: Dict[tuple, List[Link]] = {}
+    by_s: Dict[tuple, List[Link]] = {}
+    for l in links:
+        by_q.setdefault((l.q.contig, l.q.start, l.q.end), []).append(l)
+        by_s.setdefault((l.s.contig, l.s.start, l.s.end), []).append(l)
+    q_end, s_end = {}, {}
+    for ls in by_q.values():
+        g = ls[0].q
+        q_end.update(slots(sorted(ls, key=lambda l: smid[id(l)]), min(g.start, g.end), max(g.start, g.end)))
+    for ls in by_s.values():
+        a, b, _ = pmap(ls[0].s)
+        s_end.update(slots(sorted(ls, key=lambda l: l.q.mid), min(a, b), max(a, b)))
+    return {id(l): (*q_end[id(l)], *s_end[id(l)]) for l in links}
 
 
-def draw_link_labels(ax, links, pmap, ytop: float, ybot: float, x_per_in: float) -> int:
-    """Write the % identity of every link on its own ribbon, between the two tracks. Ribbons are
-    drawn by increasing identity; a label goes where its ribbon is not covered by one drawn later
-    and does not overlap another label (heights in P.SYNTENY_LINK_LABEL_LEVELS are tried in turn).
-    Returns the number of labels written."""
+def draw_link_labels(ax, links, ports, ytop: float, ybot: float, x_per_in: float) -> int:
+    """Write the % identity of every link beside its ribbon, half-way between the tracks (right
+    side first, then left, then the same at the heights in P.SYNTENY_LINK_LABEL_LEVELS), so a
+    number never covers a ribbon or another number. A thin white halo keeps it readable over
+    crossing ribbons. Returns the number of labels written."""
     ym = (ytop + ybot) / 2
     fs = P.SYNTENY_LINK_LABEL_FONT_SIZE
-    pad = 0.06 * x_per_in
-    order = sorted(links, key=lambda l: l.pident)          # same order as the ribbons
-    xs = []
-    for l in order:
-        a, b, _ = pmap(l.s)
-        xs.append((l.q.start, l.q.end, a, b))
+    gap = P.SYNTENY_LINK_LABEL_GAP_IN * x_per_in
     placed = {lvl: [] for lvl in P.SYNTENY_LINK_LABEL_LEVELS}
+    halo = [patheffects.withStroke(linewidth=2.2, foreground="white")]
     n = 0
-    for i in sorted(range(len(order)), key=lambda k: order[k].q.mid):
-        l = order[i]
+    for l in sorted(links, key=lambda l: (l.q.mid, -l.pident)):
+        qx0, qx1, sx0, sx1 = ports[id(l)]
         text = P.SYNTENY_LINK_LABEL_FORMAT.format(l.pident)
-        half = V.text_width_data_in(text, fs) * x_per_in / 2 + pad
-        qmid, smid = (xs[i][0] + xs[i][1]) / 2, (xs[i][2] + xs[i][3]) / 2
+        w = V.text_width_data_in(text, fs) * x_per_in
+        choice = None
         for lvl in P.SYNTENY_LINK_LABEL_LEVELS:
             y = ym + lvl
-            x = _ribbon_x_at(qmid, smid, ytop, ybot, y)
-            if any(not (x + half <= x0 or x - half >= x1) for x0, x1 in placed[lvl]):
-                continue
-            if any(x + half > lo and x - half < hi
-                   for lo, hi in (sorted(_ribbon_span_at(xs[j], ytop, ybot, y)) for j in range(i + 1, len(order)))):
-                continue
-            placed[lvl].append((x - half, x + half))
-            color = "white" if l.pident >= P.SYNTENY_LINK_LABEL_WHITE_FROM else P.PLOT_INK
-            ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=color, zorder=1.5)
-            n += 1
-            break
+            right = max(_ribbon_x_at(qx1, sx1, ytop, ybot, y), _ribbon_x_at(qx0, sx0, ytop, ybot, y)) + gap
+            left = min(_ribbon_x_at(qx1, sx1, ytop, ybot, y), _ribbon_x_at(qx0, sx0, ytop, ybot, y)) - gap - w
+            for x0 in (right, left):
+                if all(x0 + w <= p0 or x0 >= p1 for p0, p1 in placed[lvl]):
+                    choice = (lvl, x0)
+                    break
+            if choice:
+                break
+        if choice is None:
+            choice = (P.SYNTENY_LINK_LABEL_LEVELS[0], (qx1 + sx1) / 2 + gap)
+        lvl, x0 = choice
+        placed[lvl].append((x0, x0 + w))
+        ax.text(x0, ym + lvl, text, ha="left", va="center", fontsize=fs, color=P.PLOT_INK, zorder=1.6,
+                path_effects=halo)
+        n += 1
     return n
 
 
 def draw_links(ax, links, pmap, norm, x_per_in) -> List[Link]:
-    """Draw the one-to-one gene pairs (split_primary_links) as filled ribbons, grey by identity and
-    labelled with it. Further hits of a gene that already has its pair (multiple matches,
-    paralogues) are not drawn: they would cross and hide the pairs. They stay in PUL_blast.out.
-    Returns the links drawn."""
-    primary, secondary = split_primary_links(links)
-    for l in sorted(primary, key=lambda l: l.pident):
-        a, b, _ = pmap(l.s)
-        _ribbon(ax, l.q.start, l.q.end, a, b, Y_CGC - GENE_H / 2, GENE_H / 2,
+    """Draw every homology link as a narrow ribbon (grey by identity) and label it with its
+    identity. Ribbons are narrower than the genes and a gene with several links gives each its own
+    slot, so multiple matches (paralogues) and crossing links all stay visible. Returns the links."""
+    ytop, ybot = Y_CGC - GENE_H / 2, GENE_H / 2
+    ports = link_ports(links, pmap)
+    for l in sorted(links, key=lambda l: (l.pident, l.bitscore)):
+        _ribbon(ax, *ports[id(l)], ytop, ybot,
                 IDENTITY_CMAP(norm(min(max(l.pident, P.SYNTENY_IDENTITY_MIN), P.SYNTENY_IDENTITY_MAX))),
                 zorder=1.2)
-    draw_link_labels(ax, primary, pmap, Y_CGC - GENE_H / 2, GENE_H / 2, x_per_in)
-    if secondary:
-        logger.debug("%d further hit(s) of already paired genes not drawn", len(secondary))
-    return primary
+    draw_link_labels(ax, links, ports, ytop, ybot, x_per_in)
+    return list(links)
 
 
 def reference_transform(cgc_genes, pul_genes, links, revcomp: bool):

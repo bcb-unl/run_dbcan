@@ -161,10 +161,10 @@ The CGC is drawn above the dbCAN-PUL (read from ``<db_dir>/dbCAN-PUL/<PUL>.out/c
 two tracks and the title gives ``CGC vs PUL`` and the PUL substrate. The reference is shifted so homologous genes sit
 under each other and, with ``--synteny-revcomp`` (default on), it is drawn reverse-complemented when most homologous
 gene pairs lie on opposite strands. Homologous genes are joined by ribbons whose grey level is the protein identity
-(colour bar ``identity (%)``), and the identity is printed on each ribbon between the two tracks. Genes are paired
-one-to-one by bitscore (strongest pairs first); a further hit of a gene that already has its pair (multiple matches,
-e.g. two paralogous GH32 genes hitting each other's counterpart) is not drawn, because it would cross and hide the
-pairs. All hits remain in ``PUL_blast.out`` (and ``substrate_prediction_dbcan_pul.tsv`` with ``-odbcanpul true``). Only DIAMOND hits from ``PUL_blast.out`` that pass the per-hit cut-offs of
+(colour bar ``identity (%)``), and the identity is printed beside each ribbon. Ribbons are narrower than the genes
+(about a third of the gene width), and a gene with several hits (multiple matches, e.g. two paralogous GH32 genes
+hitting each other's counterpart) gives each ribbon its own slot, ordered by the partner's position, so every link
+stays visible. Only DIAMOND hits from ``PUL_blast.out`` that pass the per-hit cut-offs of
 substrate prediction are drawn: ``substrate_prediction`` uses its own ``-evalue``/``-iden``/``-cov`` values and
 ``dbcan_plot`` takes ``--evalue-cutoff`` (default 0.01), ``--identity-cutoff`` (percent, default 0) and
 ``--coverage-cutoff`` (fraction, default 0). ``--pul`` compares the CGC with another dbCAN-PUL than its best hit.

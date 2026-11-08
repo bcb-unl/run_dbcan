@@ -84,7 +84,13 @@ SYNTENY_IDENTITY_MAX = 100.0
 # % identity printed on each homology link, between the two tracks
 SYNTENY_LINK_LABEL_FORMAT = "{:.0f}%"
 SYNTENY_LINK_LABEL_FONT_SIZE = 8.0
-SYNTENY_LINK_LABEL_WHITE_FROM = 80.0     # identity (%) from which the ribbon is dark enough for white text
+# Link ribbons are narrower than the genes so crossing links stay visible; a gene with several
+# links gives each one slot of its width
+SYNTENY_LINK_WIDTH_FRACTION = 0.35       # ribbon width at a gene, as a fraction of the gene width
+SYNTENY_LINK_SLOT_FILL = 0.8             # with several links on one gene: fraction of a slot used
+SYNTENY_LINK_EDGE_COLOR = "white"        # hairline that separates crossing links
+SYNTENY_LINK_EDGE_LW = 0.5
+SYNTENY_LINK_LABEL_GAP_IN = 0.03        # space between a link's edge and its % label
 SYNTENY_LINK_LABEL_LEVELS = (0.0, 0.55, -0.55)   # y offsets (data units) tried to keep labels apart
 SYNTENY_PDF_DIR = "synteny_pdf"
 SYNTENY_FILE_TEMPLATE = "{cgc}_{pul}-syntenic.{ext}"

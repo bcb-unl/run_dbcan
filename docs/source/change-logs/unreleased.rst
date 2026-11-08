@@ -61,8 +61,8 @@ Unreleased
    caption lines. ``CGC_coverage_plot`` uses the same gene track and accepts several ``--reads-count`` files.
 #. Synteny figures (``substrate_prediction`` and ``dbcan_plot CGC_synteny_plot``) share one renderer: the dbCAN-PUL is
    aligned to the CGC and reverse-complemented when it lies on the opposite strand (``--synteny-revcomp``, default
-   on); only hits that pass the substrate-prediction cut-offs are drawn, each labelled with its % identity. Genes are paired one-to-one by bitscore; further hits of an already paired
-   gene (multiple matches) are not drawn. ``CGC_synteny_coverage_plot`` writes
+   on); only hits that pass the substrate-prediction cut-offs are drawn, each labelled with its % identity. Ribbons are narrower than the genes and a gene with several hits gives
+   each its own slot, so multiple matches stay visible. ``CGC_synteny_coverage_plot`` writes
    ``<cgc>_<PUL>-syntenic-cov.<ext>``.
 #. ``cgc_circle_plot --layout auto|circos|overview``: circos for one contig, an overview of the contigs with CGCs
    otherwise; PNG and PDF instead of one SVG per contig. With ``--layout circos`` on several contigs each sector is
