@@ -62,7 +62,6 @@ Reference
    :maxdepth: 1
 
    parameters
-   output
    results_examples
    hpc
 

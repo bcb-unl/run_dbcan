@@ -1,42 +1,25 @@
 #!/usr/bin/env python3
-import os
-import sys
+"""``dbcan_plot``: CGC figures (map, coverage, synteny) and abundance charts (bar, heatmap)."""
 import logging
-from types import SimpleNamespace
+import os
+import re
+from pathlib import Path
+from typing import List
 
 import numpy as np
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
-import seaborn as sns
 import rich_click as click
 
-from matplotlib import pyplot
-from matplotlib.lines import Line2D
-from matplotlib.patches import Patch, Polygon
-
-from dbcan.constants.expression_constants import PLOT_METRIC_CHOICES
-from dbcan.utils.utils import cgc_standard_line
-from dbcan.plot.syntenic_plot import (
-    syntenic_plot,
-    read_blast_result_cgc,
-    read_UHGG_CGC_stanrdard_out,
-    read_cgcgff,
-    Get_parameters_for_plot,
-    plot_Polygon_homologous,
-    plot_syntenic_block,
-)
-from dbcan.plot.syntenic_plot import Get_Position as synGet_Position
-from dbcan.plot.syntenic_plot import plot_genome_line as synplot_genome_line
-from dbcan.constants.plots_constants import (
-    CGC_RESULT_FILE,
-    CGC_SUB_PREDICTION_FILE,
-)
-
+import dbcan.constants.cgc_substrate_prediction_constants as CSP
+import dbcan.constants.plots_constants as P
+import dbcan.constants.expression_constants as E
 from dbcan.configs.plots_config import PlotsConfig
 from dbcan.parameter import logging_options
 from dbcan.main import setup_logging
+from dbcan.plot import cgc_viz as V
 
 mpl.rcParams["pdf.fonttype"] = 42
 mpl.rcParams["ps.fonttype"] = 42
@@ -44,805 +27,321 @@ mpl.rcParams["ps.fonttype"] = 42
 logger = logging.getLogger(__name__)
 
 
-class CGC_Standard_Out(object):
-    def __init__(self, filename):
-        hits = open(filename).readlines()[1:]
-        self.genes = []
-        for line in hits:
-            if line.startswith("CGC#"):
-                continue
-            lines = line.rstrip("\n").split()  #
-            gene_obj = cgc_standard_line(lines)
-            # newly added
-            if len(lines) >= 1:
-                setattr(gene_obj, "annotation", lines[-1])
-            self.genes.append(gene_obj)
-
-    def __iter__(self):
-        return iter(self.genes)
-
-    def CGCID2genes(self):
-        cgcdict = {}
-        for gene in self:
-            cgcdict.setdefault(gene.cgcid, []).append(gene)
-        return cgcdict
+class PlotError(click.ClickException):
+    """Shown as 'Error: ...' and makes dbcan_plot exit with status 1."""
 
 
-class CGC(object):
-    def __init__(self, genes):
-        self.genes = genes
-        self.ID = genes[0].cgcid
-        self.start = min([gene.gene_start for gene in genes])
-        self.end = max([gene.gene_end for gene in genes])
-        self.gene_num = len(genes)
-
-    def __iter__(self):
-        return iter(self.genes)
-
-    def __repr__(self):
-        return "\t".join([self.ID, str(self.start), str(self.end), str(self.gene_num)])
-
-    def __len__(self):
-        return len(self.genes)
-
-    def get_positions(self):
-        starts = []
-        ends = []
-        strands = []
-        for gene in self:
-            starts.append(gene.gene_start)
-            ends.append(gene.gene_end)
-            strands.append(gene.strand)
-        return starts, ends, strands
-
-    def get_proteinID(self):
-        return [gene.seqid for gene in self]
-
-    def get_cgc_CAZyme(self):
-        return [gene.gene_type for gene in self]
-
-    def get_annotations(self):
-        annos = []
-        for g in self.genes:
-            ann = getattr(g, "annotation", None)
-            if not ann:
-                # use gene_type as backup
-                ann = getattr(g, "gene_type", "")
-            annos.append(ann)
-        return annos
+# ---------------------------------------------------------------------------
+# CGC figures
+# ---------------------------------------------------------------------------
+def _load_cgc(cfg: PlotsConfig):
+    if not cfg.cgcid:
+        raise PlotError("--cgcid is required for CGC plots (example: 'contig1|CGC1').")
+    run = Path(cfg.input_dir)
+    cgcs = V.read_cgc_table(run / P.CGC_RESULT_FILE)
+    if cfg.cgcid not in cgcs:
+        examples = ", ".join(list(cgcs)[:3])
+        raise PlotError(f"CGC '{cfg.cgcid}' not found in {run / P.CGC_RESULT_FILE} (ids look like: {examples}).")
+    return run, cgcs
 
 
-class CGC_standard_out_2CGC(object):
-    def __init__(self, dbcan):
-        self.CGCs = []
-        cgcdict = dbcan.CGCID2genes()
-        for cgc in cgcdict:
-            self.CGCs.append(CGC(cgcdict[cgc]))
-
-    def __iter__(self):
-        return iter(self.CGCs)
-
-    def cgcid2CGC(self):
-        return {cgc.ID: cgc for cgc in self}
+def _depth_files(cfg: PlotsConfig):
+    files = list(cfg.reads_count or [])
+    if not files:
+        raise PlotError("--reads-count is required (samtools depth output; repeat it for several samples).")
+    names = list(cfg.samples or [])
+    if names and len(names) != len(files):
+        raise PlotError(f"--samples has {len(names)} names for {len(files)} --reads-count files.")
+    if not names:
+        names = [Path(f).name.split(".")[0] for f in files] if len(files) > 1 else [""]
+    return list(zip(names, files))
 
 
-def derive_paths(cfg: PlotsConfig):
-    return {
-        "pul_annotation": os.path.join(cfg.input_dir, CGC_RESULT_FILE),
-        "pul_substrate": os.path.join(cfg.input_dir, CGC_SUB_PREDICTION_FILE),
-        "blastp": os.path.join(cfg.input_dir, "PUL_blast.out"),
-    }
+def _substrates(run: Path, cgcid: str):
+    call = V.read_substrates(run / P.CGC_SUB_PREDICTION_FILE).get(cgcid)
+    return call.names() if call else None
 
 
 def CGC_plot(cfg: PlotsConfig):
-    paths = derive_paths(cfg)
-    pul_ann = paths["pul_annotation"]
-    if not os.path.exists(pul_ann):
-        logger.error(f"CGC annotation file not found: {pul_ann}")
-        return
-    if not cfg.cgcid:
-        logger.error("CGC id is required for CGC_plot (--cgcid).")
-        return
-
-    dbCAN_standard_out = CGC_Standard_Out(pul_ann)
-    cgcs = CGC_standard_out_2CGC(dbCAN_standard_out)
-    cgcid2cgc = cgcs.cgcid2CGC()
-    if cfg.cgcid not in cgcid2cgc:
-        logger.error(f"CGC id not found in annotation: {cfg.cgcid}")
-        return
-    cgc = cgcid2cgc[cfg.cgcid]
-    starts, ends, strands = cgc.get_positions()
-    types = cgc.get_cgc_CAZyme()
-    labels = cgc.get_proteinID()
-    annotations = cgc.get_annotations() if getattr(cfg, "show_annotation", False) else None  # only when enabled
-
-    out_pdf = f"{cfg.cgcid.replace('|', '_')}.cgc.pdf"
-    cgc_fig_plot(starts, ends, strands, types, labels, out_pdf, annotations=annotations)
-
-
-def read_location_reads_count(filename):
-    xs2ys = {}
-    with open(filename) as fh:
-        for line in fh:
-            parts = line.split()
-            if len(parts) < 3:
-                continue
-            try:
-                xs2ys[int(parts[1])] = int(parts[2])
-            except Exception:
-                continue
-    return xs2ys
+    from dbcan.plot.cgc_map import plot_cgc_map
+    run, cgcs = _load_cgc(cfg)
+    return plot_cgc_map(cgcs[cfg.cgcid], cfg.cgcid, Path(cfg.output_dir), substrates=_substrates(run, cfg.cgcid),
+                        show_protein_ids=cfg.show_protein_ids, formats=cfg.formats, dpi=cfg.dpi)
 
 
 def CGC_plot_reads_count(cfg: PlotsConfig):
-    paths = derive_paths(cfg)
-    pul_ann = paths["pul_annotation"]
-    if not os.path.exists(pul_ann):
-        logger.error(f"CGC annotation file not found: {pul_ann}")
-        return
-    if not cfg.cgcid:
-        logger.error("CGC id is required for CGC_coverage_plot (--cgcid).")
-        return
-    if not cfg.reads_count or not os.path.exists(cfg.reads_count):
-        logger.error("Reads count file is required (--reads-count) and must exist.")
-        return
-
-    dbCAN_standard_out = CGC_Standard_Out(pul_ann)
-    cgcs = CGC_standard_out_2CGC(dbCAN_standard_out)
-    cgcid2cgc = cgcs.cgcid2CGC()
-    if cfg.cgcid not in cgcid2cgc:
-        logger.error(f"CGC id not found in annotation: {cfg.cgcid}")
-        return
-    cgc = cgcid2cgc[cfg.cgcid]
-    starts, ends, strands = cgc.get_positions()
-    types = cgc.get_cgc_CAZyme()
-    labels = cgc.get_proteinID()
-
-    out_pdf = f"{cfg.cgcid.replace('|', '_')}.cgc-coverage.pdf"
-    cgc_fig_plot_abund(starts, ends, strands, types, labels, cfg, out_pdf)
+    from dbcan.plot.cgc_map import plot_cgc_map
+    run, cgcs = _load_cgc(cfg)
+    return plot_cgc_map(cgcs[cfg.cgcid], cfg.cgcid, Path(cfg.output_dir), substrates=_substrates(run, cfg.cgcid),
+                        depth_files=_depth_files(cfg), show_protein_ids=cfg.show_protein_ids,
+                        formats=cfg.formats, dpi=cfg.dpi)
 
 
-def Get_Position(starts, ends, strands, labels, yshift=0):
-    Width = 1000
-    Height = 160
-    poly_heigth = 10
-    Triangle_length = 4
-    plot_start_y = Height / 2 - poly_heigth - yshift
-
-    # copy, do not mutate caller inputs
-    s = list(starts)
-    e = list(ends)
-    st = list(strands)
-    shift_pos = min(s) if s else 0
-    maxbp = max(e) - min(s) if s and e else 1
-    pixeachbp = Width / maxbp if maxbp > 0 else 1.0
-
-    for i in range(len(s)):
-        s[i] -= shift_pos
-        e[i] -= shift_pos
-
-    lines = []
-    polygens = []
-    texts = []
-    for i in range(len(s)):
-        if st[i] == "+":
-            positions_str = f"{s[i] * pixeachbp} {plot_start_y} "
-            positions_str += f"{e[i] * pixeachbp - Triangle_length} {plot_start_y} "
-            positions_str += f"{e[i] * pixeachbp} {plot_start_y + poly_heigth} "
-            positions_str += f"{e[i] * pixeachbp - Triangle_length} {plot_start_y + 2*poly_heigth} "
-            positions_str += f"{s[i] * pixeachbp} {plot_start_y + 2*poly_heigth}"
-        else:
-            positions_str = f"{s[i] * pixeachbp} {plot_start_y + poly_heigth} "
-            positions_str += f"{s[i] * pixeachbp + Triangle_length} {plot_start_y} "
-            positions_str += f"{e[i] * pixeachbp} {plot_start_y} "
-            positions_str += f"{e[i] * pixeachbp} {plot_start_y + 2* poly_heigth} "
-            positions_str += f"{s[i]* pixeachbp + Triangle_length} {plot_start_y + 2* poly_heigth}"
-        polygens.append(positions_str)
-
-        if i < len(s) - 1:
-            positions_str = f"{e[i] * pixeachbp} {plot_start_y + poly_heigth} "
-            positions_str += f"{s[i+1]*pixeachbp} {plot_start_y + poly_heigth}"
-            lines.append(positions_str)
-
-        if i < len(labels):
-            texts.append(labels[i].split(".")[0])
-        else:
-            texts.append(str(i + 1))
-
-    scale_number = 10
-    each_scale_bp = maxbp / scale_number
-    each_scale_pix = each_scale_bp * pixeachbp
-
-    plot_start_y -= 50
-    scale_positions = []
-    scale_positions_texts = []
-    scale_text = []
-    scale_positions.append(f"0 {plot_start_y + 3*poly_heigth} {10*each_scale_pix} {plot_start_y + 3*poly_heigth}")
-    plot_start_y -= 1
-    for i in range(scale_number + 1):
-        positions_str = f"{i*each_scale_pix} {plot_start_y + 3* poly_heigth} "
-        positions_str += f"{i*each_scale_pix} {plot_start_y + 3*poly_heigth + 0.6* poly_heigth}"
-        scale_positions.append(positions_str)
-        positions_str = f"{i*each_scale_pix} {plot_start_y + 3*poly_heigth + 0.6* poly_heigth}"
-        scale_positions_texts.append(positions_str)
-        scale_text.append(str(int(each_scale_bp * i) + shift_pos))
-
-    return polygens, lines, texts, scale_positions, scale_text
-
-
-def plot_Polygon(polygens1, types1, ax):
-    colors_map = {
-        "CAZyme": "#E67E22",
-        "TC": "#2ECC71",
-        "TF": "#9B59B6",
-        "STP": "#F1C40F",
-        "Peptidase": "#16A085",
-        "Sulfatase": "#34495E",
-        "Other": "#95A5A6",
-    }
-    default_color = "#95A5A6"
-    for j in range(len(polygens1)):
-        polygen = polygens1[j].split()
-        points = []
-        color = colors_map.get(types1[j], default_color)
-        for i in range(int(len(polygen) / 2)):
-            points.append([float(polygen[2 * i]), float(polygen[2 * i + 1])])
-        ax.add_patch(Polygon(points, facecolor=color, edgecolor="none", alpha=0.5, lw=0))
-
-
-def plot_genome_line(lines, ax):
-    # draw connectors between adjacent genes as real line segments
-    for line in lines:
-        x1, y1, x2, y2 = points2(line)
-        ax.plot([x1, x2], [y1, y2], color="gray", lw=2, solid_capstyle="round", zorder=5)
-
-
-def plot_scale_line(lines, label, ax):
-    # draw the horizontal scale and tick marks as lines (not polygons)
-    for i, line in enumerate(lines):
-        x1, y1, x2, y2 = points2(line)
-        ax.plot([x1, x2], [y1, y2], color="gray", lw=2, zorder=5)
-        if i >= 1:
-            # smaller offset so labels stay close to the lines
-            ax.text(float(x1), float(y1) - 6, label[i - 1], va="top", ha="center", fontsize=8)
-
-
-def points2(coord):
-    x1, y1, x2, y2 = coord.split()
-    return float(x1), float(y1), float(x2), float(y2)
-
-
-def cgc_fig_plot(starts, ends, strands, types, gene_labels, out_pdf: str, annotations=None):
-    genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
-    geneslabels = ["CAZyme", "TC", "TF", "STP", "Peptidase", "Sulfatase", "Other"]
-    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
-
-    px = 1 / plt.rcParams["figure.dpi"]
-    Width = 1400
-    Height = 100
-    fig = plt.figure(figsize=(Width * px * 1.2, Height * px * 2))
-    ax = fig.add_subplot(111)
-
-    polygens, lines, texts, scale_positions, scale_text = Get_Position(starts, ends, strands, gene_labels)
-    plot_Polygon(polygens, types, ax)
-    plot_genome_line(lines, ax)
-    plot_scale_line(scale_positions, scale_text, ax)
-
-    ylim_top = 150
-    if annotations:
-        # rotation 60, larger font; dynamically extend ylim based on returned top y
-        top_y = add_gene_annotations(
-            ax, starts, ends, annotations,
-            font_size=8,
-            rotation=60,
-            y_offset=28
-        )
-        if top_y:
-            ylim_top = max(ylim_top, top_y + 5)
-
-    ax.plot()
-    legend = pyplot.legend(genecustom_lines, geneslabels, frameon=False, loc="best", title_fontsize="x-large")
-    ax.add_artist(legend)
-    plt.ylim(0, ylim_top)
-    plt.xlim(-50, 1100)
-    # Remove tight_layout to avoid shrinking arrows when text grows
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.96, bottom=0.02)
-    plt.axis("off")
-    plt.savefig(out_pdf, bbox_inches="tight")
-    plt.close()
-    logger.info(f"Saved figure: {out_pdf}")
-
-
-def add_gene_annotations(ax, starts, ends, annotations, font_size=10, rotation=60, y_offset=25):
-    """
-    Add full annotation text above gene arrows (no truncation).
-    rotation: text rotation angle (default 60).
-    font_size: text size.
-    y_offset: vertical offset above arrow top in data coordinates.
-    Returns the highest y used by text for dynamic ylim adjustment.
-    """
-    if not starts or not ends:
-        return
-    shift_pos = min(starts)
-    maxbp = max(ends) - shift_pos
-    if maxbp <= 0:
-        return
-    Width = 1000  # must match Get_Position
-    pixeachbp = Width / maxbp
-    # Arrow top baseline (from Get_Position geometry):
-    # Height/2 - poly_height = 160/2 - 10 = 70; arrow top ~ 70 + 20 = 90
-    base_polygon_y_top = 70 + 20
-    label_base_y = base_polygon_y_top + y_offset
-    max_top_y = label_base_y
-    # approximate single-line height in data units (rough factor)
-    line_height = font_size * 0.62
-    for s, e, ann in zip(starts, ends, annotations):
-        try:
-            cx = ((s - shift_pos) + (e - shift_pos)) / 2 * pixeachbp
-            txt = ax.text(
-                cx,
-                label_base_y,
-                ann,
-                ha="center",
-                va="bottom",
-                fontsize=font_size,
-                rotation=rotation,
-            )
-            top_est = label_base_y + line_height  # single line
-            if top_est > max_top_y:
-                max_top_y = top_est
-        except Exception:
-            continue
-    return max_top_y
-
-
-def cgc_fig_plot_abund(starts, ends, strands, types, labels, cfg: PlotsConfig, out_pdf: str):
-    genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
-    geneslabels = ["CAZyme", "TC", "TF", "STP", "Peptidase", "Sulfatase", "Other"]
-    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
-
-    px = 1 / plt.rcParams["figure.dpi"]
-    Width = 1400
-    Height = 100
-    fig = plt.figure(figsize=(Width * px * 1.2, Height * px * 4))
-    ax = fig.add_subplot(212)
-
-    polygens, lines, texts, scale_positions, scale_text = Get_Position(starts, ends, strands, labels)
-    plot_Polygon(polygens, types, ax)
-    plot_genome_line(lines, ax)
-    plot_scale_line(scale_positions, scale_text, ax)
-    ax.plot()
-    legend = pyplot.legend(genecustom_lines, geneslabels, frameon=False, loc="best", title_fontsize="x-large")
-    ax.add_artist(legend)
-    plt.ylim(0, 150)
-    xlim_x1, xlim_x2 = (-10, 1100)
-    plt.xlim(xlim_x1, xlim_x2)
-    plt.axis("off")
-
-    xs2ys = read_location_reads_count(cfg.reads_count)
-    max_y = max(xs2ys.values()) if xs2ys else 0
-    add_readcount_layout(fig, starts, ends, xs2ys, max_y, -3, max_y + 10, xlim_x1, xlim_x2, max(ends) - min(starts))
-
-    plt.savefig(out_pdf, bbox_inches="tight")
-    plt.close()
-    logger.info(f"Saved figure: {out_pdf}")
-
-
-def add_readcount_layout(fig, starts, ends, xs2ys, max_y, ylim_y1, ylim_y2, xlim_x1, xlim_x2, syn_maxbp):
-    maxbp = max(ends) - min(starts)
-    Width = 1000
-    pixeachbp = Width / syn_maxbp if syn_maxbp > 0 else 1.0
-    ax = fig.add_subplot(211)
-    plt.ylim(ylim_y1, ylim_y2)
-    plt.xlim(xlim_x1, xlim_x2)
-    plt.tight_layout(pad=0.1)
-    plt.plot((0, 1000), (0, 0), color="gray", lw=1)
-    all_xs = []
-    all_ys = []
-    start = min(starts)
-    for i in range(1, maxbp + 1):
-        all_xs.append(pixeachbp * i)
-        all_ys.append(xs2ys.get(i + start, 0))
-    plt.plot(all_xs, all_ys, "-", alpha=0.5, color="red", lw=1)
-    ax.fill_between(all_xs, all_ys, 0, facecolor="red", alpha=0.3, edgecolor="white")
-    for pos in ["top", "right", "bottom"]:
-        ax.spines[pos].set_visible(False)
-    ax.tick_params(bottom=False, top=False, left=True, right=False)
-    ax.set_xticks([])
-
-
-def generate_syntenic_block(cgcpul, cgcpul_blastp, genes1, genes2):
-    blocks = []
-    for record in cgcpul_blastp.get(cgcpul, []):
-        query = record.qseqid
-        hit = record.sseqid
-        try:
-            cgc_proteinid = query.split("|")[2]
-        except Exception:
-            continue
-        # sseqid shape often contains PUL and protein id separated by ':'
-        parts = hit.split(":")
-        pul_proteinid = parts[2] if len(parts) > 2 else (parts[-1] if parts else "")
-        try:
-            index1 = genes1.index(cgc_proteinid)
-            index2 = genes2.index(pul_proteinid)
-            blocks.append(f"{index1}-{index2}-{record.pident}")
-        except Exception:
-            continue
-    return blocks
-
-
-def add_synteny_scale(ax, starts_cgc, ends_cgc, starts_pul, ends_pul, maxbp,
-                      ticks=10, width=1000, y=4, font_size=7):
-    """
-    Draw a manual horizontal scale (relative length; each track internally shifted).
-    Labels are absolute positions using the minimal start of both tracks as origin.
-    """
-    if maxbp <= 0:
-        return
-    try:
-        min_abs = min(
-            [m for m in (min(starts_cgc, default=0), min(starts_pul, default=0))]
-        )
-    except Exception:
-        min_abs = 0
-    pix_per_bp = width / maxbp
-    # baseline
-    ax.plot([0, width], [y, y], color="gray", lw=1)
-    step_bp = maxbp / ticks
-    for i in range(ticks + 1):
-        x = pix_per_bp * step_bp * i
-        ax.plot([x, x], [y, y + 4], color="gray", lw=1)
-        # avoid overcrowding: only label min, max, and every second tick
-        if i in (0, ticks) or i % 2 == 0:
-            label_val = int(min_abs + step_bp * i)
-            ax.text(x, y - 6, f"{label_val}", ha="center", va="top", fontsize=font_size)
-    ax.text(width, y - 16, "bp", ha="right", va="top", fontsize=font_size)
+def _synteny(cfg: PlotsConfig, with_depth: bool):
+    from dbcan.plot.syntenic_plot import HomologyCutoffs, draw_cgc_vs_pul
+    run, cgcs = _load_cgc(cfg)
+    cutoffs = HomologyCutoffs(cfg.evalue_cutoff, cfg.identity_cutoff, cfg.coverage_cutoff)
+    return draw_cgc_vs_pul(run, Path(cfg.db_dir), cfg.cgcid, Path(cfg.output_dir), pul=cfg.pul, cutoffs=cutoffs,
+                           revcomp=cfg.synteny_revcomp, depth_files=_depth_files(cfg) if with_depth else None,
+                           formats=cfg.formats, dpi=cfg.dpi, cgc_table=cgcs,
+                           template=P.CGC_SYNTENY_COVERAGE_FILE_TEMPLATE if with_depth else P.SYNTENY_FILE_TEMPLATE)
 
 
 def CGC_syntenic_with_PUL(cfg: PlotsConfig):
-    paths = derive_paths(cfg)
-    sub_pred = paths["pul_substrate"]
-    pul_ann = paths["pul_annotation"]
-    if not os.path.exists(sub_pred) or not os.path.exists(pul_ann):
-        logger.error("Required files not found (substrate_prediction or cgc_standard_out).")
-        return
-    if not cfg.cgcid:
-        logger.error("CGC id is required (--cgcid).")
-        return
-
-    cgcid2pulid = {line.rstrip().split("\t")[0]: line.rstrip().split("\t")[1] for line in open(sub_pred).readlines()[1:]}
-    cgc = cfg.cgcid
-    pul = cgcid2pulid.get(cgc, "")
-    if not pul:
-        logger.error(f"Homolog PUL not found for CGC: {cgc}")
-        return
-
-    cgcpul_blastp = read_blast_result_cgc(paths["blastp"])
-    cgc_proteinid2gene, cgcid2gene, cgcid2geneid = read_UHGG_CGC_stanrdard_out(pul_ann)
-    ns = SimpleNamespace(db_dir=cfg.db_dir)
-    PULid_proteinid2gene, PULid2gene, PULid2geneid = read_cgcgff(ns)
-
-    cgcpul = cgc + ":" + pul
-    bed_cgc = cgcid2gene[cgc]
-    bed_pul = PULid2gene[pul]
-    starts1, ends1, strands1, types1 = Get_parameters_for_plot(bed_cgc)
-    starts2, ends2, strands2, types2 = Get_parameters_for_plot(bed_pul)
-    genes1 = cgcid2geneid[cgc]
-    genes2 = PULid2geneid[pul]
-    blocks = generate_syntenic_block(cgcpul, cgcpul_blastp, genes1, genes2)
-    config = {"output_dir": "."}
-    syntenic_plot(starts1, starts2, ends1, ends2, strands1, strands2, types1, types2, blocks, cgc, pul, config)
-    logger.info(f"Saved figure: {cgc.replace('|','_')}_{pul.replace('|','_')}-syntenic.pdf")
+    return _synteny(cfg, with_depth=False)
 
 
 def CGC_syntenic_with_PUL_abund(cfg: PlotsConfig):
-    paths = derive_paths(cfg)
-    sub_pred = paths["pul_substrate"]
-    pul_ann = paths["pul_annotation"]
-    if not os.path.exists(sub_pred) or not os.path.exists(pul_ann):
-        logger.error("Required files not found (substrate_prediction or cgc_standard_out).")
-        return
-    if not cfg.cgcid:
-        logger.error("CGC id is required (--cgcid).")
-        return
-    if not cfg.reads_count or not os.path.exists(cfg.reads_count):
-        logger.error("Reads count file is required (--reads-count) and must exist.")
-        return
-
-    cgcid2pulid = {line.rstrip().split("\t")[0]: line.rstrip().split("\t")[1] for line in open(sub_pred).readlines()[1:]}
-    cgc = cfg.cgcid
-    pul = cgcid2pulid.get(cgc, "")
-    if not pul:
-        logger.error(f"Homolog PUL not found for CGC: {cgc}")
-        return
-
-    cgcpul_blastp = read_blast_result_cgc(paths["blastp"])
-    cgc_proteinid2gene, cgcid2gene, cgcid2geneid = read_UHGG_CGC_stanrdard_out(pul_ann)
-    # Load PUL GFFs (wrapper around read_cgcgff which expects a file + dict)
-    PULid_proteinid2gene, PULid2gene, PULid2geneid = load_pul_gffs(cfg.db_dir)
-
-    cgcpul = cgc + ":" + pul
-    bed_cgc = cgcid2gene[cgc]
-    bed_pul = PULid2gene[pul]
-    starts1, ends1, strands1, types1 = Get_parameters_for_plot(bed_cgc)
-    starts2, ends2, strands2, types2 = Get_parameters_for_plot(bed_pul)
-    genes1 = cgcid2geneid[cgc]
-    genes2 = PULid2geneid[pul]
-    blocks = generate_syntenic_block(cgcpul, cgcpul_blastp, genes1, genes2)
-
-    # draw synteny and coverage
-    px = 1 / plt.rcParams["figure.dpi"]
-    Width = 1600
-    Height = 620 * 2
-    fig = plt.figure(figsize=(Width * px, Height * px * 2 / 2.5))
-    ax = fig.add_subplot(212)
-
-    maxbp = max([max(ends1) - min(starts1), max(ends2) - min(starts2)])
-    # First (CGC) band – reduce yshift to move upward (more compact)
-    polygens_cgc, blocks_cgc_coor, lines_cgc_coor, _, _ = synGet_Position(
-        starts1, ends1, strands1, maxbp, yshift=30, up=2
-    )
-    # Second (PUL) band
-    polygens_pul, blocks_pul_coor, lines_pul_coor, _, _ = synGet_Position(
-        starts2, ends2, strands2, maxbp, yshift=0, up=1
-    )
-    # draw bands, blocks, lines
-    plot_Polygon_homologous(polygens_cgc, polygens_pul, types1, types2, 2, ax)
-    plot_syntenic_block(blocks, blocks_cgc_coor, blocks_pul_coor, ax)
-    synplot_genome_line(lines_cgc_coor, lines_pul_coor, ax)
-
-    custom_lines = [
-        Line2D([0], [0], color="red", lw=4, alpha=0.5),
-        Line2D([0], [0], color="blue", lw=4, alpha=0.5),
-        Line2D([0], [0], color="green", lw=4, alpha=0.5),
-        Line2D([0], [0], color="cyan", lw=4, alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4, alpha=0.5),
-    ]
-    labels = ["80-100", "60-80", "40-60", "20-40", "0-20"]
-
-    genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
-    geneslabels = ["CAZyme", "TC", "TF", "STP", "Peptidase", "Sulfatase", "Other"]
-    genecustom_lines = [Patch(color=c, alpha=0.5) for c in genelabelcolor]
-
-    legend1 = pyplot.legend(custom_lines, labels, frameon=False, loc="lower right", bbox_to_anchor=(1, 0.5), title="Identity")
-    ax.add_artist(legend1)
-    legend2 = pyplot.legend(genecustom_lines, geneslabels, frameon=False, loc="lower right", bbox_to_anchor=(1, 0.1), title="Gene")
-    ax.add_artist(legend2)
-
-    # Move CGC title upward (was y=10). Slightly adjust PUL title for compact layout.
-    plt.text(500, 15, cgc, fontsize=20, horizontalalignment="center")
-    plt.text(500, 88, pul, fontsize=20, horizontalalignment="center")
-    xlim_x1, xlim_x2 = (-10, 1100)
-    ylim_y1, ylim_y2 = (0, 100)
-    plt.ylim(ylim_y1, ylim_y2)
-    plt.xlim(xlim_x1, xlim_x2)
-    # Custom scale (syntenic Get_Position does not provide one)
-    add_synteny_scale(ax, starts1, ends1, starts2, ends2, maxbp)
-    # Hide default axes
-    plt.axis("off")
-    ax.plot()
-
-    xs2ys = read_location_reads_count(cfg.reads_count)
-    max_y = max(xs2ys.values()) if xs2ys else 0
-    add_readcount_layout(fig, starts1, ends1, xs2ys, max_y, ylim_y1, max_y, xlim_x1, xlim_x2, maxbp)
-
-    out_pdf = f"{cgc.replace('|','_')}-syntenic-cov.pdf"
-    plt.savefig(out_pdf, bbox_inches="tight")
-    plt.close()
-    logger.info(f"Saved figure: {out_pdf}")
+    return _synteny(cfg, with_depth=True)
 
 
+# ---------------------------------------------------------------------------
+# abundance charts
+# ---------------------------------------------------------------------------
 def combined_datafram_based_on_first_col(pd_lists, samples):
     if len(pd_lists) <= 1:
         return pd_lists[0]
-    else:
-        col_name = pd_lists[0].columns
-        on_merge_col = col_name[0]
-        merged_table = pd.merge(pd_lists[0], pd_lists[1], on=[on_merge_col], how="outer")
-
-        for i in range(len(pd_lists)):
-            ori_names = pd_lists[i].columns
-            mod_names = [ori_names[0]] + [ori_names[j] + "_" + samples[i] for j in range(1, len(ori_names))]
-            pd_lists[i].columns = mod_names
-
-        for i in range(2, len(pd_lists)):
-            merged_table = pd.merge(merged_table, pd_lists[i], on=[on_merge_col], how="outer")
+    col_name = pd_lists[0].columns
+    on_merge_col = col_name[0]
+    merged_table = pd.merge(pd_lists[0], pd_lists[1], on=[on_merge_col], how="outer")
+    for i in range(len(pd_lists)):
+        ori_names = pd_lists[i].columns
+        mod_names = [ori_names[0]] + [ori_names[j] + "_" + samples[i] for j in range(1, len(ori_names))]
+        pd_lists[i].columns = mod_names
+    for i in range(2, len(pd_lists)):
+        merged_table = pd.merge(merged_table, pd_lists[i], on=[on_merge_col], how="outer")
 
     abundance_col = col_name[1]
-    merged_table.fillna(0, inplace=True)
+    merged_table = merged_table.fillna(0)
     merged_table["diff_abs"] = np.abs(merged_table[abundance_col + "_x"] - merged_table[abundance_col + "_y"])
     merged_table["diff"] = merged_table[abundance_col + "_x"] - merged_table[abundance_col + "_y"]
 
-    merged_columns = merged_table.columns
     rename_columns = []
     abund_index = 0
-    for column in merged_columns:
+    for column in merged_table.columns:
         if abundance_col in column and column != on_merge_col:
             rename_columns.append(samples[abund_index])
             abund_index += 1
         else:
             rename_columns.append(column)
     merged_table.columns = rename_columns
-    merged_table.sort_values("diff_abs", inplace=True, ascending=False)
+    merged_table = merged_table.sort_values("diff_abs", ascending=False)
     return merged_table, on_merge_col
 
 
 def filter_out_enzyme_number(table):
     bools = []
     for i in table.iloc[:, 0]:
-        if i and i[0].isdigit():
-            bools.append(True)
-        elif i in ["PL0", "GH0", "GT0", "CBM0", "AA0", "CE0"]:
-            bools.append(False)
-        else:
-            bools.append(True)
-    table = table[bools]
-    return table
+        i = str(i)
+        bools.append(not (i in ("PL0", "GH0", "GT0", "CBM0", "AA0", "CE0")))
+    return table[bools]
 
 
 def add_column_type(table):
-    import re
-
-    cols = []
-    for i in table["CAZy"]:
-        fam = re.sub(r"[0-9]+", "", i)
-        cols.append(fam)
-    table["fam"] = cols
+    table["fam"] = [re.sub(r"[0-9]+", "", str(i)) for i in table["CAZy"]]
     return table
 
 
-def check_input_files_min_lines(input_files, min_lines=2) -> bool:
+def check_input_files_min_lines(input_files, min_lines=2):
     for f in input_files.split(","):
-        try:
-            with open(f) as fh:
-                lines = sum(1 for _ in fh)
-            if lines < min_lines:
-                logger.warning(f"Input file {f} has less than {min_lines} lines, skip plotting.")
-                return False
-        except Exception as e:
-            logger.warning(f"Error reading file {f}: {e}")
-            return False
+        if not os.path.isfile(f):
+            raise PlotError(f"Abundance file not found: {f}")
+        with open(f) as fh:
+            lines = sum(1 for _ in fh)
+        if lines < min_lines:
+            raise PlotError(f"Abundance file {f} has fewer than {min_lines} lines; nothing to plot.")
     return True
 
 
-def heatmap_plot(cfg: PlotsConfig, input_files: str, samples: str, show_abund: bool, cluster_map: bool, palette: str, col: str, value: str, plot_style: str, top: int, show_fig: bool):
-    pds = [filter_out_enzyme_number(pd.read_csv(filename, sep="\t")) for filename in input_files.split(",")]
-    samples_list = samples.split(",")
-    plt.style.use(plot_style)
-    if len(pds) != len(samples_list):
-        logger.error("The number of samples is not equal to the number of input files.")
-        return
-    for i in range(len(pds)):
-        pds[i]["sample"] = samples_list[i]
-    if len(pds) == 1:
-        data = pds[0]
-        data = data.rename(columns={data.columns[1]: samples_list[0]})
-    else:
-        data, _ = combined_datafram_based_on_first_col(pds, samples_list)
+def resolve_plot_style(style: str) -> str:
+    """Map pre-3.6 seaborn style names to the 'seaborn-v0_8*' names and check availability."""
+    style = P.PLOT_STYLE_ALIASES.get(style, style)
+    if style not in plt.style.available and style != "default":
+        raise PlotError(f"Matplotlib style '{style}' is not available (choose from {', '.join(P.PLOT_STYLE_CHOICES)}).")
+    return style
 
-    if not col:
-        data = data.iloc[0 : int(top or 20), :]
+
+def _read_abundance(input_files: str, samples: str, plot_style: str):
+    tables = [filter_out_enzyme_number(pd.read_csv(f, sep="\t")) for f in input_files.split(",")]
+    samples_list = samples.split(",")
+    if len(tables) != len(samples_list):
+        raise PlotError(f"--samples has {len(samples_list)} names for {len(tables)} input files.")
+    plt.style.use(resolve_plot_style(plot_style))
+    for t, s in zip(tables, samples_list):
+        t["sample"] = s
+    return tables, samples_list
+
+
+def _select_rows(data, col, value, top):
+    if col and value:
+        if col not in data.columns:
+            raise PlotError(f"--col '{col}' is not a column of the input ({', '.join(map(str, data.columns))}).")
+        return data.loc[data[col].isin(value.split(","))]
+    return data.iloc[0:int(top), :]
+
+
+def _output_path(cfg: PlotsConfig, name: str, default: str) -> Path:
+    name = name or default
+    if not name.lower().endswith(".pdf"):
+        name += ".pdf"
+    path = Path(name)
+    if not path.is_absolute() and path.parent == Path("."):
+        path = Path(cfg.output_dir) / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _interactive_backend() -> bool:
+    return plt.get_backend().lower() not in P.PLOT_NON_INTERACTIVE_BACKENDS
+
+
+def heatmap_plot(cfg: PlotsConfig, input_files: str, samples: str, show_abund: bool, cluster_map: bool,
+                 palette: str, col: str, value: str, plot_style: str, top: int, show_fig: bool):
+    import seaborn as sns
+    tables, samples_list = _read_abundance(input_files, samples, plot_style)
+    if len(tables) == 1:
+        data = tables[0].rename(columns={tables[0].columns[1]: samples_list[0]})
     else:
-        if value:
-            data = data.loc[data[col].isin(value.split(","))]
-        else:
-            data = data.iloc[0 : int(top or 20), :]
-    data = data.set_index(data.iloc[:, 0])
-    data = data[samples_list]
+        data, _ = combined_datafram_based_on_first_col(tables, samples_list)
+    data = _select_rows(data, col, value, top)
+    data = data.set_index(data.iloc[:, 0])[samples_list]
     sns.set_style("whitegrid")
     sns.set_context("paper")
 
     n_rows, n_cols = data.shape
-    cell_width = 0.7
-    cell_height = 0.5
-    min_width = 6
-    min_height = 4
-    max_width = 30
-    max_height = 30
-    fig_width = min(max(n_cols * cell_width, min_width), max_width)
-    fig_height = min(max(n_rows * cell_height, min_height), max_height)
-
+    fig_width = min(max(n_cols * 0.7, 6), 30)
+    fig_height = min(max(n_rows * 0.5, 4), 30)
     if palette:
         cmap = palette
     else:
-        mycolor = ["aliceblue", "skyblue", "deepskyblue", "orange", "tomato", "red"]
-        cmap = colors.LinearSegmentedColormap.from_list("my_list", mycolor)
+        cmap = colors.LinearSegmentedColormap.from_list(
+            "my_list", ["aliceblue", "skyblue", "deepskyblue", "orange", "tomato", "red"])
         cmap.set_under("white")
 
     if cluster_map:
-        g = sns.clustermap(
-            data,
-            cmap=cmap,
-            cbar=True,
-            vmin=0.1,
-            dendrogram_ratio=0.03,
-            cbar_pos=(0.1, 1, 0.1, 0.1),
-            col_cluster=False,
-            cbar_kws={"shrink": 0.3},
-            figsize=(fig_width, fig_height),
-        )
+        g = sns.clustermap(data, cmap=cmap, cbar=True, vmin=0.1, dendrogram_ratio=0.03, cbar_pos=(0.1, 1, 0.1, 0.1),
+                           col_cluster=False, cbar_kws={"shrink": 0.3}, figsize=(fig_width, fig_height))
         plt.setp(g.ax_heatmap.get_xticklabels(), rotation=30, ha="right", fontsize=10)
         plt.setp(g.ax_heatmap.get_yticklabels(), fontsize=10)
-        if show_fig:
-            plt.show()
-        else:
-            plt.savefig("heatmap_cluster.pdf", bbox_inches="tight")
+        default = P.HEATMAP_CLUSTER_FILE
     else:
         plt.figure(figsize=(fig_width, fig_height))
-        ax = sns.heatmap(
-            data,
-            cmap=cmap,
-            yticklabels=True,
-            annot=show_abund,
-            fmt=".0f",
-            linewidths=0 if not show_abund else 0.5,
-            cbar=True,
-            vmin=0.1,
-            cbar_kws={"shrink": 0.3, "anchor": (0, 0.0)},
-        )
+        ax = sns.heatmap(data, cmap=cmap, yticklabels=True, annot=show_abund, fmt=".0f",
+                         linewidths=0 if not show_abund else 0.5, cbar=True, vmin=0.1,
+                         cbar_kws={"shrink": 0.3, "anchor": (0, 0.0)})
         ax.collections[0].colorbar.ax.tick_params(labelsize=8)
         plt.xticks(rotation=30, ha="right", fontsize=10)
         plt.yticks(fontsize=10)
         plt.tight_layout(pad=0.5)
-        if show_fig:
-            plt.show()
-        else:
-            plt.savefig("heatmap.pdf", bbox_inches="tight")
+        default = P.HEATMAP_FILE
+    out = _output_path(cfg, cfg.pdf, default)
+    plt.savefig(out, bbox_inches="tight")
+    logger.info(f"Saved plot: {out}")
+    if show_fig:
+        if not _interactive_backend():
+            plt.close("all")
+            raise PlotError(f"--show-fig needs a display (matplotlib backend '{plt.get_backend()}' cannot open a "
+                            f"window); the heatmap was saved to {out}.")
+        plt.show()
+    plt.close("all")
+    return [out]
 
 
-def bar_plot(cfg: PlotsConfig, input_files: str, samples: str, plot_style: str, col: str, value: str, top: int, vertical_bar: bool, pdf: str):
-    pds = [filter_out_enzyme_number(pd.read_csv(filename, sep="\t")) for filename in input_files.split(",")]
-    samples_list = samples.split(",")
-    plt.style.use(plot_style)
-    if len(pds) != len(samples_list):
-        logger.error("The number of samples is not equal to the number of input files.")
-        return
-    for i in range(len(pds)):
-        pds[i]["sample"] = samples_list[i]
-    result = combined_datafram_based_on_first_col(pds, samples_list)
+def bar_plot(cfg: PlotsConfig, input_files: str, samples: str, plot_style: str, col: str, value: str, top: int,
+             vertical_bar: bool, pdf: str):
+    tables, samples_list = _read_abundance(input_files, samples, plot_style)
+    result = combined_datafram_based_on_first_col(tables, samples_list)
     if isinstance(result, tuple):
         data, x = result
     else:
-        data = result
+        data = result.rename(columns={result.columns[1]: samples_list[0]})
         x = data.columns[0]
-        if len(samples_list) == 1:
-            old_abund_col = data.columns[1]
-            data = data.rename(columns={old_abund_col: samples_list[0]})
-
-    if not col:
-        data = data.iloc[0 : int(top or 20), :]
-    else:
-        if value:
-            data = data.loc[data[col].isin(value.split(","))]
-        else:
-            data = data.iloc[0 : int(top or 20), :]
+    data = _select_rows(data, col, value, top)
 
     if vertical_bar:
-        ax = data.plot.barh(x=x, y=samples_list)
-        plt.ylabel("")
-        plt.xlabel("Abundance")
-    else:
-        ax = data.plot(x=x, y=samples_list, kind="bar")
+        data.plot(x=x, y=samples_list, kind="bar")
         plt.xticks(rotation=90)
         plt.xlabel("")
         plt.ylabel("Abundance")
+    else:
+        data.plot.barh(x=x, y=samples_list)
+        plt.gca().invert_yaxis()          # largest difference on top
+        plt.ylabel("")
+        plt.xlabel("Abundance")
 
-    # Determine plot type from input filename
-    title_word = "families"  # default
-    input_files_lower = input_files.lower()
-    if "subfam" in input_files_lower:
-        title_word = "subfamilies"
-    elif "ec" in input_files_lower and "subfam" not in input_files_lower:
-        title_word = "ECs"
-    
+    lower = input_files.lower()
+    title_word = "subfamilies" if "subfam" in lower else ("ECs" if "ec" in os.path.basename(lower) else "families")
     plt.title(f"The most top {top} different {title_word}")
-    if not pdf.endswith(".pdf"):
-        pdf = pdf + ".pdf"
-    plt.savefig(pdf, bbox_inches="tight")
-    logger.info(f"Saved plot: {pdf}")
+    out = _output_path(cfg, pdf, P.BAR_PLOT_FILE)
+    plt.savefig(out, bbox_inches="tight")
+    plt.close("all")
+    logger.info(f"Saved plot: {out}")
+    return [out]
 
 
+# ---------------------------------------------------------------------------
+# Expression / DEG figures (run_dbcan expression output)
+# ---------------------------------------------------------------------------
+EXPRESSION_PLOT_FUNCTIONS = ("CGC_expression_plot", "DEG_volcano", "DEG_CGC_bar", "CGC_expression_heatmap")
+
+
+def _expression_pdf(pdf: str, expression_dir: Path, default: str) -> Path:
+    out = Path(pdf) if pdf else expression_dir / E.PLOTS_DIR / default
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _require_file(path: Path, function: str) -> Path:
+    if not path.is_file():
+        raise PlotError(f"{function} needs {path} (written by 'run_dbcan expression').")
+    return path
+
+
+def expression_plot(function: str, input_path: str, expression_dir: str, *, cgcid=None, pdf=None, top=None,
+                    only_de=False, metric=E.DEFAULT_PLOT_METRIC, deg_marker="both", heatmap_rows="sample",
+                    plot_output_dir=None, show_error_bars=False, max_cgc=E.DEFAULT_MAX_CGC, force=False,
+                    cluster_map=False) -> List[Path]:
+    """CGC_expression_plot, DEG_volcano, DEG_CGC_bar, CGC_expression_heatmap. Raises PlotError when nothing is drawn."""
+    from dbcan.plot import expression_plots as X
+    if not expression_dir:
+        raise PlotError(f"--expression-dir is required for {function}")
+    expr = Path(expression_dir)
+    if not expr.is_dir():
+        raise PlotError(f"--expression-dir is not a directory: {expr}")
+    if function == "CGC_expression_plot":
+        dbcan_dir = input_path if os.path.isdir(input_path) else (os.path.dirname(os.path.abspath(input_path)) or ".")
+        _require_file(Path(dbcan_dir) / P.CGC_RESULT_FILE, function)
+        out = plot_output_dir or str(expr / E.PLOTS_DIR / E.CGC_EXPRESSION_PLOTS_DIR)
+        if pdf and cgcid and not plot_output_dir:
+            out = os.path.dirname(os.path.abspath(pdf)) or out
+        outputs = X.run_cgc_expression_plots(
+            dbcan_dir=dbcan_dir, expression_dir=str(expr), cgcid=cgcid, only_de=only_de, top=top, metric=metric,
+            deg_marker="edge" if deg_marker == "edge-only" else deg_marker, heatmap_rows=heatmap_rows,
+            output_dir=out, show_error_bars=show_error_bars, max_cgc=max_cgc, force=force, threads=1)
+        if not outputs:
+            raise PlotError("No CGC expression figure was drawn" + (f" ('{cgcid}' not found)" if cgcid else "")
+                            + f"; see {dbcan_dir}/{P.CGC_RESULT_FILE} and {expr}.")
+        return [Path(o) for o in outputs]
+    if function == "DEG_volcano":
+        src = _require_file(expr / E.GENE_DEG_FILE, function)
+        out = _expression_pdf(pdf, expr, E.DEG_VOLCANO_PDF)
+        X.plot_deg_volcano(src, out)
+    elif function == "DEG_CGC_bar":
+        src = _require_file(expr / E.CGC_DEG_FILE, function)
+        out = _expression_pdf(pdf, expr, E.DEG_CGC_BAR_PDF)
+        X.plot_deg_cgc_bar(src, out)
+    else:
+        _require_file(expr / E.CGC_EXPRESSION_MATRIX_FILE, function)
+        out = _expression_pdf(pdf, expr, E.CGC_EXPRESSION_HEATMAP_PDF)
+        X.plot_cgc_expression_heatmap(expr, out, top=top, cluster_map=cluster_map)
+    if not out.is_file():
+        raise PlotError(f"{function} drew nothing (empty input table in {expr}).")
+    return [out]
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 click.rich_click.USE_RICH_MARKUP = True
 click.rich_click.USE_MARKDOWN = True
 click.rich_click.SHOW_ARGUMENTS = True
@@ -851,270 +350,176 @@ click.rich_click.STYLE_ERRORS_SUGGESTION = "magenta italic"
 click.rich_click.SHOW_METAVARS_COLUMN = False
 click.rich_click.APPEND_METAVARS_HELP = True
 click.rich_click.MAX_WIDTH = 100
-click.rich_click.COMMAND_GROUPS = {
-    "dbcan_plot": [
-        {
-            "name": "CGC/PUL Visualization",
-            "commands": ["CGC_plot", "CGC_coverage_plot", "CGC_synteny_plot", "CGC_synteny_coverage_plot"],
-        },
-        {
-            "name": "Abundance Visualization",
-            "commands": ["bar_plot", "heatmap_plot"],
-        },
-        {
-            "name": "Expression / DEG Visualization",
-            "commands": [
-                "CGC_expression_plot",
-                "DEG_volcano",
-                "DEG_CGC_bar",
-                "CGC_expression_heatmap",
-            ],
-        },
-    ]
-}
+
 
 @click.command()
 @logging_options
-@click.argument(
-    "function", 
-    type=click.Choice([
-        "CGC_plot", "CGC_coverage_plot", "CGC_synteny_plot", "CGC_synteny_coverage_plot",
-        "bar_plot", "heatmap_plot",
-        "CGC_expression_plot", "DEG_volcano", "DEG_CGC_bar", "CGC_expression_heatmap",
-    ])
-)
-@click.option("-i", "--input", "input_path", required=True, 
-              help="run_dbcan output directory, or explicit abundance files for bar/heatmap modes.")
-@click.option("--db-dir", "--db_dir", default="db", show_default=True, 
-              help="dbCAN database directory (CGC/PUL plots).")
-@click.option("--cgcid", "cgcid", default=None, 
-              help="CGC identifier: contig_id|cgc_index (example: contig1|CGC1).")
-@click.option("--reads-count", "--reads_count", "--readscount", default=None, 
-              help="Read depth TSV (e.g. samtools depth) for coverage overlays.")
-@click.option("--samples", "samples", default=None, 
-              help='Comma-separated sample labels matching bar/heatmap input order.')
+@click.argument("function", type=click.Choice([
+    "CGC_plot", "CGC_coverage_plot", "CGC_synteny_plot", "CGC_synteny_coverage_plot", "bar_plot", "heatmap_plot",
+    *EXPRESSION_PLOT_FUNCTIONS]))
+@click.option("-i", "--input", "input_path", required=True,
+              help="run_dbcan output directory (CGC plots), or comma-separated abundance files (bar/heatmap).")
+@click.option("-o", "--output-dir", "--output_dir", "output_dir", default=".", show_default=True,
+              help="Directory for the figures (created if needed).")
+@click.option("--db-dir", "--db_dir", default="db", show_default=True,
+              help="dbCAN database directory (dbCAN-PUL for the synteny plots).")
+@click.option("--cgcid", "cgcid", default=None, help="CGC identifier contig|CGCn (example: 'contig1|CGC1').")
+@click.option("--pul", "pul", default=None,
+              help="dbCAN-PUL id to compare with (synteny plots; default: the CGC's best hit in substrate_prediction.tsv).")
+@click.option("--reads-count", "--reads_count", "--readscount", "reads_count", multiple=True,
+              help="samtools depth file (contig, position, depth); repeat for several samples (one panel each).")
+@click.option("--samples", "samples", default=None,
+              help="Comma-separated sample names: one per bar/heatmap input file or per --reads-count file.")
+@click.option("--format", "--formats", "formats", default="pdf", show_default=True,
+              help="Figure format(s) of the CGC plots, comma-separated: pdf, png, svg.")
+@click.option("--dpi", default=P.PLOT_DEFAULT_DPI, show_default=True, type=int, help="Resolution of PNG output.")
+@click.option("--show-protein-ids", "--show_protein_ids", is_flag=True,
+              help="CGC_plot / CGC_coverage_plot: also print the protein IDs under the genes.")
+@click.option("--synteny-revcomp/--no-synteny-revcomp", "--synteny_revcomp/--no-synteny_revcomp",
+              "synteny_revcomp", default=True, show_default=True,
+              help="Synteny plots: draw the dbCAN-PUL reverse-complemented when most homologous genes lie on the opposite strand.")
+@click.option("--evalue-cutoff", "--evalue_cutoff", default=CSP.DEFAULT_EVALUE_CUTOFF, show_default=True, type=float,
+              help="Synteny links: maximum DIAMOND E-value (as in substrate_prediction).")
+@click.option("--identity-cutoff", "--identity_cutoff", default=CSP.DEFAULT_IDENTITY_CUTOFF, show_default=True,
+              type=float, help="Synteny links: minimum DIAMOND percent identity, 0-100 (as in substrate_prediction).")
+@click.option("--coverage-cutoff", "--coverage_cutoff", default=CSP.DEFAULT_COVERAGE_CUTOFF, show_default=True,
+              type=float, help="Synteny links: minimum query coverage 0-1 (as in substrate_prediction).")
 @click.option("--top", "top", default=None, type=int,
-              help="Max categories (bar/heatmap, default 20) or max CGCs (CGC_expression_plot).")
-@click.option("--plot-style", "--plot_style", default="ggplot", show_default=True, 
-              type=click.Choice(["ggplot", "seaborn", "seaborn-poster"]), 
-              help="Matplotlib style preset for abundance charts.")
-@click.option("--vertical-bar", "--vertical_bar", is_flag=True, 
-              help="Use vertical bars instead of the default horizontal bars.")
-@click.option("--show-fig", "--show_fig", is_flag=True, 
-              help="Display the matplotlib window (requires GUI backend).")
-@click.option("--show-abund", "--show_abund", is_flag=True, 
-              help="Annotate heatmap cells with numeric abundance values.")
-@click.option("--palette", "palette", default=None, 
-              help="Matplotlib colormap name (e.g. viridis, Reds).")
-@click.option("--cluster-map", "--cluster_map", is_flag=True, 
-              help="Hierarchically cluster rows/columns on heatmaps.")
-@click.option("--col", "col", default=None, 
-              help="Column name used with --value for abundance filtering.")
-@click.option("--value", "value", default=None, 
-              help='Comma-separated values to keep from column --col.')
-@click.option("--pdf", "pdf", default="bar_plot.pdf", show_default=True, 
-              help="PDF path for saved bar plots.")
-@click.option("--show-annotation", "--show_annotation", is_flag=True,
-              help="Draw per-gene labels on CGC diagrams (off by default for readability).")
+              help=f"Maximum number of categories (bar/heatmap, default {P.PLOT_DEFAULT_TOP}), of CGCs "
+                   f"(CGC_expression_plot, default all) or of CGC rows (CGC_expression_heatmap, default all).")
+@click.option("--plot-style", "--plot_style", default="ggplot", show_default=True,
+              type=click.Choice(list(P.PLOT_STYLE_CHOICES) + list(P.PLOT_STYLE_ALIASES)),
+              help="Matplotlib style for bar/heatmap ('seaborn' is mapped to 'seaborn-v0_8').")
+@click.option("--vertical-bar", "--vertical_bar", is_flag=True,
+              help="bar_plot: vertical bars (default: horizontal bars).")
+@click.option("--show-fig", "--show_fig", is_flag=True, help="heatmap_plot: also open the heatmap in a window (needs a display); the PDF is still written.")
+@click.option("--show-abund", "--show_abund", is_flag=True, help="Annotate heatmap cells with the abundance values.")
+@click.option("--palette", "palette", default=None, help="Heatmap colormap name (e.g. viridis, Reds).")
+@click.option("--cluster-map", "--cluster_map", is_flag=True, help="Cluster heatmap rows.")
+@click.option("--col", "col", default=None, help="Column name used with --value for abundance filtering.")
+@click.option("--value", "value", default=None, help="Comma-separated values to keep from column --col.")
+@click.option("--pdf", "pdf", default=None,
+              help="PDF file name of bar_plot (default bar_plot.pdf) or heatmap_plot (default heatmap.pdf); "
+                   "a bare name is written into --output-dir.")
+@click.option("--show-annotation", "--show_annotation", is_flag=True, hidden=True,
+              help="Deprecated: family labels are always drawn.")
 @click.option("--expression-dir", "--expression_dir", default=None,
-              help="run_dbcan expression output directory (for expression/DEG plots).")
-@click.option(
-    "--metric",
-    default="log2_tpm",
-    type=click.Choice(list(PLOT_METRIC_CHOICES)),
-    show_default=True,
-    help="Y-axis / heatmap metric for CGC_expression_plot.",
-)
-@click.option(
-    "--heatmap-rows",
-    default="sample",
-    type=click.Choice(["sample", "condition"]),
-    show_default=True,
-    help="Per-CGC gene heatmap rows: sample or condition.",
-)
+              help="run_dbcan expression output directory (expression/DEG plots).")
+@click.option("--metric", default=E.DEFAULT_PLOT_METRIC, type=click.Choice(list(E.PLOT_METRIC_CHOICES)),
+              show_default=True, help="Y-axis / heatmap metric for CGC_expression_plot.")
+@click.option("--heatmap-rows", "--heatmap_rows", default="sample", type=click.Choice(["sample", "condition"]),
+              show_default=True, help="CGC_expression_plot per-CGC gene heatmap rows: sample or condition.")
 @click.option("--deg-marker", "--deg_marker", default="both",
               type=click.Choice(["both", "edge", "arrow", "star", "edge-only"]),
-              show_default=True, help="How to mark DEG genes on CGC diagrams.")
+              show_default=True, help="How to mark DEG genes on CGC expression figures.")
 @click.option("--only-de", "--only_de", is_flag=True,
-              help="Plot only differentially expressed CGCs (requires expression results).")
+              help="CGC_expression_plot: only differentially expressed CGCs.")
 @click.option("--plot-output-dir", "--plot_output_dir", default=None,
-              help="Output directory for batch CGC expression PDFs.")
-@click.option("--show-error-bars", "--show_error_bars", is_flag=True,
-              help="Show replicate-group error bars when replicate_group is in metadata.")
-@click.option("--max-cgc", default=500, type=int, show_default=True,
-              help="Maximum CGCs to plot without --force.")
-@click.option("--force", is_flag=True, help="Plot more than --max-cgc CGCs.")
-def cli(
-    function, log_level, log_file, verbose, input_path, db_dir, cgcid, reads_count,
-    samples, top, plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map,
-    col, value, pdf, show_annotation, expression_dir, metric, heatmap_rows, deg_marker,
-    only_de, plot_output_dir, show_error_bars, max_cgc, force,
-):
+              help="CGC_expression_plot output directory (default <expression-dir>/plots/CGC_expression).")
+@click.option("--show-error-bars", "--show_error_bars", is_flag=True, hidden=True,
+              help="Deprecated: CGC_expression_plot draws condition means.")
+@click.option("--max-cgc", "--max_cgc", default=E.DEFAULT_MAX_CGC, type=int, show_default=True,
+              help="CGC_expression_plot: maximum number of CGCs without --force.")
+@click.option("--force", is_flag=True, help="CGC_expression_plot: plot more than --max-cgc CGCs.")
+def cli(function, log_level, log_file, verbose, input_path, output_dir, db_dir, cgcid, pul, reads_count, samples,
+        formats, dpi, show_protein_ids, synteny_revcomp, evalue_cutoff, identity_cutoff, coverage_cutoff, top,
+        plot_style, vertical_bar, show_fig, show_abund, palette, cluster_map, col, value, pdf, show_annotation,
+        expression_dir, metric, heatmap_rows, deg_marker, only_de, plot_output_dir, show_error_bars, max_cgc, force):
     """# dbCAN plotting utilities
-    
-    ## CGC/PUL Visualization Commands
-    
-    **CGC_plot**: Generate basic CGC gene visualization
+
+    ## CGC figures (input: a run_dbcan output directory)
+
+    **CGC_plot**: gene map of one CGC
     ```
-    dbcan_plot CGC_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1'
+    dbcan_plot CGC_plot -i sample.dbCAN --cgcid 'contigX|CGC1' -o figures --format pdf,png
     ```
-    
-    **CGC_coverage_plot**: Generate CGC visualization with read coverage
+
+    **CGC_coverage_plot**: gene map with read depth (one panel per sample)
     ```
-    dbcan_plot CGC_coverage_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1' --reads-count cgc.depth.txt
+    dbcan_plot CGC_coverage_plot -i sample.dbCAN --cgcid 'contigX|CGC1' --reads-count a.depth.txt --reads-count b.depth.txt --samples A,B
     ```
-    
-    **CGC_synteny_plot**: Generate CGC-PUL synteny comparison
+
+    **CGC_synteny_plot**: CGC vs its best dbCAN-PUL hit
     ```
-    dbcan_plot CGC_synteny_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1'
+    dbcan_plot CGC_synteny_plot -i sample.dbCAN --cgcid 'contigX|CGC1' --db-dir db
     ```
-    
-    **CGC_synteny_coverage_plot**: Generate CGC-PUL comparison with coverage
+
+    **CGC_synteny_coverage_plot**: synteny with read depth
     ```
-    dbcan_plot CGC_synteny_coverage_plot -i ./sample.dbCAN --cgcid 'contigX|CGC1' --reads-count cgc.depth.txt
+    dbcan_plot CGC_synteny_coverage_plot -i sample.dbCAN --cgcid 'contigX|CGC1' --db-dir db --reads-count a.depth.txt
     ```
-    
-    ## Abundance Visualization Commands
-    
-    **bar_plot**: Create bar plot of CAZyme abundance
+
+    ## Abundance charts
+
     ```
-    dbcan_plot bar_plot -i a.CAZyme_abund,b.CAZyme_abund --samples A,B --vertical-bar
+    dbcan_plot bar_plot -i a/fam_abund.out,b/fam_abund.out --samples A,B --vertical-bar -o figures
+    dbcan_plot heatmap_plot -i a/fam_abund.out,b/fam_abund.out --samples A,B --show-abund --pdf fam_heatmap.pdf
     ```
-    
-    **heatmap_plot**: Create heatmap of CAZyme abundance
+
+    ## Expression / DEG figures (input: run_dbcan output + run_dbcan expression output)
+
     ```
-    dbcan_plot heatmap_plot -i a.CAZyme_abund,b.CAZyme_abund --samples A,B --show-abund
+    dbcan_plot CGC_expression_plot -i sample.dbCAN --expression-dir output.expression --only-de
+    dbcan_plot DEG_volcano -i sample.dbCAN --expression-dir output.expression
+    dbcan_plot DEG_CGC_bar -i sample.dbCAN --expression-dir output.expression
+    dbcan_plot CGC_expression_heatmap -i sample.dbCAN --expression-dir output.expression --top 50
     ```
     """
     setup_logging(log_level, log_file, verbose)
-    # Build config
-    cfg = PlotsConfig(
-        input_dir=input_path if os.path.isdir(input_path) else os.path.dirname(os.path.abspath(input_path)) or ".",
-        db_dir=db_dir,
-        cgcid=cgcid,
-        reads_count=reads_count,
-        samples=(samples.split(",") if samples else None),
-        top=top,
-        plot_style=plot_style,
-        vertical_bar=vertical_bar,
-        show_fig=show_fig,
-        show_abund=show_abund,
-        palette=palette,
-        cluster_map=cluster_map,
-        filter_col=col,
-        filter_value=value,
-        pdf=pdf,
-    )
-    # attach optional flag even if PlotsConfig does not define it (fallback)
-    setattr(cfg, "show_annotation", show_annotation)
-
-    # Dispatch
-    if function == "CGC_plot":
-        CGC_plot(cfg)
-    elif function == "CGC_coverage_plot":
-        CGC_plot_reads_count(cfg)
-    elif function == "CGC_synteny_plot":
-        CGC_syntenic_with_PUL(cfg)
-    elif function == "CGC_synteny_coverage_plot":
-        CGC_syntenic_with_PUL_abund(cfg)
-    elif function == "bar_plot":
-        if not check_input_files_min_lines(input_path, min_lines=2):
-            return
-        if not samples:
-            logger.error("--samples is required for bar_plot")
-            return
-        bar_plot(cfg, input_files=input_path, samples=samples, plot_style=plot_style, col=col, value=value, top=top, vertical_bar=vertical_bar, pdf=pdf)
-    elif function == "heatmap_plot":
-        if not check_input_files_min_lines(input_path, min_lines=2):
-            return
-        if not samples:
-            logger.error("--samples is required for heatmap_plot")
-            return
-        heatmap_plot(cfg, input_files=input_path, samples=samples, show_abund=show_abund, cluster_map=cluster_map, palette=palette, col=col, value=value, plot_style=plot_style, top=top, show_fig=show_fig)
-    elif function == "CGC_expression_plot":
-        if not expression_dir:
-            logger.error("--expression-dir is required for CGC_expression_plot")
-            return
-        from dbcan.plot.expression_plots import run_cgc_expression_plots
-        dbcan_dir = input_path if os.path.isdir(input_path) else cfg.input_dir
-        out = plot_output_dir or os.path.join(expression_dir, "plots", "CGC_expression")
-        if pdf and cgcid and not plot_output_dir:
-            out = os.path.dirname(os.path.abspath(pdf)) or out
-        marker = "edge" if deg_marker == "edge-only" else deg_marker
-        run_cgc_expression_plots(
-            dbcan_dir=dbcan_dir,
-            expression_dir=expression_dir,
-            cgcid=cgcid,
-            only_de=only_de,
-            top=top,
-            metric=metric,
-            deg_marker=marker,
-            heatmap_rows=heatmap_rows,
-            output_dir=out,
-            show_error_bars=show_error_bars,
-            max_cgc=max_cgc,
-            force=force,
-            threads=1,
+    if not (show_fig and function == "heatmap_plot"):
+        plt.switch_backend("Agg")       # figures are only written to files: no display needed
+    if show_annotation:
+        logger.warning("--show-annotation is deprecated: family labels are always drawn on CGC plots.")
+    try:
+        cfg = PlotsConfig(
+            input_dir=input_path if os.path.isdir(input_path) else (os.path.dirname(os.path.abspath(input_path)) or "."),
+            db_dir=db_dir, output_dir=output_dir, formats=tuple(V.normalize_formats([formats])), dpi=dpi,
+            cgcid=cgcid, pul=pul, reads_count=list(reads_count), show_protein_ids=show_protein_ids,
+            synteny_revcomp=synteny_revcomp, evalue_cutoff=evalue_cutoff, identity_cutoff=identity_cutoff,
+            coverage_cutoff=coverage_cutoff, samples=(samples.split(",") if samples else None),
+            top=top if top is not None else P.PLOT_DEFAULT_TOP,
+            plot_style=plot_style, vertical_bar=vertical_bar, show_fig=show_fig, show_abund=show_abund,
+            palette=palette, cluster_map=cluster_map, filter_col=col, filter_value=value, pdf=pdf,
         )
-    elif function == "DEG_volcano":
-        if not expression_dir:
-            logger.error("--expression-dir is required for DEG_volcano")
-            return
-        from dbcan.plot.expression_plots import plot_deg_volcano
-        from pathlib import Path
-        gene_deg = Path(expression_dir) / "gene_deg.tsv"
-        out_pdf = Path(pdf) if pdf != "bar_plot.pdf" else Path(expression_dir) / "plots" / "DEG_volcano.pdf"
-        plot_deg_volcano(gene_deg, out_pdf)
-    elif function == "DEG_CGC_bar":
-        if not expression_dir:
-            logger.error("--expression-dir is required for DEG_CGC_bar")
-            return
-        from dbcan.plot.expression_plots import plot_deg_cgc_bar
-        from pathlib import Path
-        cgc_deg = Path(expression_dir) / "cgc_deg.tsv"
-        out_pdf = Path(pdf) if pdf != "bar_plot.pdf" else Path(expression_dir) / "plots" / "DEG_CGC_bar.pdf"
-        plot_deg_cgc_bar(cgc_deg, out_pdf)
-    elif function == "CGC_expression_heatmap":
-        if not expression_dir:
-            logger.error("--expression-dir is required for CGC_expression_heatmap")
-            return
-        from dbcan.plot.expression_plots import plot_cgc_expression_heatmap
-        from pathlib import Path
-        out_pdf = Path(pdf) if pdf != "bar_plot.pdf" else Path(expression_dir) / "plots" / "heatmap.pdf"
-        plot_cgc_expression_heatmap(Path(expression_dir), out_pdf, top=top, cluster_map=cluster_map)
+        if function in ("CGC_plot", "CGC_coverage_plot", "CGC_synteny_plot", "CGC_synteny_coverage_plot") \
+                and not os.path.isdir(input_path):
+            raise PlotError(f"-i must be a run_dbcan output directory for {function}: {input_path}")
+        if function in EXPRESSION_PLOT_FUNCTIONS:
+            expression_plot(function, input_path, expression_dir, cgcid=cgcid, pdf=pdf, top=top,
+                            only_de=only_de, metric=metric, deg_marker=deg_marker, heatmap_rows=heatmap_rows,
+                            plot_output_dir=plot_output_dir, show_error_bars=show_error_bars, max_cgc=max_cgc,
+                            force=force, cluster_map=cluster_map)
+        elif function == "CGC_plot":
+            CGC_plot(cfg)
+        elif function == "CGC_coverage_plot":
+            CGC_plot_reads_count(cfg)
+        elif function == "CGC_synteny_plot":
+            CGC_syntenic_with_PUL(cfg)
+        elif function == "CGC_synteny_coverage_plot":
+            CGC_syntenic_with_PUL_abund(cfg)
+        else:
+            check_input_files_min_lines(input_path, min_lines=2)
+            if not samples:
+                raise PlotError(f"--samples is required for {function}")
+            if function == "bar_plot":
+                bar_plot(cfg, input_files=input_path, samples=samples, plot_style=plot_style, col=col, value=value,
+                         top=cfg.top, vertical_bar=vertical_bar, pdf=pdf)
+            else:
+                heatmap_plot(cfg, input_files=input_path, samples=samples, show_abund=show_abund,
+                             cluster_map=cluster_map, palette=palette, col=col, value=value, plot_style=plot_style,
+                             top=cfg.top, show_fig=show_fig)
+    except click.ClickException:
+        raise
+    except V.PlotInputError as e:
+        raise PlotError(str(e))
+    except (OSError, ValueError, KeyError, pd.errors.ParserError) as e:
+        logger.debug("dbcan_plot failed", exc_info=True)
+        raise PlotError(f"{function} failed: {e}")
+
+
+def main():
+    cli()
 
 
 if __name__ == "__main__":
     cli()
-
-# Provide a main() entry-point for console_scripts referencing dbcan.utils.plots:main
-def main():
-    cli()
-
-# ---- helpers ----
-def load_pul_gffs(db_dir: str):
-    """
-    Collect PUL gene models by scanning db_dir/dbCAN-PUL/*/cgc.gff
-    Returns:
-      proteinid2gene  (key: PULID:protein_id)
-      pulid2genes     (key: PULID -> list[gene])
-      pulid2geneids   (key: PULID -> list[protein_id])
-    """
-    base = os.path.join(db_dir, "dbCAN-PUL")
-    proteinid2gene = {}
-    if not os.path.isdir(base):
-        logger.error(f"PUL directory not found: {base}")
-        return {}, {}, {}
-    from dbcan.plot.syntenic_plot import CGC_stanrdard  # reuse class
-    # replicate logic of syntenic_plot.read_PUL_cgcgff
-    for entry in os.scandir(base):
-        if entry.is_dir() and entry.name.startswith("PUL") and entry.name.endswith(".out"):
-            gff_path = os.path.join(entry.path, "cgc.gff")
-            if os.path.exists(gff_path):
-                read_cgcgff(gff_path, proteinid2gene)
-    pulid2genes = {}
-    pulid2geneids = {}
-    for k, gene in proteinid2gene.items():
-        pulid2genes.setdefault(gene.CGCID, []).append(gene)
-        pulid2geneids.setdefault(gene.CGCID, []).append(gene.Protein_ID)
-    return proteinid2gene, pulid2genes, pulid2geneids

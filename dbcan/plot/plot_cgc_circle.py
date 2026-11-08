@@ -1,408 +1,301 @@
-from pathlib import Path
-from pycirclize import Circos, config as circos_config
-from pycirclize.parser import Gff
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.patches as Patch
-import csv
+"""``run_dbcan cgc_circle_plot``: genome-wide view of the CGCs of one run.
+
+``--layout auto`` (default) draws a circos plot when cgc.gff has exactly one contig (a
+complete circular genome) and the overview ideogram (:mod:`dbcan.plot.cgc_overview`)
+otherwise; ``--layout circos`` / ``--layout overview`` force one of them.
+
+Circos rings, outside in: coordinate axis; CGC extents (labelled ``CGCn substrate``);
+genes of the CGCs, coloured by Gene Type; all CAZyme genes; and, when ``DEG.tsv`` is
+present, DEG markers and a log2FC line.
+"""
+from __future__ import annotations
+
 import logging
+import math
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-from dbcan.configs.base_config import CGCPlotConfig
-from dbcan.constants.plot_cgc_circle_constants import (
-    CGC_GFF_FILE, CGC_RESULT_FILE, CGC_CIRCOS_DIR,
-    CGC_CIRCOS_PLOT_FILE, CGC_CIRCOS_CONTIG_FILE_TEMPLATE,
-     CGC_ANNOTATION_ATTR, PROTEIN_ID_ATTR,
-    CGC_ID_COLUMN, CONTIG_ID_COLUMN, CGC_PROTEIN_ID_FIELD,
-    GENE_START_COLUMN, GENE_STOP_COLUMN,
-    CGC_OUTER_TRACK_RANGE, CGC_CAZYME_TRACK_RANGE,
-    CGC_FEATURE_TRACK_RANGE, CGC_RANGE_TRACK_RANGE,
-    CGC_TRACK_PADDING, CGC_MAJOR_INTERVAL, CGC_MINOR_INTERVAL_DIVISOR,
-    CGC_TRACK_BG_COLOR, CGC_GRID_COLOR, CGC_RANGE_COLOR,
-    CGC_RANGE_BORDER_COLOR, CGC_AXIS_COLOR, CGC_LABEL_SIZE,
-    CGC_LEGEND_POSITION, CGC_LEGEND_FONT_SIZE, CGC_TITLE_FONT_SIZE,
-    CGC_FEATURE_COLORS, CGC_MIN_FIGURE_SIZE, CGC_MAX_FIGURE_SIZE,
-    CGC_FIGURE_SIZE_SCALING_FACTOR, CGC_PLOT_TITLE,
-    CGC_CONTIG_TITLE_TEMPLATE, CGC_LEGEND_TITLE,
-    DEG_LOG2FC_RANGE, DEG_TRACK_RANGE, CGC_FEATURE_LEGEND, DEG_FILE
-)
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
-# Logging configuration is handled by main command or setup_logging()
-# Removed hardcoded basicConfig to avoid interfering with global logging configuration
+import dbcan.constants.plot_cgc_circle_constants as C
+import dbcan.constants.plots_constants as P
+from dbcan.plot import cgc_viz as V
+from dbcan.plot.cgc_overview import plot_overview
+
+logger = logging.getLogger(__name__)
+
+
+def read_deg(path: Path) -> Dict[str, float]:
+    """DEG.tsv (protein_id <TAB> log2FC, no header) -> {protein_id: log2FC}; NA rows dropped."""
+    out: Dict[str, float] = {}
+    with Path(path).open() as fh:
+        for line in fh:
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 2 or not f[0].strip():
+                continue
+            try:
+                value = float(f[1])
+            except ValueError:
+                continue            # header, NA, empty
+            if value == value:      # not NaN
+                out[f[0].strip()] = value
+    return out
+
+
+def _text_len_r(text: str, size: float, height: bool = False) -> float:
+    """Width (or height) of ``text`` at ``size`` pt in circos radius units (r = 100 is the outer ring)."""
+    from matplotlib.font_manager import FontProperties
+    from matplotlib.textpath import TextPath
+
+    ext = TextPath((0, 0), text, size=size, prop=FontProperties()).get_extents()
+    pts = ext.height if height else ext.width
+    return pts / 72.0 / (C.CGC_CIRCLE_DIAMETER_IN / 2) * 100.0
+
+
+def _fit_radial_text(text: str, size: float, room_r: float) -> str:
+    """``text``, shortened with '…' until it fits in ``room_r`` radius units."""
+    if _text_len_r(text, size) <= room_r:
+        return text
+    keep = len(text)
+    while keep > 1 and _text_len_r(text[:keep] + "…", size) > room_r:
+        keep -= 1
+    return text[:keep] + "…"
+
 
 class CGCCircosPlot:
-    def __init__(self, config: CGCPlotConfig):
+    def __init__(self, config):
         self.config = config
+        self.input_dir = Path(str(config.output_dir).strip())
+        self.output_dir = self.input_dir / C.CGC_CIRCOS_DIR
+        self.layout = (getattr(config, "layout", None) or C.CGC_DEFAULT_LAYOUT).lower()
+        if self.layout not in C.CGC_LAYOUT_CHOICES:
+            raise V.PlotInputError(f"Unknown layout '{self.layout}' (use {', '.join(C.CGC_LAYOUT_CHOICES)})")
+        gff = self.input_dir / C.CGC_GFF_FILE
+        tsv = self.input_dir / C.CGC_RESULT_FILE
+        for f in (gff, tsv):
+            if not f.exists():
+                raise V.PlotInputError(f"Required input not found: {f}")
+        self.genes_by_contig = V.read_gff_genes(gff)
+        self.sizes = V.contig_sizes(gff)
+        self.cgcs = V.read_cgc_table(tsv)
+        self.calls = V.read_substrates(self.input_dir / C.CGC_SUB_PREDICTION_FILE)
+        deg_file = self.input_dir / C.DEG_FILE
+        self.deg: Optional[Dict[str, float]] = read_deg(deg_file) if deg_file.exists() else None
+        if self.deg is not None and not self.deg:
+            logger.warning(f"{deg_file} has no numeric log2FC values; DEG rings are not drawn.")
+            self.deg = None
 
-        if not self.gff_file.exists():
-            raise FileNotFoundError(f"GFF file not found: {self.gff_file}")
-        if not self.tsv_file.exists():
-            raise FileNotFoundError(f"TSV file not found: {self.tsv_file}")
-        if not self.output_dir.exists():
-            self.output_dir.mkdir(parents=True, exist_ok=True)
+    def resolved_layout(self) -> str:
+        if self.layout != "auto":
+            return self.layout
+        return "circos" if len(self.sizes) == 1 else "overview"
 
-        # Load GFF and sector sizes
-        self.gff = Gff(str(self.gff_file))
-        self.seqid2size = self.gff.get_seqid2size()
-        contig_count = len(self.seqid2size)
-        max_space = max(0, int(360 // contig_count) - 1)
-        self.space = 0 if contig_count == 1 else min(2, max_space)
-        self.circos = Circos(sectors=self.seqid2size, space=self.space)
+    def plot(self) -> List[Path]:
+        if not self.sizes:
+            raise V.PlotInputError(f"No features in {self.input_dir / C.CGC_GFF_FILE}")
+        if not self.cgcs:
+            logger.warning("No CGCs in cgc_standard_out.tsv; the figure shows no CGC.")
+        layout = self.resolved_layout()
+        logger.info(f"[CGC plot] layout={layout} ({len(self.sizes)} contig(s), {len(self.cgcs)} CGCs)")
+        if layout == "overview":
+            return plot_overview(self.cgcs, dict(self.sizes), self.calls, self.output_dir, formats=C.CGC_PLOT_FORMATS)
+        return self.plot_circos()
 
-        # Load all features first (do not pre-filter by a single type)
-        self.seqid2features = self.gff.get_seqid2features(feature_type=["CDS", "gene"])
-        detected_types = {f.type for feats in self.seqid2features.values() for f in feats}
-        preferred_order = ["gene", "CDS"]
-        self.allowed_feature_types = [t for t in preferred_order if t in detected_types]
-        if not self.allowed_feature_types:
-            logging.warning(f"[CGC Circle] No gene/CDS found. Falling back to all types: {detected_types}")
-            self.allowed_feature_types = list(detected_types)
-        else:
-            logging.info(f"[CGC Circle] Using feature types: {self.allowed_feature_types} (detected: {detected_types})")
-        for sid, feats in self.seqid2features.items():
-            cnt_accept = sum(1 for f in feats if f.type in self.allowed_feature_types)
-            logging.debug(f"[GFF] {sid} total={len(feats)} accepted={cnt_accept}")
+    # ------------------------------------------------------------------ circos
+    def _cgc_member_keys(self):
+        """(contig, start, end) of every gene listed in cgc_standard_out.tsv."""
+        return {(g.contig, g.start, g.end) for genes in self.cgcs.values() for g in genes}
 
-        self.circos.text(CGC_PLOT_TITLE, size=CGC_TITLE_FONT_SIZE)
+    def cgc_ring_genes(self, contig: str) -> List[V.Gene]:
+        """GFF genes of ``contig`` that belong to a CGC row (matched by contig, start, end).
 
-        # Load TSV
-        try:
-            self.tsv_data = pd.read_csv(self.tsv_file, sep='\t')
-            required_columns = [
-                CGC_ID_COLUMN, CONTIG_ID_COLUMN, CGC_PROTEIN_ID_FIELD,
-                GENE_START_COLUMN, GENE_STOP_COLUMN
-            ]
-            missing_cols = [c for c in required_columns if c not in self.tsv_data.columns]
-            if missing_cols:
-                logging.warning(f"Missing required TSV columns: {missing_cols}")
-        except Exception as e:
-            logging.error(f"Error reading TSV file: {str(e)}")
-            self.tsv_data = pd.DataFrame()
+        Matching by protein_id painted every RNA (protein_id=NA) onto the CGC ring as soon
+        as one CGC contained an RNA.
+        """
+        members = self._cgc_member_keys()
+        return [g for g in self.genes_by_contig.get(contig, []) if (g.contig, g.start, g.end) in members]
 
-        # Load DEG (optional)
-        if self.deg_tsv_file.exists():
-            try:
-                deg_df = pd.read_csv(self.deg_tsv_file, sep="\t", header=None, names=["protein_id", "log2FC"])
-                self.deg_data = deg_df[deg_df["log2FC"].notnull()]
-                self.deg_data["log2FC"] = pd.to_numeric(self.deg_data["log2FC"], errors='coerce')
-            except Exception as e:
-                logging.warning(f"Error reading DEG file {self.deg_tsv_file}: {e}")
-                self.deg_data = None
-        else:
-            logging.info(f"DEG file not found: {self.deg_tsv_file}")
-            self.deg_data = None
+    def _cgc_label(self, cid: str) -> str:
+        parts = V.split_cgc_key(cid)
+        name = parts[1] if parts else cid
+        call = self.calls.get(cid)
+        names = call.names() if call else []
+        return f"{name} {', '.join(names)}" if names else name
 
-        self.load_substrate_labels()
+    def plot_circos(self) -> List[Path]:
+        from pycirclize import Circos, config as circos_config
 
-    @property
-    def input_dir(self) -> Path:
-        return Path(self.config.output_dir.strip() if hasattr(self.config, 'output_dir') else "")
+        V.setup_matplotlib()
+        sizes = {c: max(1, s) for c, s in self.sizes.items()}
+        space = 0 if len(sizes) == 1 else min(2, max(0, int(360 // len(sizes)) - 1))
+        circos = Circos(sectors=sizes, space=space)
+        cgc_genes = []
+        total = sum(sizes.values())
+        multi = len(sizes) > 1
+        major = V.nice_step(total, 10 if not multi else 24)    # one tick interval for all contigs
+        # several contigs: tick marks on every sector but labels on the largest one only (each
+        # sector starts at 0, so every sector would repeat the same labels), plus contig names
+        labelled = max(sizes, key=sizes.get)
+        label_all = len(self.cgcs) <= C.CGC_CIRCOS_MAX_ID_LABELS
+        deg_per_bp = (360.0 - space * len(sizes)) / total
+        for sector in circos.sectors:
+            genes = self.genes_by_contig.get(sector.name, [])
+            size = sizes[sector.name]
 
-    @property
-    def gff_file(self) -> Path:
-        return self.input_dir / CGC_GFF_FILE
+            axis = sector.add_track(C.CGC_AXIS_TRACK_RANGE)
+            axis.axis(fc="black", ec="none")
+            if size > major:
+                show = not multi or sector.name == labelled
+                axis.xticks_by_interval(major, outer=False, tick_length=C.CGC_TICK_LENGTH,
+                                        label_margin=C.CGC_TICK_LABEL_MARGIN, label_size=C.CGC_TICK_LABEL_SIZE,
+                                        label_orientation="horizontal", show_label=show,
+                                        label_formatter=lambda v, s=major, m=multi: (
+                                            "" if (m and v == 0) else V.fmt_axis_tick(v, s, total)))
+            if multi:
+                self._contig_name(sector, size * deg_per_bp)
 
-    @property
-    def tsv_file(self) -> Path:
-        return self.input_dir / CGC_RESULT_FILE
+            rng = sector.add_track(C.CGC_RANGE_TRACK_RANGE)
+            rng.axis(fc=C.CGC_TRACK_BG_COLOR, ec="none")
+            feat = sector.add_track(C.CGC_FEATURE_TRACK_RANGE)
+            feat.axis(fc=C.CGC_TRACK_BG_COLOR, ec="none")
+            caz = sector.add_track(C.CGC_CAZYME_TRACK_RANGE)
+            caz.axis(fc=C.CGC_TRACK_BG_COLOR, ec="none")
 
-    @property
-    def output_dir(self) -> Path:
-        return self.input_dir / CGC_CIRCOS_DIR
+            for g in genes:
+                lo, hi = max(0, g.start - 1), min(size, g.end)
+                if hi <= lo:
+                    continue
+                if g.gtype == "CAZyme":
+                    caz.rect(lo, hi, fc=V.gene_color("CAZyme"), ec="none")
+            for g in self.cgc_ring_genes(sector.name):
+                lo, hi = max(0, g.start - 1), min(size, g.end)
+                if hi > lo:
+                    feat.rect(lo, hi, fc=V.gene_color(g.gtype), ec="none")
+                    cgc_genes.append(g)
 
-    @property
-    def deg_tsv_file(self) -> Path:
-        return self.input_dir / DEG_FILE
+            for cid, cg in self.cgcs.items():
+                if cg[0].contig != sector.name:
+                    continue
+                lo, hi = min(g.start for g in cg) - 1, max(g.end for g in cg)
+                if lo >= size:
+                    logger.warning(f"{cid} ({lo}-{hi}) lies outside contig {sector.name} ({size} bp); skipped.")
+                    continue
+                hi = min(hi, size)
+                predicted = bool(self.calls.get(cid) and self.calls[cid].names())
+                rng.rect(lo, hi, fc=C.CGC_RANGE_PREDICTED_COLOR if predicted else C.CGC_RANGE_COLOR, ec="none")
+                if not (predicted or label_all):
+                    continue                      # many CGCs: only those with a substrate are labelled
+                rng.annotate((lo + hi) / 2, self._cgc_label(cid), min_r=C.CGC_LABEL_MIN_R,
+                             max_r=C.CGC_LABEL_MAX_R, label_size=C.CGC_LABEL_SIZE, shorten=None,
+                             text_kws={"color": P.PLOT_INK if predicted else P.PLOT_INK_MUTED})
 
-    @property
-    def substrate_file(self) -> Path:
-        return self.input_dir / "substrate_prediction.tsv"
+            if self.deg is not None:
+                self._deg_tracks(sector, genes, size)
 
-    def load_substrate_labels(self):
-        self.cgcid2substrate = {}
-        if not self.substrate_file.exists():
-            logging.warning(f"Substrate prediction file not found: {self.substrate_file}")
+        circos_config.ann_adjust.enable = True
+        fig, ax = self._draw_fitted(circos)
+
+        W, H = fig.get_size_inches()
+        name = next(iter(sizes)) if not multi else f"{len(sizes)} contigs"
+        fig.text(0.36 / W, 1 - 0.2 / H, f"CGCs of {name}", ha="left", va="top",
+                 fontsize=P.PLOT_TITLE_FONT_SIZE + 1, fontweight="bold", color=P.PLOT_INK)
+        n_pred = sum(1 for cid in self.cgcs if self.calls.get(cid) and self.calls[cid].names())
+        sub = (f"{V.plural(len(self.cgcs), 'CGC')} · {n_pred} with substrate prediction · "
+               f"{V.fmt_bp(sum(sizes.values()))}")
+        if multi:
+            sub += f" · ticks every {V.fmt_axis_tick(major, major, total)}"
+        fig.text(0.36 / W, 1 - 0.47 / H, sub, ha="left", va="top", fontsize=P.PLOT_SUBTITLE_FONT_SIZE,
+                 color=P.PLOT_INK_MUTED)
+        self._legend(fig, cgc_genes)
+        return V.save_figure(fig, self.output_dir, C.CGC_CIRCOS_FILE_TEMPLATE, {}, C.CGC_PLOT_FORMATS,
+                             P.PLOT_DEFAULT_DPI)
+
+    def _contig_name(self, sector, sector_deg: float) -> None:
+        """Radial contig name inside the innermost ring. Its OUTER end is anchored a gap below that
+        ring and the text runs towards the centre (pycirclize's own vertical text starts at r and
+        runs outwards, across the rings). Too long names are shortened with '…'; sectors too narrow
+        for the text height at the name's inner end stay unnamed."""
+        from pycirclize.utils.plot import get_label_params_by_rad
+
+        inner_ring = C.DEG_LOG2FC_RANGE[0] if self.deg is not None else C.CGC_CAZYME_TRACK_RANGE[0]
+        r_out = inner_ring - C.CGC_CONTIG_LABEL_GAP
+        label = _fit_radial_text(sector.name, C.CGC_CONTIG_LABEL_SIZE, r_out - C.CGC_CONTIG_LABEL_MIN_R)
+        r_in = r_out - _text_len_r(label, C.CGC_CONTIG_LABEL_SIZE)
+        need_deg = math.degrees(_text_len_r("Hg", C.CGC_CONTIG_LABEL_SIZE, height=True) / max(r_in, 1.0))
+        if sector_deg < max(C.CGC_CONTIG_LABEL_MIN_DEG, need_deg):
             return
-        try:
-            with open(self.substrate_file, encoding="utf-8") as f:
-                reader = csv.reader(f, delimiter="\t")
-                header = next(reader, None)
-                for row in reader:
-                    if not row or row[0].startswith("#"):
-                        continue
-                    cgcid = row[0].strip() if len(row) > 0 else ""
-                    pul_sub = row[2].strip() if len(row) > 2 else ""
-                    dbsub_sub = row[5].strip() if len(row) > 5 else ""
-                    labels = []
-                    if pul_sub:
-                        for sub in pul_sub.split(";"):
-                            sub = sub.strip()
-                            if sub:
-                                labels.append(sub)
-                    if dbsub_sub:
-                        for sub in dbsub_sub.split(";"):
-                            sub = sub.strip()
-                            if sub:
-                                labels.append(sub)
-                    if cgcid and labels:
-                        self.cgcid2substrate[cgcid] = "\n".join(labels)
-        except Exception as e:
-            logging.warning(f"Error reading substrate prediction file: {e}")
+        params = get_label_params_by_rad(sector.x_to_rad(sector.center), "vertical", outer=False)
+        sector.text(label, r=r_out, adjust_rotation=False, size=C.CGC_CONTIG_LABEL_SIZE,
+                    color=P.PLOT_INK_MUTED, **params)
 
-    def plot_feature_outer(self, circos=None):
-        if circos is None:
-            circos = self.circos
-        for sector in circos.sectors:
-            outer_track = sector.add_track(CGC_OUTER_TRACK_RANGE)
-            outer_track.axis(fc=CGC_AXIS_COLOR)
-            major_interval = CGC_MAJOR_INTERVAL
-            minor_interval = int(major_interval / CGC_MINOR_INTERVAL_DIVISOR)
-            if sector.size > minor_interval:
-                outer_track.xticks_by_interval(
-                    major_interval,
-                    label_formatter=lambda v: f"{v / 1000:.0f} Kb"
-                )
-                outer_track.xticks_by_interval(
-                    minor_interval,
-                    tick_length=1,
-                    show_label=False
-                )
+    def _legend_rows(self) -> int:
+        n = len(V.types_present([g for gs in self.cgcs.values() for g in gs])) + 2
+        n += 2 if self.deg is not None else 0
+        return max(1, math.ceil(n / 5))
 
-    def plot_features_cazyme(self, circos=None, sector_name=None):
-        if circos is None:
-            circos = self.circos
-        for sector in circos.sectors:
-            if sector_name and sector.name != sector_name:
+    def _draw_fitted(self, circos) -> Tuple["plt.Figure", "plt.Axes"]:
+        """Draw the circos and size the figure to it: header, the circle plus the room its labels
+        really take (measured after drawing), legend. No empty band for a figure with few labels."""
+        from pycirclize import config as circos_config
+        D = C.CGC_CIRCLE_DIAMETER_IN
+        s = D * (circos_config.MAX_R + circos_config.R_PLOT_MARGIN) / circos_config.MAX_R  # polar axes side
+        W0 = H0 = s + 8.0                      # provisional canvas with room for any label
+        fig = plt.figure(figsize=(W0, H0))
+        ax = fig.add_axes([(W0 - s) / 2 / W0, (H0 - s) / 2 / H0, s / W0, s / H0], projection="polar")
+        circos.plotfig(ax=ax)
+        renderer = fig.canvas.get_renderer()
+        dpi = fig.dpi
+        cx, cy = W0 / 2, H0 / 2
+        R = D / 2
+        ext = {"l": R, "r": R, "t": R, "b": R}
+        for t in ax.texts:
+            if not t.get_visible() or not t.get_text().strip():
                 continue
-            track = sector.add_track(CGC_CAZYME_TRACK_RANGE, r_pad_ratio=CGC_TRACK_PADDING)
-            track.axis(fc=CGC_TRACK_BG_COLOR, ec="none")
-            track.grid(2, color=CGC_GRID_COLOR)
-            features = self.seqid2features[sector.name]
-            for feature in features:
-                if feature.type in self.allowed_feature_types:
-                    cgc_type = feature.qualifiers.get(CGC_ANNOTATION_ATTR, ["unknown"])[0].split("|")[0]
-                    if cgc_type == "CAZyme":
-                        color = self.get_feature_color(cgc_type)
-                        track.genomic_features(feature, fc=color)
+            bb = t.get_window_extent(renderer)
+            x0, x1, y0, y1 = bb.x0 / dpi, bb.x1 / dpi, bb.y0 / dpi, bb.y1 / dpi
+            ext["l"], ext["r"] = max(ext["l"], cx - x0), max(ext["r"], x1 - cx)
+            ext["b"], ext["t"] = max(ext["b"], cy - y0), max(ext["t"], y1 - cy)
+        m = C.CGC_MARGIN_IN
+        legend_in = 0.15 + C.CGC_LEGEND_ROW_IN * self._legend_rows()
+        W = max(C.CGC_FIGURE_SIZE, ext["l"] + ext["r"] + 2 * m)
+        H = C.CGC_HEADER_IN + m + ext["t"] + ext["b"] + m + legend_in
+        ccx = W / 2 + (ext["l"] - ext["r"]) / 2          # content centred horizontally
+        ccy = legend_in + m + ext["b"]
+        fig.set_size_inches(W, H)
+        ax.set_position([(ccx - s / 2) / W, (ccy - s / 2) / H, s / W, s / H])
+        return fig, ax
 
-    def plot_features_cgc(self, circos=None, sector_name=None):
-        if circos is None:
-            circos = self.circos
-        for sector in circos.sectors:
-            if sector_name and sector.name != sector_name:
-                continue
-            track = sector.add_track(CGC_FEATURE_TRACK_RANGE, r_pad_ratio=CGC_TRACK_PADDING)
-            track.axis(fc=CGC_TRACK_BG_COLOR, ec="none")
-            track.grid(2, color=CGC_GRID_COLOR)
-            features = self.seqid2features[sector.name]
-            if not self.tsv_data.empty and CGC_PROTEIN_ID_FIELD in self.tsv_data.columns:
-                cgc_ids_list = self.tsv_data[CGC_PROTEIN_ID_FIELD].unique().astype(str)
-                for feature in features:
-                    if feature.type in self.allowed_feature_types:
-                        cgc_type = feature.qualifiers.get(CGC_ANNOTATION_ATTR, ["unknown"])[0].split("|")[0]
-                        cgc_id = str(feature.qualifiers.get(PROTEIN_ID_ATTR, ["unknown"])[0])
-                        if cgc_id in cgc_ids_list:
-                            color = self.get_feature_color(cgc_type)
-                            track.genomic_features(feature, fc=color)
+    def _deg_tracks(self, sector, genes, size):
+        marks = sector.add_track(C.DEG_TRACK_RANGE)
+        marks.axis(fc=C.CGC_TRACK_BG_COLOR, ec="none")
+        line = sector.add_track(C.DEG_LOG2FC_RANGE)
+        line.axis(fc="none", ec="#BDBDBD", lw=0.4)
+        pts = []
+        for g in genes:
+            fc = self.deg.get(g.pid)
+            if fc is None:
+                continue          # no value (NA): neither up nor down
+            lo, hi = max(0, g.start - 1), min(size, g.end)
+            if fc != 0 and hi > lo:
+                marks.rect(lo, hi, fc=C.DEG_UP_COLOR if fc > 0 else C.DEG_DOWN_COLOR, ec="none")
+            pts.append((min(size, int(g.mid)), fc))
+        if len(pts) > 1:
+            pts.sort()
+            vmax = max(1.0, max(abs(v) for _, v in pts))
+            line.line([0, size], [0, 0], vmin=-vmax, vmax=vmax, color="#9A9A9A", lw=0.5, ls="dotted")
+            line.line([p for p, _ in pts], [v for _, v in pts], vmin=-vmax, vmax=vmax, color=C.DEG_LINE_COLOR, lw=0.7)
 
-    def plot_cgc_range(self, circos=None, sector_name=None):
-        if circos is None:
-            circos = self.circos
-        for sector in circos.sectors:
-            if sector_name and sector.name != sector_name:
-                continue
-            cgc_track = sector.add_track(CGC_RANGE_TRACK_RANGE, r_pad_ratio=CGC_TRACK_PADDING)
-            cgc_track.axis(fc=CGC_TRACK_BG_COLOR, ec="none")
-            cgc_track.grid(2, color=CGC_GRID_COLOR)
-            sector_size = self.seqid2size[sector.name]
-            if self.tsv_data.empty or CONTIG_ID_COLUMN not in self.tsv_data.columns:
-                continue
-            sector_data = self.tsv_data[self.tsv_data[CONTIG_ID_COLUMN].astype(str) == sector.name]
-            if CGC_ID_COLUMN in sector_data.columns:
-                for cgc_id in sector_data[CGC_ID_COLUMN].unique():
-                    rows = sector_data[sector_data[CGC_ID_COLUMN] == cgc_id]
-                    if GENE_START_COLUMN in rows.columns and GENE_STOP_COLUMN in rows.columns:
-                        try:
-                            start = rows[GENE_START_COLUMN].min()
-                            end = rows[GENE_STOP_COLUMN].max()
-                            if start >= sector_size or end > sector_size:
-                                logging.warning(
-                                    f"Skipping CGC {cgc_id} ({start}-{end}) exceeds sector {sector.name} size {sector_size}"
-                                )
-                                continue
-                            start = max(0, min(start, sector_size - 1))
-                            end = max(1, min(end, sector_size))
-                            cgc_track.rect(start, end, fc=CGC_RANGE_COLOR, ec=CGC_RANGE_BORDER_COLOR)
-                            substrate_key = f"{sector.name}|{cgc_id}".strip()
-                            substrate_label = self.cgcid2substrate.get(substrate_key, None)
-                            reg_label = self.get_cgc_regulation_label(rows)
-                            label = f"{cgc_id}"
-                            if substrate_label:
-                                label += f"\n{substrate_label}"
-                            if reg_label:
-                                label += f"\n{reg_label}"
-                            cgc_track.annotate(
-                                (start + end) / 2,
-                                label,
-                                label_size=CGC_LABEL_SIZE,
-                                text_kws={"color": "red"} if substrate_label else {},
-                                line_kws={"color": "red"} if reg_label == "up"
-                                         else {"color": "blue"} if reg_label == "down"
-                                         else {}
-                            )
-                        except Exception as e:
-                            logging.warning(f"Error plotting CGC {cgc_id} on {sector.name}: {e}")
-
-    def plot_log2fc_line(self, circos=None, sector_name=None):
-        if circos is None:
-            circos = self.circos
-        if self.deg_data is None:
-            logging.warning("No DEG data available")
-            return
-        for sector in circos.sectors:
-            if sector_name and sector.name != sector_name:
-                continue
-            track = sector.add_track(DEG_LOG2FC_RANGE, r_pad_ratio=CGC_TRACK_PADDING)
-            track.axis()
-            track.grid(2, color=CGC_GRID_COLOR)
-            features = self.seqid2features[sector.name]
-            x, y = [], []
-            for feature in features:
-                if feature.type in self.allowed_feature_types:
-                    protein_id = feature.qualifiers.get(PROTEIN_ID_ATTR, [""])[0]
-                    pos = int((feature.location.start + feature.location.end) / 2)
-                    if protein_id in self.deg_data['protein_id'].values:
-                        log2fc = self.deg_data.loc[self.deg_data['protein_id'] == protein_id, 'log2FC'].iloc[0]
-                        y_val = log2fc + 20
-                    else:
-                        y_val = 20
-                    x.append(pos)
-                    y.append(y_val)
-            if len(x) > 1:
-                x, y = zip(*sorted(zip(x, y)))
-                vmin = min(y) - 1
-                vmax = max(y) + 1
-                track.line([min(x), max(x)], [20, 20], lw=1.5, ls="dotted", color="gray", vmin=vmin, vmax=vmax)
-                track.line(x, y, color="pink", lw=1.5, vmin=vmin, vmax=vmax)
-
-    def plot_deg_marker_circle(self, circos=None, sector_name=None):
-        if circos is None:
-            circos = self.circos
-        if self.deg_data is None:
-            logging.warning("No DEG data available")
-            return
-        for sector in circos.sectors:
-            if sector_name and sector.name != sector_name:
-                continue
-            track = sector.add_track(DEG_TRACK_RANGE, r_pad_ratio=CGC_TRACK_PADDING)
-            track.axis(fc=CGC_TRACK_BG_COLOR, ec="none")
-            track.grid(2, color=CGC_GRID_COLOR)
-            features = self.seqid2features[sector.name]
-            for feature in features:
-                if feature.type in self.allowed_feature_types:
-                    protein_id = feature.qualifiers.get(PROTEIN_ID_ATTR, [""])[0]
-                    if protein_id in self.deg_data['protein_id'].values:
-                        log2fc = self.deg_data.loc[self.deg_data['protein_id'] == protein_id, 'log2FC'].iloc[0]
-                        color = "#FF0000" if log2fc > 0 else "#4169E1"
-                        track.genomic_features(feature, fc=color, ec="black", lw=0.2)
-
-    def get_feature_color(self, cgc_type):
-        return CGC_FEATURE_COLORS.get(cgc_type, "gray")
-
-    def get_cgc_regulation_label(self, cgc_rows):
-        if self.deg_data is None or cgc_rows.empty:
-            return ""
-        gene_ids = cgc_rows[CGC_PROTEIN_ID_FIELD].astype(str).tolist()
-        deg_sub = self.deg_data[self.deg_data['protein_id'].astype(str).isin(gene_ids)]
-        if deg_sub.empty:
-            return ""
-        up_count = (deg_sub['log2FC'] > 0).sum()
-        down_count = (deg_sub['log2FC'] < 0).sum()
-        total = len(gene_ids)
-        if total == 0:
-            return ""
-        if up_count / total >= 0.5:
-            return "up"
-        if down_count / total >= 0.5:
-            return "down"
-        return ""
-
-    def add_legend(self, circos=None):
-        if circos is None:
-            circos = self.circos
-        legend_colors = [self.get_feature_color(label) for label in CGC_FEATURE_LEGEND]
-        rect_handles = [Patch.Patch(color=color, label=CGC_FEATURE_LEGEND[idx])
-                        for idx, color in enumerate(legend_colors)]
-        rect_handles.append(Patch.Patch(color="#FF0000", label="DEG up regulated"))
-        rect_handles.append(Patch.Patch(color="#4169E1", label="DEG down regulated"))
-        circos.ax.legend(
-            handles=rect_handles,
-            bbox_to_anchor=CGC_LEGEND_POSITION,
-            loc="center",
-            fontsize=CGC_LEGEND_FONT_SIZE,
-            title=CGC_LEGEND_TITLE,
-            title_fontsize=CGC_LEGEND_FONT_SIZE,
-            ncol=2,
-        )
-
-    def plot_single_contig(self, contig_name):
-        try:
-            contig_size = {contig_name: self.seqid2size[contig_name]}
-            contig_circos = Circos(sectors=contig_size, space=0)
-            contig_circos.text(
-                CGC_CONTIG_TITLE_TEMPLATE.format(contig_name=contig_name),
-                size=CGC_TITLE_FONT_SIZE
-            )
-            self.plot_feature_outer(contig_circos)
-            self.plot_features_cazyme(contig_circos, contig_name)
-            self.plot_features_cgc(contig_circos, contig_name)
-            self.plot_cgc_range(contig_circos, contig_name)
-            self.plot_log2fc_line(contig_circos, contig_name)
-            self.plot_deg_marker_circle(contig_circos, contig_name)
-            circos_config.ann_adjust.enable = True
-            size = min(
-                CGC_MAX_FIGURE_SIZE,
-                max(CGC_MIN_FIGURE_SIZE,
-                    CGC_MIN_FIGURE_SIZE + len(self.seqid2size) / CGC_FIGURE_SIZE_SCALING_FACTOR)
-            )
-            fig = contig_circos.plotfig(figsize=(size, size))
-            self.add_legend(contig_circos)
-            output_path = self.output_dir / CGC_CIRCOS_CONTIG_FILE_TEMPLATE.format(contig_name=contig_name)
-            fig.savefig(output_path, format='svg', dpi=300)
-            plt.close(fig)
-            logging.info(f"Saved contig plot: {output_path}")
-        except Exception as e:
-            logging.error(f"Error plotting contig {contig_name}: {e}")
-
-    def plot(self):
-        try:
-            self.plot_feature_outer()
-            self.plot_features_cazyme()
-            self.plot_features_cgc()
-            self.plot_cgc_range()
-            self.plot_log2fc_line()
-            self.plot_deg_marker_circle()
-            circos_config.ann_adjust.enable = True
-            size = min(
-                CGC_MAX_FIGURE_SIZE,
-                max(CGC_MIN_FIGURE_SIZE,
-                    CGC_MIN_FIGURE_SIZE + len(self.seqid2size) / CGC_FIGURE_SIZE_SCALING_FACTOR)
-            )
-            fig = self.circos.plotfig(figsize=(size, size))
-            self.add_legend()
-            output_path = self.output_dir / CGC_CIRCOS_PLOT_FILE
-            fig.savefig(output_path, format='svg', dpi=300)
-            plt.close(fig)
-            logging.info(f"Saved combined plot: {output_path}")
-
-            total_contigs = len(self.seqid2size)
-            logging.info(f"Generating {total_contigs} individual contig plots...")
-            for idx, contig_name in enumerate(sorted(self.seqid2size.keys()), 1):
-                logging.info(f"[{idx}/{total_contigs}] {contig_name}")
-                self.plot_single_contig(contig_name)
-                if idx % 10 == 0:
-                    plt.close('all')
-                plt.close('all')
-        except Exception as e:
-            logging.error(f"Error during plotting: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
+    def _legend(self, fig, cgc_genes):
+        hs, ls = V.type_legend_handles(V.types_present(cgc_genes))
+        ls = [f"{t} gene" for t in ls]
+        predicted = [bool(self.calls.get(cid) and self.calls[cid].names()) for cid in self.cgcs]
+        if any(not p for p in predicted):
+            hs, ls = [Patch(facecolor=C.CGC_RANGE_COLOR)] + hs, ["CGC"] + ls
+        if any(predicted):
+            hs, ls = [Patch(facecolor=C.CGC_RANGE_PREDICTED_COLOR)] + hs, ["CGC with substrate prediction"] + ls
+        if self.deg is not None:
+            hs += [Patch(facecolor=C.DEG_UP_COLOR), Patch(facecolor=C.DEG_DOWN_COLOR)]
+            ls += ["up-regulated", "down-regulated"]
+        fig.legend(hs, ls, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=min(5, len(hs)), frameon=False,
+                   fontsize=P.PLOT_LABEL_FONT_SIZE, handlelength=1.4, columnspacing=1.4)

@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Dict, Any
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
+import dbcan.constants.process_utils_constants as PU
 from Bio import SeqIO
 from BCBio import GFF
 from tqdm import tqdm
@@ -32,9 +34,9 @@ def read_gff_to_df(path: str, columns=None, drop_comments: bool = True) -> pd.Da
 
     # Never treat '#' as inline comment; some protein_id contain '#'
     # Use the python engine for robust parsing of mixed content.
-    df = pd.read_csv(
+    df = read_tsv(
         p,
-        sep='\t',
+        id_columns=[columns[0], columns[-1]],
         header=None,
         names=columns,
         comment=None,      # critical: keep inline '#'
@@ -205,7 +207,7 @@ class GFFProcessor:
                 return {}
 
             logger.info(f"Loading CAZyme data from {self.cazyme_overview_path}")
-            df = pd.read_csv(self.cazyme_overview_path, sep='\t')
+            df = read_tsv(self.cazyme_overview_path)
 
             required_cols = [G.GFF_GENE_ID_COL, G.GFF_TOOLS_COUNT_COL, G.GFF_RECOMMEND_RESULTS_COL]
             if not all(col in df.columns for col in required_cols):
@@ -224,17 +226,26 @@ class GFFProcessor:
 
             logger.info(f"Loading CGC signature data from {self.cgc_sig_path}")
             try:
-                cgc_sig_chunks = pd.read_csv(
+                with open(self.cgc_sig_path) as fh:
+                    header = fh.readline().rstrip("\n").split("\t")
+                usecols = list(G.GFF_CGC_SIG_COLUMNS)
+                names = [G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL]
+                if PU.SIGNATURE_SOURCE_COLUMN in header:
+                    usecols.append(header.index(PU.SIGNATURE_SOURCE_COLUMN))
+                    names.append(PU.SIGNATURE_SOURCE_COLUMN)
+                cgc_sig_chunks = read_tsv(
                     self.cgc_sig_path,
-                    sep='\t',
-                    usecols=G.GFF_CGC_SIG_COLUMNS,
+                    id_columns=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
+                    usecols=usecols,
                     header=None,
                     skiprows=1,
-                    names=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
+                    names=names,
                     chunksize=100_000
                 )
                 cgc_sig_df_list = []
                 chunk_count = 0
+                cazyme_ids = set(overview_df[G.GFF_PROTEIN_ID_COL])
+                dropped_full_length = 0
                 for chunk in cgc_sig_chunks:
                     chunk_count += 1
                     for col in (G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL):
@@ -242,10 +253,21 @@ class GFFProcessor:
                     before_rows = len(chunk)
                     chunk = chunk.dropna(subset=[G.GFF_PROTEIN_ID_COL])
                     chunk[G.GFF_CGC_ANNOTATION_COL] = chunk[G.GFF_TYPE_COL] + '|' + chunk[G.GFF_FUNCTION_ANNOTATION_COL]
+                    if PU.SIGNATURE_SOURCE_COLUMN in chunk.columns:
+                        # A full-length database label (TC, TF DIAMOND, sulfatase) cannot be placed on the
+                        # protein, so it cannot be told apart from the CAZyme domain: CAZyme wins.
+                        drop = (chunk[PU.SIGNATURE_SOURCE_COLUMN].isin(PU.FULL_LENGTH_SIGNATURE_SOURCES)
+                                & chunk[G.GFF_PROTEIN_ID_COL].isin(cazyme_ids))
+                        dropped_full_length += int(drop.sum())
+                        chunk = chunk[~drop]
                     cgc_sig_df_list.append(chunk[[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]])
                 cgc_sig_df = pd.concat(cgc_sig_df_list, ignore_index=True) if cgc_sig_df_list else pd.DataFrame(
                     columns=[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]
                 )
+                if dropped_full_length:
+                    logger.info("%d TC/TF(DIAMOND)/sulfatase label(s) on CAZyme proteins not used in cgc.gff "
+                                "(full-length database hits; they stay in %s)", dropped_full_length,
+                                self.cgc_sig_path.name)
                 logger.info(f"CGC signature chunks read: {chunk_count}, total rows: {len(cgc_sig_df)}; "
                             f"TC rows: {(cgc_sig_df[G.GFF_CGC_ANNOTATION_COL].str.startswith('TC|').sum() if not cgc_sig_df.empty else 0)}")
             except Exception as e:
@@ -580,9 +602,41 @@ class ProdigalProcessor(GFFProcessor):
             raise
 
 
+class ResolverGFFProcessor(GFFProcessor):
+    """funannotate, BRAKER, GFF3 and GTF: gene -> transcript -> CDS resolution
+    (dbcan.IO.gff_resolver). One row per gene; the annotated isoform is kept, else the longest CDS.
+    Also writes gff_resolution.tsv."""
+
+    def process_gff(self) -> bool:
+        from dbcan.IO.gff_resolver import resolve_gff, write_cgc_gff, write_resolution_tsv, read_fasta_ids
+
+        if not self.input_gff_path.exists():
+            logger.error(f"Input GFF file not found: {self.input_gff_path}")
+            return False
+        if not self.input_total_faa_path.exists():
+            logger.error(f"Input protein sequences file not found: {self.input_total_faa_path}")
+            return False
+        logger.info("Loading annotation tables (CAZyme / CGC signatures)")
+        cgc_data = self.load_cgc_type()
+        annotations = {pid: v.get(G.GFF_CGC_ANNOTATION_COL, G.GFF_NULL_ANNOTATION) for pid, v in cgc_data.items()}
+        protein_ids = read_fasta_ids(self.input_total_faa_path, clean=False)
+        logger.info(f"[GFF] Resolving genes of {self.input_gff_path} (--gff_type {self.config.gff_type})")
+        result = resolve_gff(self.input_gff_path, self.config.gff_type, protein_ids, annotations)
+        wrote = write_cgc_gff(result, self.output_gff_path, annotations)
+        write_resolution_tsv(result, self.output_dir_path / G.GFF_RESOLUTION_FILE)
+        logger.info(result.summary())
+        logger.info(f"GFF processing complete: {self.output_gff_path} ({wrote} genes)")
+        return True
+
+
 def get_gff_processor(config: GFFConfig) -> GFFProcessor:
-    """Factory: build a processor by gff_type."""
-    gff_type = config.gff_type
+    """Factory: build a processor by gff_type (case-insensitive)."""
+    from dbcan.IO.gff_resolver import normalize_gff_type
+
+    gff_type = normalize_gff_type(config.gff_type)
+    config.gff_type = gff_type
+    if gff_type in G.GFF_RESOLVER_FORMATS:
+        return ResolverGFFProcessor(config)
     if gff_type == G.GFF_FORMAT_NCBI_EUK:
         return NCBIEukProcessor(config)
     elif gff_type == G.GFF_FORMAT_NCBI_PROK:

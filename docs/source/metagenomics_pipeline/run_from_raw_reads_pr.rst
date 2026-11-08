@@ -27,9 +27,18 @@ Software and versions
 - **Samtools** (`Samtools <https://github.com/samtools/samtools>`_, version 1.7)
 - **Kraken2** (`Kraken2 <https://ccb.jhu.edu/software/kraken2/>`_, version 2.1.1)
 - **KrakenTools** (`KrakenTools <https://github.com/jenniferlu717/KrakenTools?tab=readme-ov-file>`_, version 1.2)
-- **run_dbcan** (`run_dbcan <https://github.com/Xinpeng021001/run_dbCAN_new>`_, version 5.0.3)
+- **run_dbcan** (`run_dbcan <https://github.com/bcb-unl/run_dbcan>`_, version 5.0.3)
 - **MMseqs2** (`MMseqs2 <https://github.com/soedinglab/MMseqs2>`_, release 15-6f452)
 - **Pysam** (`Pysam <https://github.com/pysam-developers/pysam>`_, version 0.22.1)
+
+.. note::
+
+   This protocol was originally written for run_dbcan 5.0.3. The ``run_dbcan`` commands below have been
+   updated for the current command-line interface, but some example directory listings and descriptions
+   still show legacy output names: ``overview.txt`` is now ``overview.tsv``, ``cgc_standard.out`` is now
+   ``cgc_standard_out.tsv``, and ``PUL.out`` is now ``PUL_blast.out``. See :doc:`/user_guide/CAZyme_annotation`
+   and :doc:`/FAQ/troubleshooting` for the current outputs.
+
 
 .. code-block:: shell
 
@@ -38,7 +47,11 @@ Software and versions
 
 To install the databases, execute the following commands:
 
-.. include:: prepare_the_database.rst
+Follow :doc:`/user_guide/prepare_the_database`. In short:
+
+.. code-block:: shell
+
+    run_dbcan database --db_dir db
 
 
 
@@ -233,8 +246,8 @@ P6. CAZyme annotation at family level (TIMING ~10min)
 
 .. code-block:: shell
 
-    run_dbcan easy_CAZyme --input_raw_data BML_MG.faa --mode protein --output_dir BML_MG.CAZyme --db_dir db --input_format NCBI
-    run_dbcan easy_CAZyme --input_raw_data SRF_MG.faa --mode protein --output_dir SRF_MG.CAZyme --db_dir db --input_format NCBI
+    run_dbcan CAZyme_annotation --input_raw_data BML_MG.faa --mode protein --output_dir BML_MG.CAZyme --db_dir db
+    run_dbcan CAZyme_annotation --input_raw_data SRF_MG.faa --mode protein --output_dir SRF_MG.CAZyme --db_dir db
 
 
 Two arguments are required for ``run_dbcan``: the input sequence file (faa files) and the sequence type (protein).
@@ -253,8 +266,8 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --input_format NCBI --gff_type prodigal --input_gff BML_MG.gff --db_dir db
-    run_dbcan easy_CGC --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --input_format NCBI --gff_type prodigal --input_gff SRF_MG.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --gff_type prodigal --input_gff BML_MG.gff --db_dir db
+    run_dbcan easy_CGC --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --gff_type prodigal --input_gff SRF_MG.gff --db_dir db
 
 .. warning::
 
@@ -274,8 +287,8 @@ The following commands will re-run run_dbcan to predict CAZymes, CGCs.
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --input_format NCBI --gff_type prodigal --input_gff BML_MG.gff --db_dir db
-    run_dbcan easy_substrate --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --input_format NCBI --gff_type prodigal --input_gff SRF_MG.gff --db_dir db
+    run_dbcan easy_substrate --input_raw_data BML_MG.faa --mode protein  --output_dir BML_MG.PUL --gff_type prodigal --input_gff BML_MG.gff --db_dir db
+    run_dbcan easy_substrate --input_raw_data SRF_MG.faa --mode protein  --output_dir SRF_MG.PUL --gff_type prodigal --input_gff SRF_MG.gff --db_dir db
 
 
 Box 6: Example output folder content of run_dbcan substrate prediction
@@ -339,7 +352,7 @@ Explanation: the gene BML_MG_01992 encodes a GH2 CAZyme in the CGC1 of the conti
 5.	DIAMOND: GT112
 6.	#ofTools: 3
 Explanation: the protein BML_MG_01761 is annotated by 3 tools to be a CAZyme: (1) GT112 (CAZy defined family GT112) by HMMER vs dbCAN HMMdb with a domain range from aa position 19 to 370, (2) GT112_e0 (eCAMI defined subfamily e0; e indicates it is from eCAMI not CAZy) by HMMER vs dbCAN-sub HMMdb (derived from eCAMI subfamilies), and (3) GT112 by DIAMOND vs CAZy annotated protein sequences. The second column 2.4.99.-:5 is extracted from eCAMI, meaning that the eCAMI subfamily GT112_e0 contains 5 member proteins which have an EC 2.4.99.- according to CAZy. In most cases, the 3 tools will have the same CAZyme family assignment. When they give different assignment. We recommend a preference order: dbCAN > eCAMI/dbCAN-sub > DIAMOND. See our dbCAN2 paper2, dbCAN3 paper3, and eCAMI4 for more details.
-Note: If users invoked the --use_signalP parameter when running run_dbcan, there will be an additional column called signal in the overview.txt.
+Note: If users pass ``--run_signalp`` to ``run_dbcan CAZyme_annotation``, there will be an additional ``SignalP`` column in ``overview.tsv`` (see :doc:`/user_guide/signalp6_deeptmhmm`).
 stp.out: HMMER search result against the MiST5 compiled signal transduction protein HMMs from Pfam.
 tf-1.out: HMMER search result against the DBD6 compiled transcription factor HMMs from Pfam 7.
 tf-2.out: HMMER search result against the DBD compiled transcription factor HMMs from Superfamily 8.
@@ -539,6 +552,12 @@ We developed a set of Python scripts as ``dbcan_utils`` (included in the ``run_d
 - **RPKM** is calculated as the number of mapped reads to a gene G divided by [(total number of mapped reads to all genes / 10^6) x (gene G length / 1000)].
 - **RPM** is the number of mapped reads to a gene G divided by (total number of mapped reads to all genes / 10^6).
 - **TPM** is calculated as [number of mapped reads to a gene G / (gene G length / 1000)] divided by the sum of [number of mapped reads to each gene / (the gene length / 1000)].
+
+.. note::
+   ``cal_coverage`` counts each read pair once by default (``--count-mode fragments``), ignores
+   secondary, supplementary, QC-fail and duplicate alignments, and accepts NCBI GFFs and run_dbcan's
+   ``cgc.gff`` as well as Prodigal GFFs. ``-a`` accepts RPM, TPM, FPKM and RPKM (the same formula as FPKM),
+   and ``-o`` sets the output directory of the ``*_abund`` functions. See :doc:`/user_guide/abundance`.
 
 Box 7. Example output of dbcan_utils
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,9 +1,30 @@
+import logging
 import rich_click as click
 from dataclasses import fields
 from typing import Any, Dict, Optional
 import psutil
 
 from dbcan.constants.expression_constants import PLOT_METRIC_CHOICES
+from dbcan.constants.base_constants import GFF_FORMAT_CHOICES, GFF_MIN_MATCH_DEFAULT
+
+logger = logging.getLogger(__name__)
+
+
+def ignored_option(*param_decls, note: str = "", **kwargs):
+    """A deprecated option that is still accepted (existing command lines keep working) but has no
+    effect: hidden from --help, never forwarded by the easy_* commands, and a warning is logged when
+    it is given a non-default value."""
+    default = kwargs.get("default")
+
+    def _warn(ctx, param, value):
+        given = tuple(value) != tuple(default or ()) if isinstance(value, (tuple, list)) else value != default
+        if given:
+            name = max(param.opts, key=len)
+            logger.warning("%s is deprecated and ignored%s", name, f": {note}" if note else ".")
+        return value
+
+    return click.option(*param_decls, hidden=True, callback=_warn, **kwargs)
+
 
 
 
@@ -89,21 +110,46 @@ methods_option = click.option(
 
 
 # Define group options
-def general_options(func):
+INPUT_RAW_DATA_HELP = 'Path to input sequences (FASTA/FASTA.gz): nucleotide for prok/meta modes, proteins when --mode=protein.'
+MODE_HELP = (
+    'Input type. prok: a bacterial/archaeal genome (DNA; genes predicted with pyrodigal). '
+    'meta: a metagenome assembly (DNA; pyrodigal in metagenome mode). '
+    'protein: any proteome (amino-acid FASTA), including fungi and other eukaryotes annotated with '
+    'funannotate, BRAKER, NCBI or JGI; for CGCs also pass that annotation with --input_gff and --gff_type. '
+    'pyrodigal is prokaryote-only: do not use prok/meta for fungal or other eukaryotic genomes.'
+)
+MODE_CHOICES = ('prok', 'meta', 'protein')
+
+
+def input_options(func):
+    """--input_raw_data and --mode, for commands that read the raw input sequences."""
     func = click.option(
         '--input_raw_data',
         required=True,
-        help='Path to input sequences (FASTA/FASTA.gz): nucleotide for prok/meta modes, proteins when --mode=protein.',
+        help=INPUT_RAW_DATA_HELP,
     )(func)
-    func = output_dir_option(func)
     func = click.option(
         '--mode',
         default='prok',
         required=True,
         show_default=True,
-        help='Input type: prok (prokaryote DNA), meta (metagenome DNA), protein (amino-acid FASTA).',
+        type=click.Choice(MODE_CHOICES, case_sensitive=False),
+        help=MODE_HELP,
     )(func)
+    return func
 
+
+def deprecated_input_options(func):
+    """Hidden, silently ignored --input_raw_data/--mode, so that existing substrate_prediction
+    command lines that pass them (the workaround for GitHub issue #81) keep working."""
+    func = click.option('--input_raw_data', required=False, default=None, hidden=True)(func)
+    func = click.option('--mode', required=False, default=None, hidden=True)(func)
+    return func
+
+
+def general_options(func):
+    func = input_options(func)
+    func = output_dir_option(func)
     return func
 
 def database_options(func):
@@ -222,10 +268,10 @@ def diamond_tf_options(func):
     )(func)
     func = click.option(
         '--prokaryotic/--no-prokaryotic',
-        is_flag=True,
-        default=True,
-        show_default=True,
-        help='Run prokaryotic TF DIAMOND step (--no-prokaryotic: skip it; use fungi TF HMM with --fungi).',
+        default=None,
+        help=('TF annotation for prokaryotes: DIAMOND against the prokaryotic TF database. '
+              'Default: on, unless --fungi is given (fungi use the TF HMM search instead). '
+              'Pass --prokaryotic together with --fungi to run both.'),
     )(func)
     return func
 
@@ -468,7 +514,8 @@ def pyhmmer_tf(func):
         is_flag=True,
         default=False,
         show_default=True,
-        help='Run TF HMM search (--fungi); default skips TF pyhmmer (prokaryotes use TF DIAMOND instead).',
+        help=('Fungal input: annotate TFs with the TF HMM search instead of the prokaryotic TF DIAMOND '
+              'search (which is then skipped unless --prokaryotic is also given).'),
     )(func)
     return func
 
@@ -504,6 +551,16 @@ def diamond_sulfatase_options(func):
         default=35,
         show_default=True,
     )(func)
+    func = click.option(
+        '--subject_coverage_threshold_sulfatase',
+        type=click.FloatRange(0, 100),
+        help='DIAMOND --subject-cover for Sulfatase: minimum coverage of the SulfAtlas protein in percent '
+             '(0–100). SulfAtlas entries are full-length proteins, often sulfatases fused to other domains; '
+             'this keeps a protein that only matches the non-sulfatase part of such an entry from taking '
+             'its sulfatase family. 0 turns the filter off.',
+        default=70,
+        show_default=True,
+    )(func)
     return func
 
 def diamond_peptidase_options(func):
@@ -517,19 +574,20 @@ def diamond_peptidase_options(func):
     func = click.option(
         '--coverage_threshold_peptidase',
         type=float,
-        help='DIAMOND --query-cover for Peptidase: minimum query coverage in percent (0–100).',
+        help=('Minimum coverage of the MEROPS peptidase unit (DIAMOND --subject-cover, percent 0–100). '
+              'The peptidase database holds peptidase units (domains), so coverage is measured on the unit, '
+              'not on the query protein.'),
         default=35,
         show_default=True,
     )(func)
     return func
 
 def pyhmmer_pfam(func):
-    func = click.option(
+    func = ignored_option(
         '--run_pfam',
         is_flag=True,
         default=False,
-        show_default=True,
-        help='Run Pfam pyhmmer on null genes (Pfam_null_cgc / CGC null annotation).',
+        note='Pfam_null_cgc always runs the Pfam search.',
     )(func)
     func = click.option(
         '--e_value_threshold_pfam',
@@ -554,20 +612,46 @@ def pyhmmer_pfam(func):
     )(func)
     return func
 
+GFF_TYPE_CHOICES = GFF_FORMAT_CHOICES
+GFF_TYPE_HELP = (
+    "How genes of --input_gff are linked to protein IDs (case-insensitive). "
+    "prodigal: pyrodigal/Prodigal GFF (ID of each row). "
+    "NCBI_prok: NCBI prokaryote GFF3 (gene -> CDS protein_id). "
+    "NCBI_euk: NCBI eukaryote GFF3 (gene -> mRNA -> CDS protein_id). "
+    "JGI: JGI MycoCosm GFF3 (gene proteinId). "
+    "funannotate: funannotate/funannotate2 GFF3 (proteins named by mRNA ID, e.g. FUN_000001-T1). "
+    "BRAKER: BRAKER/AUGUSTUS GFF3 (gene -> mRNA or transcript -> CDS; proteins g1.t1). "
+    "GFF3: any other gene -> mRNA/transcript -> CDS GFF3 (Helixer, Ensembl, gffread, ...). "
+    "GTF: GTF with gene_id/transcript_id (AUGUSTUS/BRAKER .gtf, NCBI/Ensembl GTF). "
+    "Required with --mode protein; defaults to prodigal for the pyrodigal GFF of prok/meta mode."
+)
+
+
 def cgc_gff_option(func):
     func = click.option(
         '--input_gff',
         required=False,
         default=None,
         type=click.Path(),
-        help='Annotation GFF. Required when --mode=protein; otherwise defaults to <output_dir>/uniInput.gff.',
+        help='Annotation GFF3/GTF of the proteins. Required when --mode=protein; otherwise defaults to <output_dir>/uniInput.gff.',
     )(func)
     func = click.option(
         '--gff_type',
         required=False,
         default=None,
-        type=str,
-        help="GFF dialect label (e.g. prodigal, NCBI_prok). When --mode!=protein defaults to 'prodigal' if unset.",
+        type=click.Choice(GFF_TYPE_CHOICES, case_sensitive=False),
+        help=GFF_TYPE_HELP,
+    )(func)
+    func = click.option(
+        '--gff_min_match',
+        type=click.FloatRange(0.0, 1.0),
+        default=GFF_MIN_MATCH_DEFAULT,
+        show_default=True,
+        help=(
+            'Stop with an error when fewer than this fraction of the protein-coding genes of --input_gff '
+            'can be matched to a protein of the FASTA (wrong --gff_type or wrong file). Every gene is listed in '
+            '<output_dir>/gff_resolution.tsv. 0 disables the check.'
+        ),
     )(func)
     func = click.option(
         '--prodigal-gff-streaming',
@@ -647,7 +731,8 @@ def cgc_options(func):
         type=click.Choice(['none', 'bp', 'gene']),
         default='none',
         show_default=True,
-        help="After CGC detection, extend cluster bounds: 'bp' uses --extend_bp; 'gene' uses --extend_gene_count; 'none' disables.",
+        help=("After CGC detection, extend cluster bounds: 'bp' uses --extend_bp; 'gene' uses --extend_gene_count; "
+              "'none' disables. Extensions are trimmed so that no gene is in two CGCs."),
     )(func)
     func = click.option(
         '--extend_bp',
@@ -679,71 +764,54 @@ def cgc_options(func):
         show_default=True,
         help='Minimum total genes in a CGC locus.',
     )(func)
-    func = click.option(
+    func = ignored_option(
         '--feature_type',
         'feature_types',
         multiple=True,
         default=["CDS"],
-        show_default=True,
-        help='GFF feature types to parse (repeat option for multiple values, e.g. --feature_type CDS --feature_type gene).',
+        note='cgc_finder uses every gene of cgc.gff (feature types are chosen per --gff_type by gff_process).',
     )(func)
     return func
 
 def cgc_substrate_base_options(func):
-    """Options shared by substrate_prediction and easy_substrate (step 4)."""
-    func = general_options(func)
+    """Options shared by substrate_prediction and easy_substrate (step 4).
+
+    substrate_prediction only reads intermediate files from --output_dir, so it does not
+    take --input_raw_data/--mode (GitHub issue #81); easy_substrate adds them itself.
+    """
+    func = output_dir_option(func)
     func = click.option(
-        '--pul',
-        required=False,
-        default=None,
-        type=click.Path(exists=True, dir_okay=False),
-        help='Path to dbCAN-PUL PUL.faa when you need an explicit PUL database file.',
-    )(func)
-    func = click.option(
-        '-o',
-        '--out',
-        default='substrate.out',
+        '--synteny_revcomp/--no-synteny_revcomp',
+        '--synteny-revcomp/--no-synteny-revcomp',
+        'synteny_revcomp',
+        default=True,
         show_default=True,
-        help='Legacy filename hint for standalone substrate tools (results still go under --output_dir).',
+        help='Synteny PDFs: draw the dbCAN-PUL reverse-complemented when most homologous genes lie on the opposite strand of the CGC.',
     )(func)
-    func = click.option(
-        '-w',
-        '--workdir',
-        default='.',
-        show_default=True,
-        type=str,
-        help='Working directory for legacy substrate scripts (prefer --output_dir for run_dbcan).',
-    )(func)
-    func = click.option(
-        '-rerun',
-        '--rerun',
-        default=False,
-        type=bool,
-        show_default=True,
-        help='Re-run substrate prediction (pass true/false explicitly; rarely needed).',
-    )(func)
-    func = click.option(
-        '-env',
-        '--env',
-        default='local',
-        show_default=True,
-        type=str,
-        help='Execution environment label for external wrappers (usually keep local).',
-    )(func)
+    # Options of the run_dbcan 3/4 substrate scripts; accepted so old command lines keep working.
+    _legacy = 'substrate_prediction reads its inputs from --output_dir and the PUL database from --db_dir.'
+    func = ignored_option('--pul', default=None, type=click.Path(dir_okay=False), note=_legacy)(func)
+    func = ignored_option('-o', '--out', default='substrate.out', note=_legacy)(func)
+    func = ignored_option('-w', '--workdir', default='.', type=str, note=_legacy)(func)
+    func = ignored_option('-rerun', '--rerun', default=False, type=bool, note=_legacy)(func)
+    func = ignored_option('-env', '--env', default='local', type=str, note=_legacy)(func)
     func = click.option(
         '-odbcan_sub',
         '--odbcan_sub',
         type=bool,
-        default=None,
-        help='If set to true/false, force exporting extra dbCAN-sub tables; omit to use package default.',
+        default=False,
+        show_default=True,
+        help=('true: also write substrate_prediction_dbcan_sub.tsv, the dbCAN-sub hits of every CGC protein with '
+              'the per-CGC substrate scores behind the dbCAN-sub substrate call.'),
     )(func)
     func = click.option(
         '-odbcanpul',
         '--odbcanpul',
-        default=True,
+        default=False,
         type=bool,
         show_default=True,
-        help='Whether to export dbCAN-PUL homology tables (pass true/false).',
+        help=('true: also write substrate_prediction_dbcan_pul.tsv, the DIAMOND hits between each CGC and its '
+              'best-matching dbCAN-PUL.'),
     )(func)
     func = click.option(
         '--db_dir',
@@ -763,7 +831,7 @@ def cgc_substrate_homology_params_options(func):
         default=2,
         type=int,
         show_default=True,
-        help='Minimum unique PUL genes hit by BLAST for a valid PUL–CGC link.',
+        help='Minimum number of distinct PUL genes hit by DIAMOND for a valid PUL–CGC link.',
     )(func)
     func = click.option(
         '-uqcgn',
@@ -771,11 +839,12 @@ def cgc_substrate_homology_params_options(func):
         default=2,
         type=int,
         show_default=True,
-        help='Minimum unique CGC genes participating in a PUL–CGC link.',
+        help='Minimum number of distinct CGC genes with a DIAMOND hit in a PUL–CGC link.',
     )(func)
     func = click.option(
         '-cpn',
         '--CAZyme_pair_num',
+        'CAZyme_pair_num',  # explicit name: click would lower-case it and the config field would not match
         default=1,
         type=int,
         show_default=True,
@@ -794,7 +863,8 @@ def cgc_substrate_homology_params_options(func):
         '--extra_pair_type',
         default=None,
         type=str,
-        help='Optional comma-separated accessory gene pair types (advanced PUL matching).',
+        help=('Optional comma-separated query-PUL gene type pairs that must also be matched, e.g. TC-TC,STP-STP; '
+              'give one minimum count per pair with --extra_pair_type_num.'),
     )(func)
     func = click.option(
         '-eptn',
@@ -810,7 +880,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.0,
         type=float,
         show_default=True,
-        help='Minimum BLAST identity (0.0–1.0) for PUL–CGC homology hits.',
+        help='Minimum DIAMOND percent identity (0-100, e.g. 30 for 30%) for PUL–CGC homology hits.',
     )(func)
     func = click.option(
         '-cov',
@@ -818,7 +888,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.0,
         type=float,
         show_default=True,
-        help='Minimum BLAST query coverage (0.0–1.0) for PUL–CGC homology hits.',
+        help='Minimum DIAMOND query coverage as a fraction (0.0–1.0) of the CGC protein for PUL–CGC homology hits.',
     )(func)
     func = click.option(
         '-bsc',
@@ -826,7 +896,7 @@ def cgc_substrate_homology_params_options(func):
         default=50.0,
         type=float,
         show_default=True,
-        help='Minimum BLAST bit score for PUL–CGC homology hits.',
+        help='Minimum bit score of a PUL–CGC link, averaged over the matched PUL genes.',
     )(func)
     func = click.option(
         '-evalue',
@@ -834,7 +904,7 @@ def cgc_substrate_homology_params_options(func):
         default=0.01,
         type=float,
         show_default=True,
-        help='Maximum BLAST E-value for PUL–CGC homology hits.',
+        help='Maximum DIAMOND E-value for PUL–CGC homology hits.',
     )(func)
     return func
 
@@ -900,6 +970,13 @@ def syn_plot_options(func):
 
 def cgc_circle_plot_options(func):
     func = output_dir_option(func)
+    func = click.option(
+        '--layout',
+        type=click.Choice(['auto', 'circos', 'overview'], case_sensitive=False),
+        default='auto',
+        show_default=True,
+        help='auto: circos plot when cgc.gff has one contig (complete genome), overview ideogram otherwise.',
+    )(func)
     return func
 
 def topology_annotation_options(func):
@@ -907,13 +984,15 @@ def topology_annotation_options(func):
         '--run_signalp/--no-run_signalp',
         default=False,
         show_default=True,
-        help='Run SignalP 6 (BioLib) on translated proteins and append peptide signal columns to overview.',
+        help=('Run a user-installed SignalP 6 (the signalp6 command, must be on PATH) on the proteins and '
+              'append signal peptide columns to overview.'),
     )(func)
     func = click.option(
         '--run_deeptmhmm/--no-run_deeptmhmm',
         default=False,
         show_default=True,
-        help='Run a user-installed DeepTMHMM predict.py and append transmembrane predictions to overview.',
+        help=('Run a user-installed DeepTMHMM predict.py (needs --deeptmhmm_dir; works with or without '
+              '--run_signalp) and append transmembrane predictions to overview.'),
     )(func)
     func = click.option(
         '--deeptmhmm_dir',
@@ -934,11 +1013,10 @@ def topology_annotation_options(func):
         show_default=True,
         help='SignalP organism class: other (bacteria/archaea) or euk (eukaryotes).',
     )(func)
-    func = click.option(
+    func = ignored_option(
         '--force_topology/--no-force_topology',
         default=False,
-        show_default=True,
-        help='Recompute topology columns even when overview already contains predictions.',
+        note='overview.tsv is rewritten by every CAZyme_annotation run, so topology is always recomputed.',
     )(func)
     return func
 
@@ -1148,3 +1226,64 @@ def logging_options(func):
 
 
 
+
+
+
+
+def dbcan_utils_options(func):
+    """Options of the ``dbcan_utils`` command (cal_coverage / *_abund / gff_fix)."""
+    import dbcan.constants.utils_constants as U
+
+    options = [
+        click.option("-i", "--input", "input_path", required=True, type=click.Path(exists=False),
+                     help="cal_coverage: sorted, indexed BAM. *_abund: run_dbcan output directory. "
+                          "gff_fix: protein FASTA."),
+        click.option("-bt", "--bedtools", "bedtools_file", type=click.Path(exists=False),
+                     help="Gene read-count table written by cal_coverage (required by the *_abund functions)."),
+        click.option("-g", "--gff", "gff_file", type=click.Path(exists=False),
+                     help="Gene annotation GFF (cal_coverage, gff_fix). The cgc.gff in the run_dbcan output "
+                          "directory uses exactly the protein IDs of the annotation tables."),
+        click.option("-o", "--output", "output_path", default=None,
+                     help="*_abund: output directory (created; default: current directory). "
+                          "cal_coverage: read-count table to write (required). "
+                          "gff_fix: fixed GFF to write (default: <gff>.fix.gff)."),
+        click.option("-a", "--abundance", "abundance", default=U.DEFAULT_ABUNDANCE_METHOD, show_default=True,
+                     type=click.Choice(list(U.ABUNDANCE_METHODS), case_sensitive=False),
+                     help="Normalisation of the gene counts (RPKM is the same as FPKM)."),
+        click.option("--overlap-base-ratio", "--overlap_base_ratio", "overlap_base_ratio",
+                     default=U.DEFAULT_OVERLAP_BASE_RATIO, type=float, show_default=True,
+                     help="cal_coverage: minimum fraction of the read length (with --hifi: of min(read, gene) length) that lies inside the gene."),
+        click.option("--mapping-quality", "--mapping_quality", "mapping_quality",
+                     default=U.DEFAULT_MAPPING_QUALITY, type=int, show_default=True,
+                     help="cal_coverage: minimum MAPQ. Reads of multi-copy genes have MAPQ 0-1 with most "
+                          "aligners, so those genes get 0 at the default; lower it (e.g. 0) to keep them."),
+        click.option("-c", "--identity", "identity", default=U.DEFAULT_IDENTITY, type=float, show_default=True,
+                     help="cal_coverage: minimum alignment identity (from NM, MD or =/X CIGAR); 0 disables it."),
+        click.option("-t", "--threads", "threads", default=1, type=int, show_default=True,
+                     help="cal_coverage: worker processes."),
+        click.option("--hifi", "hifi", is_flag=True,
+                     help="cal_coverage: long reads; the overlap ratio is relative to min(gene, read) length."),
+        click.option("--count-mode", "--count_mode", "count_mode", default=U.DEFAULT_COUNT_MODE, show_default=True,
+                     type=click.Choice(list(U.COUNT_MODES)),
+                     help="cal_coverage: 'fragments' counts the two mates of a pair once per gene; "
+                          "'reads' counts every read (old behaviour). Single-end reads are the same in both."),
+        click.option("--strandedness", "strandedness", default=U.DEFAULT_STRANDEDNESS, show_default=True,
+                     type=click.Choice(list(U.STRANDEDNESS_CHOICES)),
+                     help="cal_coverage: 'none' counts reads on both strands; 'forward': read 1 on the gene "
+                          "strand; 'reverse': read 1 antisense (dUTP / TruSeq stranded RNA-seq)."),
+        click.option("--include-duplicates", "--include_duplicates", "include_duplicates", is_flag=True,
+                     help="cal_coverage: also count alignments flagged as PCR/optical duplicates."),
+        click.option("--id-attr", "--id_attr", "id_attr", default=U.GFF_ID_ATTR_AUTO, show_default=True,
+                     help="cal_coverage: GFF attribute holding the protein ID. 'auto' uses protein_id "
+                          "(NCBI, run_dbcan cgc.gff), proteinId (JGI), else ID / Name / locus_tag."),
+        click.option("--feature-type", "--feature_type", "feature_type", default=None,
+                     help="cal_coverage: comma-separated GFF feature types to count (default: CDS rows when "
+                          "present, else every gene row)."),
+        # deprecated, accepted so that old command lines keep working
+        click.option("-1", "--r1", "r1", default=None, hidden=True),
+        click.option("-2", "--r2", "r2", default=None, hidden=True),
+        click.option("--db-dir", "db_dir", default=None, hidden=True),
+    ]
+    for opt in reversed(options):
+        func = opt(func)
+    return func

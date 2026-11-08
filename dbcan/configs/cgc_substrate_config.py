@@ -67,3 +67,9 @@ class CGCSubstrateConfig(BaseConfig):
 class SynPlotConfig(BaseConfig):
     db_dir: str
     output_dir: str
+    # draw the dbCAN-PUL reverse-complemented when most homologous pairs are on opposite strands
+    synteny_revcomp: bool = True
+    # per-hit filters of the links (the same values substrate_prediction used)
+    evalue_cutoff: float = C.DEFAULT_EVALUE_CUTOFF
+    identity_cutoff: float = C.DEFAULT_IDENTITY_CUTOFF
+    coverage_cutoff: float = C.DEFAULT_COVERAGE_CUTOFF

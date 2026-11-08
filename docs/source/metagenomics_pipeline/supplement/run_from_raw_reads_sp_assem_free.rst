@@ -54,7 +54,19 @@ S4. Configure databases required by run_dbcan (~2h)
 ```````````````````````````````````````````````````
 To install the databases, execute the following commands:
 
-.. include:: prepare_the_database.rst
+Follow :doc:`/user_guide/prepare_the_database`. In short:
+
+.. code-block:: shell
+
+    run_dbcan database --db_dir db
+
+.. note::
+
+   This protocol was originally written for run_dbcan 5.0.3. The ``run_dbcan`` commands below have been
+   updated for the current command-line interface, but some example directory listings and descriptions
+   still show legacy output names: ``overview.txt`` is now ``overview.tsv``, ``cgc_standard.out`` is now
+   ``cgc_standard_out.tsv``, and ``PUL.out`` is now ``PUL_blast.out``. See :doc:`/user_guide/CAZyme_annotation`
+   and :doc:`/FAQ/troubleshooting` for the current outputs.
 
 
 Download database required by Kraken2 (very slow; can be skipped
@@ -275,6 +287,18 @@ We developed a Python script as dbcan_asmfree (included in the run_dbcan package
 
 The substrate prediction in the assemble-free route is based on the fam-substrate-mapping-08012023.tsv mapping table. Specifically, from the blastx result files, reads are first grouped according to their best CAZyDB proteins. Then, reads are further grouped according to the CAZyme families and eCAMI subfamilies where the best CAZyDB proteins belong to. Lastly, the fam-substrate-mapping-08012023.tsv mapping table is used to map CAZyme families and ECs (from eCAMI subfamilies) to substrates. 
 Therefore, the substrate abundance is calculated in a similar way as implemented in dbCAN-sub. 
+
+.. note::
+
+   ``--raw_reads`` is only used for the total number of reads (the normalisation denominator). Accepted file names
+   end in ``.fq``/``.fastq`` or ``.fa``/``.fasta``/``.fna``, optionally followed by ``.gz``.
+
+   The CAZy families of a hit are the tokens of the CAZy sequence header (DIAMOND ``sseqid``) that are whole
+   family or subfamily names (``GH5``, ``GH5_7``, ``CBM1``), at any position; accessions, EC numbers, JGI protein
+   numbers and file names are ignored, and a family repeated in the header counts once. Reads are counted per
+   reference sequence: the accession for NCBI-style headers (``CAD7272370.1|GH33``), and
+   ``<protein number>|<file>`` for JGI-style headers (``CE16|390012|Krezon1_GeneCatalog_proteins_20220127.aa.fasta``),
+   so different JGI proteins of the same family are separate sequences with their own length.
 
 
 

@@ -5,10 +5,21 @@ def run_dbCAN_database(config):
     downloader = DBDownloader(config)
     downloader.download_file()
 
+class DbcanStepError(RuntimeError):
+    """A pipeline step failed; raised so that the command exits with a non-zero status."""
+
+
 def run_dbCAN_input_process(config):
     from dbcan.IO.fasta import get_processor
     processor = get_processor(config)
-    processor.process_input()
+    result = processor.process_input()
+    failed = result is None or (isinstance(result, tuple) and any(r is None for r in result))
+    if failed:
+        raise DbcanStepError(
+            f"Input processing failed for {getattr(config, 'input_raw_data', '?')} "
+            f"(mode={getattr(config, 'mode', '?')}); see the log above for details."
+        )
+    return result
 
 def run_dbCAN_cazy_diamond(config):
     from dbcan.annotation.diamond import CAZYDiamondProcessor
@@ -105,9 +116,39 @@ def run_dbCAN_CAZyme_overview(config):
     generator.run()
 
 
+def _remove_stale_results(paths):
+    """Delete result files that the methods selected now will rewrite: if a method fails, the
+    file of an earlier run must not be merged into overview.tsv as if it were this run's."""
+    import logging
+    from pathlib import Path
+    for p in paths:
+        p = Path(p)
+        if p.is_file():
+            p.unlink()
+            logging.debug(f"Removed {p} of an earlier run before re-running its method")
+
+
 def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, overviewconfig, methods):
     import logging
+    from pathlib import Path
+    import dbcan.constants.process_dbcan_sub_constants as PS
     failures = []
+    # overview.tsv merges only the methods run now, not result files left by an earlier run.
+    if getattr(overviewconfig, 'methods', None) is None:
+        overviewconfig.methods = tuple(methods)
+    from dbcan.process.process_utils import alignment_details_path
+    stale, hmm_tables = [], []
+    if 'diamond' in methods:
+        stale.append(Path(diamondconfig.output_dir) / diamondconfig.output_file)
+    if 'hmm' in methods:
+        hmm_tables.append(Path(dbcanconfig.output_dir) / dbcanconfig.output_file)
+    if 'dbCANsub' in methods:
+        hmm_tables += [Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RESULT_FILE,
+                       Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RAW_FILE]
+    # *_alignment_details.tsv sidecars too: a --dbcan-legacy-overlap run writes none, so an old one
+    # must not be read by the overview as if it described this run's domains.
+    stale += hmm_tables + [alignment_details_path(p) for p in hmm_tables]
+    _remove_stale_results(stale)
     if 'diamond' in methods:
         logging.info("DIAMOND CAZy...")
         try:
@@ -201,7 +242,47 @@ def run_dbCAN_hmmer_stp(config):
     processor = PyHMMERSTPProcessor(config)
     processor.run()
 
+def check_gff_protein_match(gffconfig, protein_fasta=None, clean_ids=False):
+    """Match the genes of gffconfig.input_gff to the proteins of ``protein_fasta`` (default
+    <output_dir>/uniInput.faa), write <output_dir>/gff_resolution.tsv and raise GffResolutionError
+    (a DbcanStepError) when fewer than gffconfig.gff_min_match of the protein-coding genes match.
+
+    Takes seconds, so it runs before the signature searches (and, in easy_* protein mode, before
+    step 1). Skipped for the pyrodigal GFF of prok/meta mode, whose IDs always match.
+    Returns the ResolutionResult, or None when skipped.
+    """
+    import logging
+    from pathlib import Path
+    import dbcan.constants.gff_constants as G
+    from dbcan.constants.base_constants import INPUT_PRODIGAL_GFF_NAME
+    from dbcan.IO.gff_resolver import check_gff_resolution, normalize_gff_type, read_fasta_ids
+
+    out_dir = Path(gffconfig.output_dir)
+    gff_type = normalize_gff_type(gffconfig.gff_type)
+    gff_path = Path(gffconfig.input_gff)
+    auto_gff = out_dir / INPUT_PRODIGAL_GFF_NAME
+    if gff_type == G.GFF_FORMAT_PRODIGAL and gff_path.resolve() == auto_gff.resolve():
+        logging.info("[gff_process] uniInput.gff written by pyrodigal: gene/protein match check skipped.")
+        return None
+    fasta = Path(protein_fasta) if protein_fasta else out_dir / G.GFF_INPUT_PROTEIN_FILE
+    if not fasta.is_file():
+        logging.warning(f"[gff_process] {fasta} not found: gene/protein match check skipped.")
+        return None
+    if not gff_path.is_file():
+        raise DbcanStepError(f"GFF file not found: {gff_path}")
+    ids = read_fasta_ids(fasta, clean=clean_ids)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return check_gff_resolution(
+        gff_path, gff_type, ids,
+        min_match=getattr(gffconfig, "gff_min_match", G.GFF_MIN_MATCH_DEFAULT),
+        out_tsv=out_dir / G.GFF_RESOLUTION_FILE,
+    )
+
+
 def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfdiamondconfig, tfconfig, stpconfig, sulfatlasconfig, peptidaseconfig, cgcgffconfig):
+    # Fail fast on a GFF whose genes do not match the protein IDs (wrong --gff_type, wrong file):
+    # this takes seconds, the searches below can take an hour.
+    check_gff_protein_match(cgcgffconfig)
     run_dbCAN_tcdb_diamond(tcdbconfig)
     if getattr(tfdiamondconfig, 'prokaryotic', True):
         run_dbCAN_diamond_tf(tfdiamondconfig)
@@ -223,12 +304,17 @@ def run_dbCAN_CGCFinder_preprocess(tcdbconfig, tfdiamondconfig, tfconfig, stpcon
     )
     from dbcan.IO.gff import get_gff_processor
     processor = get_gff_processor(cgcgffconfig)
-    processor.process_gff()
+    if not processor.process_gff():
+        raise DbcanStepError(
+            f"GFF processing failed for {getattr(cgcgffconfig, 'input_gff', '?')} "
+            f"(gff_type={getattr(cgcgffconfig, 'gff_type', '?')}); cgc.gff was not written. See the log above."
+        )
 
 def run_dbCAN_CGCFinder(config):
     from dbcan.annotation.CGCFinder import CGCFinder
     cgc_finder = CGCFinder(config)
-    cgc_finder.run()
+    if not cgc_finder.run():
+        raise DbcanStepError("CGC identification failed; see the log above for details.")
 
 def run_dbCAN_Pfam_null_cgc(config):
     from dbcan.process.process_utils import (
@@ -272,14 +358,18 @@ def run_dbCAN_CGCFinder_substrate(config):
 
 def run_dbcan_syn_plot(config):
     from dbcan.plot.syntenic_plot import SyntenicPlot
-    syntenic_plot = SyntenicPlot(config)
+    written, failed = SyntenicPlot(config).syntenic_plot_allpairs()
+    if failed:
+        raise DbcanStepError(f"{failed} synteny plot(s) failed ({written} written); see the log above for details.")
 
-    syntenic_plot.syntenic_plot_allpairs()
 
 def run_dbCAN_cgc_circle(config):
+    from dbcan.plot.cgc_viz import PlotInputError
     from dbcan.plot.plot_cgc_circle import CGCCircosPlot
-    cgc_plot = CGCCircosPlot(config)
-    cgc_plot.plot()
+    try:
+        return CGCCircosPlot(config).plot()
+    except PlotInputError as e:
+        raise DbcanStepError(f"CGC plot failed: {e}") from e
 
 def run_dbcan_expression(config):
     from dbcan.expression.pipeline import run_expression_pipeline
@@ -288,26 +378,22 @@ def run_dbcan_expression(config):
 
 def run_dbCAN_topology_annotation(config):
     """
-    Run SignalP6 to annotate proteins in overview.tsv with signal peptide information.
-    DeepTMHMM has been removed due to licensing issues.
+    Run SignalP 6 and/or a user-installed DeepTMHMM on the CAZymes of overview.tsv and add their columns.
+
+    Each tool runs when requested on its own (--run_signalp, --run_deeptmhmm). If a requested tool cannot
+    run or fails, DbcanStepError is raised so that the command exits with a non-zero status (the columns
+    of a tool that did succeed are still written to overview.tsv).
     """
     import logging
-    if not config.run_signalp:
-        logging.info("No SignalP requested; skipping.")
+    if not (getattr(config, 'run_signalp', False) or getattr(config, 'run_deeptmhmm', False)):
+        logging.info("No topology annotation requested; skipping.")
         return
     try:
         from dbcan.annotation.signalp_tmhmm import SignalPTMHMMProcessor
         processor = SignalPTMHMMProcessor(config)
         results = processor.run()
-        if results and 'signalp_out' in results:
-            logging.info(f"SignalP results: {results['signalp_out']}")
-        else:
-            logging.warning("SignalP produced no results")
-    except ImportError as e:
-        logging.error(f"SignalP module import failed: {e}")
     except Exception as e:
-        logging.error(f"SignalP annotation failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-
+        raise DbcanStepError(f"Topology annotation (SignalP/DeepTMHMM) failed: {e}") from e
+    for key in ('signalp_out', 'deeptmhmm_out'):
+        if key in results:
+            logging.info(f"{key}: {results[key]}")

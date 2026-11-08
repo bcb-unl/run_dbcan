@@ -48,6 +48,8 @@ The new version (v5) provides several improvements in the output formatting:
        Gene ID  EC#  dbCAN_hmm  dbCAN_sub  DIAMOND  #ofTools  Recommend Results
        NP_414632.1  2.4.1.227:11  GT28(185-341)  GT28_e46(185-341)  GT28  3  GT28_e46
 
+   Current versions also append a ``Substrate`` column. All columns are described in :ref:`overview-columns`.
+
 3. **Cleaner DIAMOND Results**
 
    The v5 version eliminates extraneous file paths from DIAMOND results, providing cleaner output:

@@ -1,520 +1,478 @@
-from pathlib import Path
+"""CGC vs dbCAN-PUL synteny figures.
+
+One renderer (:func:`plot_synteny`) is shared by ``run_dbcan substrate_prediction`` /
+``easy_substrate`` (one PDF per CGC with a dbCAN-PUL hit, in ``synteny_pdf/``) and by
+``dbcan_plot CGC_synteny_plot`` / ``CGC_synteny_coverage_plot``.
+
+* The reference PUL is shifted so homologous genes line up with the CGC and, when
+  ``revcomp`` is on (default) and most homologous pairs lie on opposite strands, it is
+  drawn reverse-complemented.
+* Links are the DIAMOND hits (PUL_blast.out) that pass the substrate-prediction per-hit
+  cut-offs (E-value, identity, query coverage); their grey level is the % identity, which is also
+  printed on each link in a small tag outlined in the link's grey. Ribbons are narrower than the genes and a gene with several links gives
+  each its own slot, so crossing links and multiple matches of one gene stay visible.
+* Text is minimal: the two track names on the left, a title (CGC vs PUL) and the
+  substrate. Gene colours use the shared dbCAN palette.
+"""
+from __future__ import annotations
+
 import logging
-import warnings
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
-from matplotlib.patches import PathPatch, Polygon
-from matplotlib.lines import Line2D
-from typing import Dict, Tuple, List
-import matplotlib.path as mpath
+from matplotlib.path import Path as MPath
+from matplotlib.patches import PathPatch
 
-from dbcan.configs.cgc_substrate_config import SynPlotConfig
+import dbcan.constants.cgc_substrate_prediction_constants as CSP
+import dbcan.constants.plots_constants as P
+from dbcan.IO.cgc_ids import cgc_query_id, parse_query_id, split_cgc_key
+from dbcan.plot import cgc_viz as V
+from dbcan.plot.cgc_map import draw_depth_panels, load_depth_tracks, substrate_text, PANEL_IN, PANEL_GAP_IN
 
-import dbcan.constants.plots_constants as plots_constants
-
-warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger(__name__)
 
-class SyntenicPlot:
-    """Syntenic plots between CGCs and PULs"""
+U = P.SYNTENY_UNIT_IN
+GENE_H = P.SYNTENY_GENE_H
+Y_CGC = P.SYNTENY_CGC_TRACK_Y
+TITLE_IN = P.SYNTENY_TITLE_IN
+LEGEND_IN = P.SYNTENY_LEGEND_IN
+R_IN = P.SYNTENY_RIGHT_IN
+IDENTITY_CMAP = mcolors.LinearSegmentedColormap.from_list("dbcan_identity", list(P.SYNTENY_IDENTITY_RAMP))
 
-    def __init__(self, config: SynPlotConfig):
+
+@dataclass
+class HomologyCutoffs:
+    """Per-hit filters of substrate_prediction (same comparisons as its DIAMOND reader)."""
+    evalue: float = CSP.DEFAULT_EVALUE_CUTOFF
+    identity: float = CSP.DEFAULT_IDENTITY_CUTOFF
+    coverage: float = CSP.DEFAULT_COVERAGE_CUTOFF
+
+    @classmethod
+    def from_config(cls, cfg) -> "HomologyCutoffs":
+        def pick(name, default):
+            v = getattr(cfg, name, None)
+            return default if v is None else float(v)
+        return cls(pick("evalue_cutoff", cls.evalue), pick("identity_cutoff", cls.identity),
+                   pick("coverage_cutoff", cls.coverage))
+
+    def passes(self, pident: float, evalue: float, qstart: int, qend: int, qlen: float) -> bool:
+        if evalue > self.evalue or pident < self.identity:
+            return False
+        if qlen and (qend - qstart + 1) / qlen < self.coverage:
+            return False
+        return True
+
+
+@dataclass
+class Link:
+    q: V.Gene
+    s: V.Gene
+    pident: float
+    bitscore: float
+
+
+def read_pul_links(blast_path: Path, cgcid: str, pul: str, cgc_genes: Sequence[V.Gene],
+                   pul_genes: Sequence[V.Gene], cutoffs: HomologyCutoffs) -> List[Link]:
+    """Best hit per (CGC gene, PUL gene) pair passing the cut-offs.
+
+    Query IDs are read with the parser of substrate_prediction (dbcan.IO.cgc_ids): first the
+    exact IDs that substrate_prediction writes to CGC.faa for the genes of this CGC, then the
+    ``<contig>|<CGC#>|<protein>|<type>|<family>`` pattern; contigs and proteins may contain '|'.
+    """
+    blast_path = Path(blast_path)
+    if not blast_path.exists():
+        return []
+    qby = {g.pid: g for g in cgc_genes}
+    sby = {g.pid: g for g in pul_genes}
+    cgc_parts = split_cgc_key(cgcid)
+    known = {}
+    if cgc_parts:
+        for g in cgc_genes:
+            q = cgc_query_id(g.contig, cgc_parts[1], g.pid, g.gene_type or "null", g.annotation)
+            known[q.format()] = q
+    best: Dict[Tuple[str, str], Link] = {}
+    with blast_path.open() as fh:
+        for line in fh:
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 12:
+                continue
+            query = parse_query_id(f[0], known)
+            if query is None or query.cgc_id != cgcid:
+                continue
+            sp = f[1].split(":")
+            if len(sp) < 3 or sp[1] != pul:
+                continue
+            q, s = qby.get(query.protein), sby.get(sp[2])
+            if q is None or s is None:
+                continue
+            try:
+                pident, evalue, bits = float(f[2]), float(f[10]), float(f[11])
+                qstart, qend = int(f[6]), int(f[7])
+                qlen = float(f[12]) if len(f) > 12 and f[12] else 0.0
+            except ValueError:
+                continue
+            if not cutoffs.passes(pident, evalue, qstart, qend, qlen):
+                continue
+            key = (q.pid, s.pid)
+            if key not in best or bits > best[key].bitscore:
+                best[key] = Link(q, s, pident, bits)
+    return list(best.values())
+
+
+def load_pul_genes(db_dir: Path, pul: str) -> List[V.Gene]:
+    gff = Path(db_dir) / P.DBCAN_PUL_DIR / f"{pul}.out" / P.DBCAN_PUL_GFF
+    if not gff.exists():
+        raise V.PlotInputError(f"dbCAN-PUL gff for {pul} not found: {gff}")
+    genes = [g for gs in V.read_gff_genes(gff, feature_types=("CDS", "gene")).values() for g in gs]
+    if not genes:
+        raise V.PlotInputError(f"No genes in {gff}")
+    return sorted(genes, key=lambda g: g.start)
+
+
+def _ribbon(ax, qx0, qx1, sx0, sx1, ytop, ybot, color, zorder):
+    ym = (ytop + ybot) / 2
+    verts = [(qx0, ytop), (qx0, ym), (sx0, ym), (sx0, ybot), (sx1, ybot), (sx1, ym), (qx1, ym),
+             (qx1, ytop), (qx0, ytop)]
+    codes = [MPath.MOVETO, MPath.CURVE4, MPath.CURVE4, MPath.CURVE4, MPath.LINETO, MPath.CURVE4,
+             MPath.CURVE4, MPath.CURVE4, MPath.CLOSEPOLY]
+    ax.add_patch(PathPatch(MPath(verts, codes), facecolor=color, edgecolor=P.SYNTENY_LINK_EDGE_COLOR,
+                           lw=P.SYNTENY_LINK_EDGE_LW, zorder=zorder))
+
+
+def _ribbon_x_at(qx: float, sx: float, ytop: float, ybot: float, y: float) -> float:
+    """x at height y of a ribbon edge running from qx (CGC track) to sx (PUL track)."""
+    ym = (ytop + ybot) / 2
+    best_t, best_d = 0.5, float("inf")
+    for i in range(201):
+        t = i / 200
+        u = 1 - t
+        yt = ytop * u ** 3 + 3 * ym * u * u * t + 3 * ym * u * t * t + ybot * t ** 3
+        if abs(yt - y) < best_d:
+            best_t, best_d = t, abs(yt - y)
+    t, u = best_t, 1 - best_t
+    return qx * u ** 3 + 3 * qx * u * u * t + 3 * sx * u * t * t + sx * t ** 3
+
+
+def link_ports(links, pmap) -> Dict[int, Tuple[float, float, float, float]]:
+    """Ends of each link ribbon: (qx0, qx1, sx0, sx1).
+
+    A ribbon is narrower than its genes (P.SYNTENY_LINK_WIDTH_FRACTION of the gene width), so
+    crossing ribbons never hide each other. A gene with several links (multiple matches) gets one
+    slot per link, ordered by the partner's position, so the ribbons leave the gene side by side."""
+    def slots(items, lo, hi):
+        k = len(items)
+        slot = (hi - lo) / k
+        w = min(P.SYNTENY_LINK_WIDTH_FRACTION * (hi - lo), P.SYNTENY_LINK_SLOT_FILL * slot)
+        return {id(l): (lo + (i + 0.5) * slot - w / 2, lo + (i + 0.5) * slot + w / 2) for i, l in enumerate(items)}
+
+    smid = {id(l): sum(pmap(l.s)[:2]) / 2 for l in links}
+    by_q: Dict[tuple, List[Link]] = {}
+    by_s: Dict[tuple, List[Link]] = {}
+    for l in links:
+        by_q.setdefault((l.q.contig, l.q.start, l.q.end), []).append(l)
+        by_s.setdefault((l.s.contig, l.s.start, l.s.end), []).append(l)
+    q_end, s_end = {}, {}
+    for ls in by_q.values():
+        g = ls[0].q
+        q_end.update(slots(sorted(ls, key=lambda l: smid[id(l)]), min(g.start, g.end), max(g.start, g.end)))
+    for ls in by_s.values():
+        a, b, _ = pmap(ls[0].s)
+        s_end.update(slots(sorted(ls, key=lambda l: l.q.mid), min(a, b), max(a, b)))
+    return {id(l): (*q_end[id(l)], *s_end[id(l)]) for l in links}
+
+
+def split_primary_links(links):
+    """One-to-one pairing of homologous genes: links are taken by decreasing bitscore and a link is
+    primary when neither its CGC gene nor its PUL gene is paired yet. The rest (a further hit of an
+    already paired gene: multiple matches, paralogues) are secondary."""
+    used_q, used_s, primary, secondary = set(), set(), [], []
+    for l in sorted(links, key=lambda l: (-l.bitscore, -l.pident)):
+        kq, ks = (l.q.contig, l.q.start, l.q.end), (l.s.contig, l.s.start, l.s.end)
+        if kq in used_q or ks in used_s:
+            secondary.append(l)
+        else:
+            primary.append(l)
+            used_q.add(kq)
+            used_s.add(ks)
+    return primary, secondary
+
+
+def draw_link_labels(ax, links, ports, ytop: float, ybot: float, x_per_in: float, colors=None) -> int:
+    """Write the % identity of every link ON its ribbon: a small white tag, outlined in the
+    ribbon's grey, centred on the ribbon's centre line, so the ribbon visibly runs into and out of
+    its own tag.
+
+    Tags of the one-to-one gene pairs (split_primary_links) form one row half-way between the
+    tracks, sliding along their ribbon only if two tags would touch. Tags of the multiple matches
+    (a further hit of an already paired gene) all go near the CGC end of their ribbon, above the
+    row of pair tags (P.SYNTENY_SECONDARY_LABEL_POSITIONS), where the ribbon crosses the fewest
+    other ribbons; the lower end is used only when every upper place is taken.
+    Returns the number of labels written."""
+    fs = P.SYNTENY_LINK_LABEL_FONT_SIZE
+    half_h = (fs * 1.45 / 72) / U / 2                     # tag half-height in data units
+    pad_x = 0.05 * x_per_in
+    colors = colors or {}
+    edges = {id(l): ports[id(l)] for l in links}
+
+    def ribbons_hit(box, own):
+        x0, x1, y0, y1 = box
+        hit = 0
+        for l in links:
+            if id(l) == own:
+                continue
+            qx0, qx1, sx0, sx1 = edges[id(l)]
+            for y in (y0, (y0 + y1) / 2, y1):
+                lo = min(_ribbon_x_at(qx0, sx0, ytop, ybot, y), _ribbon_x_at(qx1, sx1, ytop, ybot, y))
+                hi = max(_ribbon_x_at(qx0, sx0, ytop, ybot, y), _ribbon_x_at(qx1, sx1, ytop, ybot, y))
+                if x1 > lo and x0 < hi:
+                    hit += 1
+                    break
+        return hit
+
+    boxes: List[Tuple[float, float, float, float]] = []
+    n = 0
+    primary, secondary = split_primary_links(links)
+    is_secondary = {id(l) for l in secondary}
+    order = sorted(primary, key=lambda l: l.q.mid) + sorted(secondary, key=lambda l: (-l.pident, l.q.mid))
+    for l in order:
+        sec = id(l) in is_secondary
+        qx0, qx1, sx0, sx1 = ports[id(l)]
+        qc, sc = (qx0 + qx1) / 2, (sx0 + sx1) / 2
+        text = P.SYNTENY_LINK_LABEL_FORMAT.format(l.pident)
+        half_w = V.text_width_data_in(text, fs) * x_per_in / 2 + pad_x
+        best = None
+        for pos in (P.SYNTENY_SECONDARY_LABEL_POSITIONS if sec else P.SYNTENY_LINK_LABEL_POSITIONS):
+            y = ytop - pos * (ytop - ybot)
+            if y + half_h > ytop or y - half_h < ybot:
+                continue
+            x = _ribbon_x_at(qc, sc, ytop, ybot, y)
+            box = (x - half_w, x + half_w, y - half_h, y + half_h)
+            if not all(box[1] <= b[0] or box[0] >= b[1] or box[3] <= b[2] or box[2] >= b[3] for b in boxes):
+                continue
+            # secondary tags: any upper place beats any lower one, then fewest crossed ribbons
+            cost = (pos > 0.5, ribbons_hit(box, id(l))) if sec else (False, 0)
+            if best is None or cost < best[0]:
+                best = (cost, x, y, box)
+            if cost == (False, 0):
+                break
+        if best is None:
+            y = (ytop + ybot) / 2
+            x = _ribbon_x_at(qc, sc, ytop, ybot, y)
+            best = ((False, 0), x, y, (x - half_w, x + half_w, y - half_h, y + half_h))
+        _, x, y, box = best
+        boxes.append(box)
+        ax.text(x, y, text, ha="center", va="center", fontsize=fs, color=P.PLOT_INK, zorder=1.6,
+                bbox=dict(boxstyle="round,pad=0.18", facecolor="white",
+                          edgecolor=colors.get(id(l), P.PLOT_INK_MUTED), linewidth=0.8))
+        n += 1
+    return n
+
+
+def draw_links(ax, links, pmap, norm, x_per_in) -> List[Link]:
+    """Draw every homology link as a narrow ribbon (grey by identity) and label it with its
+    identity. Ribbons are narrower than the genes and a gene with several links gives each its own
+    slot, so multiple matches (paralogues) and crossing links all stay visible. Returns the links."""
+    ytop, ybot = Y_CGC - GENE_H / 2, GENE_H / 2
+    ports = link_ports(links, pmap)
+    colors = {id(l): IDENTITY_CMAP(norm(min(max(l.pident, P.SYNTENY_IDENTITY_MIN), P.SYNTENY_IDENTITY_MAX)))
+              for l in links}
+    for l in sorted(links, key=lambda l: (l.pident, l.bitscore)):
+        _ribbon(ax, *ports[id(l)], ytop, ybot, colors[id(l)], zorder=1.2)
+    draw_link_labels(ax, links, ports, ytop, ybot, x_per_in, colors)
+    return list(links)
+
+
+def reference_transform(cgc_genes, pul_genes, links, revcomp: bool):
+    """Return (map(gene)->(x0, x1, strand), flipped) placing the PUL under the CGC."""
+    opp = sum(l.bitscore for l in links if l.q.strand != l.s.strand)
+    same = sum(l.bitscore for l in links if l.q.strand == l.s.strand)
+    flip = bool(revcomp and opp > same)
+    p_lo, p_hi = min(g.start for g in pul_genes), max(g.end for g in pul_genes)
+
+    def oriented(g):
+        if not flip:
+            return g.start, g.end, g.strand
+        return p_lo + p_hi - g.end, p_lo + p_hi - g.start, {"+": "-", "-": "+"}.get(g.strand, g.strand)
+
+    diffs: List[float] = []
+    for l in links:
+        a, b, _ = oriented(l.s)
+        diffs += [l.q.mid - (a + b) / 2] * max(1, int(l.bitscore // 100))
+    diffs.sort()
+    offset = diffs[len(diffs) // 2] if diffs else min(g.start for g in cgc_genes) - p_lo
+
+    def pmap(g):
+        a, b, st = oriented(g)
+        return a + offset, b + offset, st
+
+    return pmap, flip
+
+
+def plot_synteny(cgc_genes: Sequence[V.Gene], cgcid: str, pul_genes: Sequence[V.Gene], pul: str,
+                 links: Sequence[Link], out_dir: Path, *, substrates: Optional[Sequence[str]] = None,
+                 revcomp: bool = True, depth_files=None, formats=("pdf",), dpi: int = P.PLOT_DEFAULT_DPI,
+                 template: str = P.SYNTENY_FILE_TEMPLATE) -> List[Path]:
+    if not cgc_genes or not pul_genes:
+        raise V.PlotInputError(f"Nothing to draw for {cgcid} vs {pul}")
+    V.setup_matplotlib()
+    cgc_genes = sorted(cgc_genes, key=lambda g: g.start)
+    pmap, _flip = reference_transform(cgc_genes, pul_genes, links, revcomp)
+    placed = [pmap(g) for g in pul_genes]
+    c_lo, c_hi = min(g.start for g in cgc_genes), max(g.end for g in cgc_genes)
+    p_lo, p_hi = min(a for a, _, _ in placed), max(b for _, b, _ in placed)
+    xmin, xmax = min(c_lo, p_lo), max(c_hi, p_hi)
+    span = max(1, xmax - xmin)
+    xlo, xhi = xmin - 0.012 * span, xmax + 0.012 * span
+    head = 0.014 * span
+
+    parsed = V.split_cgc_key(cgcid)
+    cgc_name = parsed[1] if parsed else cgcid
+    fs = P.PLOT_LABEL_FONT_SIZE
+    name_w = max(V.text_width_data_in(t, P.PLOT_SUBTITLE_FONT_SIZE, fontweight="bold") for t in (cgc_name, pul))
+    L_IN = 0.3 + name_w + 0.25
+    W = max(9.0, min(17.0, L_IN + 3.5 + 0.55 * max(len(cgc_genes), len(pul_genes))))
+    ax_w = W - L_IN - R_IN
+
+    c_x = [g.mid for g in cgc_genes]
+    p_x = [(a + b) / 2 for a, b, _ in placed]
+    lay_c = V.layout_labels([g.label for g in cgc_genes], c_x, xlo, xhi, W, ax_w / W, fs,
+                            extents=[(g.start, g.end) for g in cgc_genes])
+    lay_p = V.layout_labels([g.label for g in pul_genes], p_x, xlo, xhi, W, ax_w / W, fs,
+                            extents=[(a, b) for a, b, _ in placed])
+    tier_h = (fs * 1.25 / 72) / U + 0.08
+    y_top = Y_CGC + GENE_H / 2 + 0.3 + max(1, lay_c.ntiers) * tier_h + 0.1
+    y_scale = -GENE_H / 2 - 0.3 - max(1, lay_p.ntiers) * tier_h - 0.75
+    y_bot = y_scale - 0.75
+    ax_h = (y_top - y_bot) * U
+
+    tracks = []
+    if depth_files:
+        tracks = load_depth_tracks(depth_files, cgc_genes[0].contig, int(xlo), int(xhi) + 1)
+    depth_in = len(tracks) * (PANEL_IN + PANEL_GAP_IN)
+    H = TITLE_IN + depth_in + ax_h + LEGEND_IN
+    fig = plt.figure(figsize=(W, H))
+    ax = fig.add_axes([L_IN / W, LEGEND_IN / H, ax_w / W, ax_h / H])
+    ax.set_xlim(xlo, xhi)
+    ax.set_ylim(y_bot, y_top)
+    ax.axis("off")
+
+    ax.plot([c_lo, c_hi], [Y_CGC, Y_CGC], color=P.PLOT_BACKBONE_COLOR, lw=1.0, zorder=1)
+    ax.plot([p_lo, p_hi], [0, 0], color=P.PLOT_BACKBONE_COLOR, lw=1.0, zorder=1)
+    norm = mcolors.Normalize(P.SYNTENY_IDENTITY_MIN, P.SYNTENY_IDENTITY_MAX)
+    draw_links(ax, links, pmap, norm, (xhi - xlo) / ax_w)
+    for g in cgc_genes:
+        V.draw_gene(ax, g.start, g.end, g.strand, g.gtype, Y_CGC, GENE_H, head)
+    for g, (a, b, st) in zip(pul_genes, placed):
+        V.draw_gene(ax, a, b, st, g.gtype, 0, GENE_H, head)
+    V.draw_labels(ax, lay_c, Y_CGC + GENE_H / 2 + 0.3, tier_h, +1, fs, Y_CGC + GENE_H / 2 + 0.03, span)
+    V.draw_labels(ax, lay_p, -GENE_H / 2 - 0.3, tier_h, -1, fs, -GENE_H / 2 - 0.03, span)
+
+    # track names (left margin), vertically centred on each track
+    for name, y in ((cgc_name, Y_CGC), (pul, 0.0)):
+        fy = (LEGEND_IN + (y - y_bot) * U) / H
+        fig.text(0.3 / W, fy, name, ha="left", va="center", fontsize=P.PLOT_SUBTITLE_FONT_SIZE,
+                 fontweight="bold", color=P.PLOT_INK)
+
+    V.draw_scale_bar(ax, xmax, y_scale, span)
+    cb_w_in = 1.4
+    cax = fig.add_axes([L_IN / W, (LEGEND_IN + (y_scale - y_bot) * U - 0.04) / H, cb_w_in / W, 0.08 / H])
+    sm = plt.cm.ScalarMappable(cmap=IDENTITY_CMAP, norm=norm)
+    cb = fig.colorbar(sm, cax=cax, orientation="horizontal", ticks=[20, 60, 100])
+    cb.outline.set_visible(False)
+    cb.ax.tick_params(labelsize=P.PLOT_SMALL_FONT_SIZE - 0.5, length=2, colors=P.PLOT_INK_MUTED, pad=1)
+    cax.text(1.04, 0.5, "identity (%)", transform=cax.transAxes, ha="left", va="center",
+             fontsize=P.PLOT_SMALL_FONT_SIZE, color=P.PLOT_INK_MUTED)
+
+    if tracks:
+        draw_depth_panels(fig, tracks, cgc_genes, xlo, xhi, W, H, LEGEND_IN + ax_h + PANEL_GAP_IN,
+                          left_in=L_IN, right_in=R_IN)
+
+    fig.text(0.3 / W, 1 - 0.18 / H, f"{cgcid}  vs  {pul}", ha="left", va="top",
+             fontsize=P.PLOT_TITLE_FONT_SIZE, fontweight="bold", color=P.PLOT_INK)
+    fig.text(0.3 / W, 1 - 0.42 / H, substrate_text(substrates), ha="left", va="top",
+             fontsize=P.PLOT_SUBTITLE_FONT_SIZE, color=P.PLOT_INK_MUTED)
+    V.add_type_legend(fig, V.types_present(list(cgc_genes) + list(pul_genes)), y=0.02 / H)
+    return V.save_figure(fig, out_dir, template, {"cgc": cgcid, "pul": pul}, formats, dpi)
+
+
+def pul_substrate_from_db(db_dir: Path, pul: str) -> List[str]:
+    """substrate_final of a PUL in dbCAN-PUL.xlsx (used when the PUL is not the CGC's best hit)."""
+    xlsx = Path(db_dir) / CSP.PUL_EXCEL_FILE
+    if not xlsx.exists():
+        return []
+    try:
+        import pandas as pd
+        table = pd.read_excel(xlsx)
+        row = table[table["ID"].astype(str) == pul]
+        if len(row):
+            return V.SubstrateCall(pul, pul, str(row.iloc[0].get("substrate_final", "") or "")).names()
+    except Exception as e:  # metadata is optional for the figure
+        logger.warning(f"Could not read substrate of {pul} from {xlsx}: {e}")
+    return []
+
+
+def draw_cgc_vs_pul(run_dir: Path, db_dir: Path, cgcid: str, out_dir: Path, *, pul: Optional[str] = None,
+                    cutoffs: Optional[HomologyCutoffs] = None, revcomp: bool = True, depth_files=None,
+                    formats=("pdf",), dpi: int = P.PLOT_DEFAULT_DPI, template: str = P.SYNTENY_FILE_TEMPLATE,
+                    cgc_table=None, substrate_calls=None) -> List[Path]:
+    """Read a run directory and draw ``cgcid`` against ``pul`` (default: its best dbCAN-PUL hit)."""
+    run_dir = Path(run_dir)
+    cgcs = cgc_table if cgc_table is not None else V.read_cgc_table(run_dir / P.CGC_RESULT_FILE)
+    if cgcid not in cgcs:
+        raise V.PlotInputError(f"CGC '{cgcid}' not found in {run_dir / P.CGC_RESULT_FILE}")
+    calls = substrate_calls if substrate_calls is not None else V.read_substrates(run_dir / P.CGC_SUB_PREDICTION_FILE)
+    call = calls.get(cgcid)
+    pul = pul or (call.pul if call else "")
+    if not pul:
+        raise V.PlotInputError(f"No dbCAN-PUL hit for {cgcid} in {run_dir / P.CGC_SUB_PREDICTION_FILE}; "
+                               "run substrate_prediction first or pass --pul.")
+    if call and call.pul == pul:
+        substrates = V.SubstrateCall(cgcid, pul, call.pul_substrate).names()
+    else:
+        substrates = pul_substrate_from_db(db_dir, pul)
+    pul_genes = load_pul_genes(db_dir, pul)
+    links = read_pul_links(run_dir / P.PUL_DIAMOND_FILE, cgcid, pul, cgcs[cgcid], pul_genes,
+                           cutoffs or HomologyCutoffs())
+    logger.debug(f"Synteny {cgcid} vs {pul}: {len(links)} homology link(s) drawn")
+    if not links:
+        logger.warning(f"Synteny {cgcid} vs {pul}: no homology link passes the cut-offs in {P.PUL_DIAMOND_FILE}")
+    return plot_synteny(cgcs[cgcid], cgcid, pul_genes, pul, links, out_dir, substrates=substrates,
+                        revcomp=revcomp, depth_files=depth_files, formats=formats, dpi=dpi, template=template)
+
+
+class SyntenicPlot:
+    """``substrate_prediction`` step: one synteny PDF per CGC that has a dbCAN-PUL hit."""
+
+    def __init__(self, config):
         self.config = config
         self.output_dir = Path(config.output_dir).resolve()
         self.db_dir = Path(config.db_dir).resolve()
+        self.pdf_dir = self.output_dir / P.SYNTENY_PDF_DIR
+        self.revcomp = bool(getattr(config, "synteny_revcomp", True))
+        self.cutoffs = HomologyCutoffs.from_config(config)
 
-        self.input_sub_out = self.output_dir / plots_constants.CGC_SUB_PREDICTION_FILE
-        self.blastp = self.output_dir / plots_constants.PUL_DIAMOND_FILE
-        self.cgc = self.output_dir / plots_constants.CGC_RESULT_FILE
-
-        fallback_sub = self.output_dir / "substrate_prediction.tsv"
-        if (not self.input_sub_out.exists()) and fallback_sub.exists():
-            logging.warning(f"[substrate] {self.input_sub_out.name} not found, using fallback file: {fallback_sub.name}")
-            self.input_sub_out = fallback_sub
-
-        self.pdf_dir = self.output_dir / "synteny_pdf"
+    def syntenic_plot_allpairs(self) -> Tuple[int, int]:
+        """Draw every CGC/PUL pair; returns (written, failed)."""
+        sub_file = self.output_dir / P.CGC_SUB_PREDICTION_FILE
         self.pdf_dir.mkdir(parents=True, exist_ok=True)
-
-        logging.info(f"[synteny init] output_dir={self.output_dir}")
-        logging.info(f"[synteny init] substrate_file={self.input_sub_out} (exists={self.input_sub_out.exists()})")
-        logging.info(f"[synteny init] blast_file={self.blastp} (exists={self.blastp.exists()})")
-        logging.info(f"[synteny init] cgc_file={self.cgc} (exists={self.cgc.exists()})")
-        logging.info(f"[synteny init] dbCAN-PUL dir={self.db_dir / 'dbCAN-PUL'} (exists={(self.db_dir / 'dbCAN-PUL').is_dir()})")
-
-    def syntenic_plot_allpairs(self):
-        """overall function to plot all CGC-PUL pairs"""
-        if not self.blastp.exists() or self.blastp.stat().st_size == 0:
-            logger.warning(f"[skip] BLAST result not found or empty: {self.blastp}")
-            return
-        cgcpul_blastp = read_blast_result_cgc(str(self.blastp))
-        logging.info(f"[load] BLAST pair groups: {len(cgcpul_blastp)}")
-
-        if not self.cgc.exists():
-            logger.error(f"[abort] CGC standard out not found: {self.cgc}")
-            return
-        cgc_proteinid2gene, cgcid2gene, cgcid2geneid = read_UHGG_CGC_stanrdard_out(str(self.cgc))
-        logging.info(f"[load] CGC IDs: {len(cgcid2gene)} (proteins={len(cgc_proteinid2gene)})")
-
-        PULid_proteinid2gene, PULid2gene, PULid2geneid = self.read_PUL_cgcgff()
-        logging.info(f"[load] PUL IDs: {len(PULid2gene)} (proteins={len(PULid_proteinid2gene)})")
-
-        if not self.input_sub_out.exists() or self.input_sub_out.stat().st_size == 0:
-            logger.warning(f"[skip] Substrate prediction file not found or empty: {self.input_sub_out}")
-            return
-
-        plot_count = 0
-        candidate_pairs = 0
-        no_blast_pairs = 0
-        missing_cgc = 0
-        missing_pul = 0
-
-        with self.input_sub_out.open() as fh:
-            header = next(fh, "")
-            for line in fh:
-                parts = line.rstrip("\n").split("\t")
-                if len(parts) < 2:
-                    continue
-                cgc, pul = parts[0].strip(), parts[1].strip()
-                substrate = parts[2].strip() if len(parts) > 2 else ""
-                if not pul:
-                    continue
-                candidate_pairs += 1
-
-                if cgc not in cgcid2gene:
-                    missing_cgc += 1
-                    logger.debug(f"[miss CGC] {cgc} not in cgc_standard_out")
-                    continue
-                if pul not in PULid2gene:
-                    missing_pul += 1
-                    logger.debug(f"[miss PUL] {pul} not in PUL gff db")
-                    continue
-
-                cgcpul_key = f"{cgc}:{pul}"
-
-                bed_cgc = cgcid2gene[cgc]
-                bed_pul = PULid2gene[pul]
-
-                starts1, ends1, strands1, types1 = Get_parameters_for_plot(bed_cgc)
-                starts2, ends2, strands2, types2 = Get_parameters_for_plot(bed_pul)
-                genes1 = cgcid2geneid[cgc]
-                genes2 = PULid2geneid[pul]
-
-                blocks = []
-                if cgcpul_key in cgcpul_blastp:
-                    for rec in cgcpul_blastp[cgcpul_key]:
-                        qseqid = rec.qseqid
-                        sseqid = rec.sseqid
-                        try:
-                            cgc_proteinid = qseqid.split("|")[2]
-                        except Exception:
-                            continue
-                        _, pul_proteinid = parse_pul_ids(sseqid)
-                        try:
-                            idx1 = genes1.index(cgc_proteinid)
-                            idx2 = genes2.index(pul_proteinid)
-                            blocks.append(f"{idx1}-{idx2}-{rec.pident}")
-                        except ValueError:
-                            continue
-                else:
-                    no_blast_pairs += 1
-                    logger.debug(f"[no BLAST] {cgcpul_key} no alignment blocks; plotting empty synteny")
-
-                self._create_syntenic_plot(
-                    starts1, starts2, ends1, ends2,
-                    strands1, strands2, types1, types2,
-                    blocks, cgc, pul, substrate
-                )
-                plot_count += 1
-
-        if plot_count == 0:
-            logger.warning(
-                "[diagnostic]error candidate=%d, blast_groups=%d, CGC=%d, PUL=%d. "
-                "missing_cgc=%d, missing_pul=%d, no_blast=%d",
-                candidate_pairs, len(cgcpul_blastp), len(cgcid2gene), len(PULid2gene),
-                missing_cgc, missing_pul, no_blast_pairs
-            )
-        else:
-            logger.info(
-                "Generated %d syntenic plots (candidate=%d, missing_cgc=%d, missing_pul=%d, no_blast=%d)",
-                plot_count, candidate_pairs, missing_cgc, missing_pul, no_blast_pairs
-            )
-
-    def read_PUL_cgcgff(self):
-        """
-        Read PUL cgc.gff files to get gene annotations.
-        """
-        PULidgeneid2gene: Dict[str, CGC_stanrdard] = {}
-        pul_dir = self.db_dir / "dbCAN-PUL"
-        if not pul_dir.is_dir():
-            logger.warning(f"dbCAN-PUL directory not found: {pul_dir}")
-            return {}, {}, {}
-
-        for entry in pul_dir.iterdir():
-            if entry.is_dir() and entry.name.startswith("PUL") and entry.name.endswith(".out"):
-                gff_path = entry / "cgc.gff"
-                read_cgcgff(gff_path, PULidgeneid2gene)
-
-        cgcid2gene: Dict[str, List[CGC_stanrdard]] = {}
-        cgcid2geneid: Dict[str, List[str]] = {}
-        for PULidgeneid, gene in PULidgeneid2gene.items():
-            cgcid2gene.setdefault(gene.CGCID, []).append(gene)
-            cgcid2geneid.setdefault(gene.CGCID, []).append(gene.Protein_ID)
-
-        return PULidgeneid2gene, cgcid2gene, cgcid2geneid
-
-    def _create_syntenic_plot(self, starts, starts1, ends, ends1, strands, strands1, types, types1, blocks, cgcid, pulid, substrate):
-        plot_config = {'output_dir': self.output_dir}
-        syntenic_plot(starts, starts1, ends, ends1, strands, strands1,
-                      types, types1, blocks, cgcid, pulid, substrate, plot_config)
-
-
-class blastp_hit(object):
-    def __init__(self, lines):
-        # Expecting outfmt 6: qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore [qlen slen]
-        self.qseqid = lines[0]
-        self.sseqid = lines[1]
-        self.pident = float(lines[2]) if len(lines) > 2 else 0.0
-        self.length = int(lines[3]) if len(lines) > 3 else 0
-        self.mismatch = int(lines[4]) if len(lines) > 4 else 0
-        self.gapopen = int(lines[5]) if len(lines) > 5 else 0
-        self.qstart = int(lines[6]) if len(lines) > 6 else 0
-        self.qend = int(lines[7]) if len(lines) > 7 else 0
-        self.sstart = int(lines[8]) if len(lines) > 8 else 0
-        self.send = int(lines[9]) if len(lines) > 9 else 0
-        self.evalue = float(lines[10]) if len(lines) > 10 else 1.0
-        self.bitscore = float(lines[11]) if len(lines) > 11 else 0.0
-        self.qlen = int(lines[12]) if len(lines) > 12 else 0
-        self.slen = int(lines[13]) if len(lines) > 13 else 0
-
-    def __repr__(self):
-        return "\t".join([str(self.__dict__[attr]) for attr in self.__dict__])
-
-
-def identity_map(seqsim: float) -> str:
-    if 80 <= seqsim <= 100:
-        return "red"
-    if 60 <= seqsim < 80:
-        return "blue"
-    if 40 <= seqsim < 60:
-        return "green"
-    if 20 <= seqsim < 40:
-        return "cyan"
-    return "gray"
-
-
-def Get_Position(starts, ends, strands, maxbp, yshift=0, up=1):
-    Width = 1000
-    Height = 160
-    poly_heigth = 5
-    Triangle_length = 4
-
-    # Copy to avoid modifying the caller's list
-    starts = list(starts)
-    ends = list(ends)
-    strands = list(strands)
-
-    plot_start_y = Height / 2 - poly_heigth - yshift
-    polygens = []
-    # Shift positions
-    shfit_pos = min(starts) if starts else 0
-    for i in range(len(starts)):
-        starts[i] -= shfit_pos
-        ends[i] -= shfit_pos
-
-    pixeachbp = Width / maxbp if maxbp > 0 else 1.0
-
-    blocks = []
-    lines = []
-    for i in range(len(starts)):
-        if strands[i] == "+":
-            positions_str = f"{starts[i] * pixeachbp} {plot_start_y} "
-            positions_str += f"{ends[i] * pixeachbp - Triangle_length} {plot_start_y} "
-            if up == 1:
-                blocks.append(positions_str)
-            positions_str += f"{ends[i] * pixeachbp} {plot_start_y + poly_heigth} "
-            positions_str += f"{ends[i] * pixeachbp - Triangle_length} {plot_start_y + 2*poly_heigth} "
-            positions_str += f"{starts[i] * pixeachbp} {plot_start_y + 2*poly_heigth}"
-
-            positions_str1 = f"{starts[i] * pixeachbp} {plot_start_y + 2*poly_heigth} "
-            positions_str1 += f"{ends[i] * pixeachbp - Triangle_length} {plot_start_y + 2*poly_heigth} "
-            if up == 2:
-                blocks.append(positions_str1)
-        else:
-            positions_str = f"{starts[i] * pixeachbp} {plot_start_y + poly_heigth} "
-            positions_str += f"{starts[i] * pixeachbp + Triangle_length} {plot_start_y} "
-            positions_str += f"{ends[i] * pixeachbp} {plot_start_y} "
-            positions_str1 = f"{ends[i] * pixeachbp} {plot_start_y} "
-            positions_str1 += f"{starts[i] * pixeachbp + Triangle_length} {plot_start_y} "
-            if up == 1:
-                blocks.append(positions_str1)
-            positions_str += f"{ends[i] * pixeachbp} {plot_start_y + 2* poly_heigth} "
-            positions_str += f"{starts[i]* pixeachbp + Triangle_length} {plot_start_y + 2* poly_heigth}"
-            positions_str1 = f"{ends[i] * pixeachbp} {plot_start_y + 2* poly_heigth} "
-            positions_str1 += f"{starts[i]* pixeachbp + Triangle_length} {plot_start_y + 2* poly_heigth}"
-            if up == 2:
-                blocks.append(positions_str1)
-
-        polygens.append(positions_str)
-        if i < len(starts) - 1:
-            positions_str = f"{ends[i] * pixeachbp} {plot_start_y + poly_heigth}  "
-            positions_str += f"{starts[i+1]*pixeachbp} {plot_start_y + poly_heigth}"
-            lines.append(positions_str)
-
-    return polygens, blocks, lines, [], []
-
-
-def plot_Polygon_homologous(polygens1, polygens2, types1, types2, size, ax):
-    # colors_map = {
-    #     "CAZYME": "#E67E22",
-    #     "TC": "#2ECC71",
-    #     "TF": "#9B59B6",
-    #     "STP": "#F1C40F",
-    #     "PEPTIDASE": "#16A085",
-    #     "SULFATASE": "#010E1B",
-    #     "OTHER": "#95A5A6"
-    # }
-    colors_map = plots_constants.CGC_FEATURE_COLORS
-    default_color = plots_constants.CGC_FEATURE_COLORS.get("Other")
-    
-    for j in range(len(polygens1)):
-        polygen = polygens1[j].split()
-        pts = [[float(polygen[2*i]), float(polygen[2*i+1])] for i in range(len(polygen)//2)]
-        t = (types1[j] or "Other")
-        color = colors_map.get(t, default_color)
-        ax.add_patch(Polygon(pts, color=color, alpha=0.5, lw=0))
-
-    for j in range(len(polygens2)):
-        polygen = polygens2[j].split()
-        pts = [[float(polygen[2*i]), float(polygen[2*i+1])] for i in range(len(polygen)//2)]
-        t = (types2[j] or "Other")
-        color = colors_map.get(t, default_color)
-        ax.add_patch(Polygon(pts, color=color, alpha=0.5, lw=0))
-
-
-def decode_block(block: str) -> Tuple[int, int, float]:
-    o1, o2, sim = block.split("-")
-    return int(o1), int(o2), float(sim)
-
-
-def points2(coord: str) -> Tuple[float, float, float, float]:
-    x1, y1, x2, y2 = coord.split()
-    return float(x1), float(y1), float(x2), float(y2)
-
-
-def Shade_curve(x11,x12,y11,y12,x21,x22,y21,y22,xmid,ymid,color):
-    # Use matplotlib.path.Path (avoid confusion with pathlib.Path)
-    PathCls = mpath.Path
-    M, C4, L, CP = PathCls.MOVETO, PathCls.CURVE4, PathCls.LINETO, PathCls.CLOSEPOLY
-    pathdata = [
-        (M,  (x11, y11)),
-        (C4, (x11, ymid)),
-        (C4, (x21, ymid)),
-        (C4, (x21, y21)),
-        (L,  (x22, y22)),
-        (C4, (x22, ymid)),
-        (C4, (x12, ymid)),
-        (C4, (x12, y12)),
-        (CP, (x11, y11))
-    ]
-    codes = [c for c, _ in pathdata]
-    verts = [p for _, p in pathdata]
-    path = PathCls(verts, codes)
-    return PathPatch(path, color=color, alpha=0.2, lw=0)
-
-
-def plot_syntenic_block(blocks, blocks1_coor, blocks2_coor, ax):
-    for block in blocks:
-        order1, order2, sim = decode_block(block)
-        coord1 = blocks1_coor[order1]
-        coord2 = blocks2_coor[order2]
-        x11, y11, x12, y12 = points2(coord1)
-        x21, y21, x22, y22 = points2(coord2)
-
-        color = identity_map(sim)
-        xmid = (x11 + x22 + x21 + x22) / 4
-        ymid = (y11 + y22) / 2
-        ax.add_patch(Shade_curve(x11, x12, y11, y12, x21, x22, y21, y22, xmid, ymid, color))
-
-
-def plot_genome_line(lines_coor1, lines_coor2, ax):
-    for line in lines_coor1:
-        x1, y1, x2, y2 = points2(line)
-        ax.add_patch(Polygon([(x1, y1), (x2, y2)], color="gray", lw=2))
-    for line in lines_coor2:
-        x1, y1, x2, y2 = points2(line)
-        ax.add_patch(Polygon([(x1, y1), (x2, y2)], color="gray", lw=2))
-
-
-def syntenic_plot(starts, starts1, ends, ends1, strands, strands1, types, types1,
-                  blocks, cgcid, pulid, substrate, config):
-    custom_lines = [
-        Line2D([0], [0], color="red", lw=4, alpha=0.5),
-        Line2D([0], [0], color="blue", lw=4, alpha=0.5),
-        Line2D([0], [0], color="green", lw=4, alpha=0.5),
-        Line2D([0], [0], color="cyan", lw=4, alpha=0.5),
-        Line2D([0], [0], color="gray", lw=4, alpha=0.5)
-    ]
-    labels = ["80-100", "60-80", "40-60", "20-40", "0-20"]
-
-    # genelabelcolor = ["#E67E22", "#2ECC71", "#9B59B6", "#F1C40F", "#16A085", "#34495E", "#95A5A6"]
-    # geneslabels = ["CAZyme", "TC", "TF", "STP", "PEPTIDASE", "SULFATASE", "Other"]
-    genelabelcolor= plots_constants.GENE_LABEL_COLOR
-    geneslabels = plots_constants.GENE_LABELS
-    genecustom_lines = [Line2D([0], [0], color=c, lw=6, alpha=0.5) for c in genelabelcolor]
-
-    px = 1/plt.rcParams['figure.dpi']
-    width = 1600
-    height = 320*2
-    fig = plt.figure(figsize=((width*px), (height*px*2/4)))
-    ax = fig.add_subplot(111)
-
-    maxbp = max([max(ends) - min(starts), max(ends1) - min(starts1)]) if starts and starts1 else 1
-
-    polygens, blocks_coor, lines_coor, _, _ = Get_Position(starts, ends, strands, maxbp, yshift=0, up=1)
-    polygens1, blocks1_coor, lines_coor1, _, _ = Get_Position(starts1, ends1, strands1, maxbp, yshift=40, up=2)
-
-    plot_Polygon_homologous(polygens, polygens1, types, types1, 2, ax)
-    plot_syntenic_block(blocks, blocks_coor, blocks1_coor, ax)
-    plot_genome_line(lines_coor, lines_coor1, ax)
-
-    legend1 = ax.legend(custom_lines, labels, frameon=False, loc='upper left', title="Identity")
-    ax.add_artist(legend1)
-    legend2 = ax.legend(genecustom_lines, geneslabels, frameon=False, loc='lower left', title="Gene")
-    ax.add_artist(legend2)
-
-    ax.text(500, 90, cgcid, fontsize=18, ha='center')
-    ax.text(500, 0, pulid, fontsize=18, ha='center')
-
-    # Substrate annotation (top-right)
-    if substrate:
-        ax.text(0.98, 0.98, f"Substrate: {substrate}", transform=ax.transAxes,
-                ha='right', va='top', fontsize=12)
-
-    ax.set_ylim(0, 100)
-    ax.set_xlim(-100, 1100)
-    ax.axis('off')
-    plt.tight_layout(pad=0.01)
-
-    pdf_dir = Path(config['output_dir']) / "synteny_pdf"
-    pdf_dir.mkdir(parents=True, exist_ok=True)
-    cgcid_safe = cgcid.replace("|", "_")
-    pulid_safe = pulid.replace("|", "_")
-    out_path = pdf_dir / f"{cgcid_safe}_{pulid_safe}-syntenic.pdf"
-    plt.savefig(out_path)
-    plt.close()
-    logger.debug(f"Saved synteny plot: {out_path}")
-
-
-def read_blast_result_cgc(filename: str) -> Dict[str, List[blastp_hit]]:
-    """Read BLAST results and group by 'CGC|contig:PUlid'."""
-    querydict: Dict[str, List[blastp_hit]] = {}
-    if not Path(filename).exists() or Path(filename).stat().st_size == 0:
-        return querydict
-    with open(filename) as fh:
-        for line in fh:
-            parts = line.strip().split()
-            if len(parts) < 12:
-                continue
-            qseqid = parts[0]
-            sseqid = parts[1]
-            qids = qseqid.split("|")
-            if len(qids) < 2:
-                continue
-            queryid = f"{qids[0]}|{qids[1]}"
-            pulid, _ = parse_pul_ids(sseqid)
-            key = f"{queryid}:{pulid}" if pulid else queryid
-            querydict.setdefault(key, []).append(blastp_hit(parts))
-    return querydict
-
-
-def parse_pul_ids(sseqid: str) -> Tuple[str, str]:
-    """ Parse PUL ID and protein ID from sseqid."""
-    parts = sseqid.split(":")
-    pulid = parts[1] if len(parts) > 1 else ""
-    prot = parts[2] if len(parts) > 2 else (parts[-1] if parts else "")
-    return pulid, prot
-
-
-def Get_parameters_for_plot(CGC_stanrdard_list):
-    starts = []
-    ends = []
-    strands = []
-    types = []
-    for gene in CGC_stanrdard_list:
-        starts.append(gene.Gene_Start)
-        ends.append(gene.Gene_END)
-        strands.append(gene.Strand)
-        types.append(gene.Gene_Type)
-    return starts, ends, strands, types
-
-
-def read_cgcgff(filename, geneid2gene):
-    path = Path(filename)
-    if not path.exists():
-        return None
-    # Derive PUL ID from parent directory name (e.g. PUL0648.out)
-    pul_dir_name = path.parent.name  # e.g. PUL0648.out
-    pul_id_from_dir = pul_dir_name.split('.')[0] if pul_dir_name.startswith("PUL") else pul_dir_name
-    with path.open() as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            fields = line.split("\t")
-            if len(fields) < 9:
-                continue
-            desc = fields[-1]
-            protein_id = None
-            feature = "Other"
-            ann = "Other"
-            for item in desc.split(";"):
-                if item.startswith(plots_constants.GFF_PROTEIN_ID_COL):
-                    protein_id = item.split("=", 1)[1]
-                elif item.startswith(plots_constants.GFF_CGC_ANNOTATION_COL):
-                    ann = item.split("=", 1)[1]
-                    feature = (ann.split("+")[0].split("|")[0] if "|" in ann else ann.split("+")[0]) or "Other"
-            if not protein_id:
-                continue
-            PULid = pul_id_from_dir
-            newline = [
-                PULid,
-                feature,
-                fields[0],
-                protein_id,
-                fields[3],
-                fields[4],
-                fields[6],
-                ann
-            ]
-            geneid2gene[f"{PULid}:{protein_id}"] = CGC_stanrdard(newline)
-
-
-class CGC_stanrdard(object):
-    def __init__(self, lines):
-        self.CGCID = lines[0]
-        self.Gene_Type = lines[1]
-        self.Contig_ID = lines[2]
-        self.Protein_ID = lines[3]
-        self.Gene_Start = int(lines[4])
-        self.Gene_END = int(lines[5])
-        self.Strand = lines[6]
-        self.Protein_Family = lines[7]
-
-    def __repr__(self):
-        return "\t".join([str(self.__dict__[attr]) for attr in self.__dict__])
-
-
-def read_UHGG_CGC_stanrdard_out(filename):
-    geneid2gene = {}
-    cgcid2gene = {}
-    cgcid2geneid = {}
-    with open(filename) as fh:
-        for line in fh:
-            if line.startswith(plots_constants.CGC_ID_FIELD) or not line.strip():
-                continue
-            fields = line.rstrip("\n").split("\t")
-            fields[0] = fields[2] + "|" + fields[0]
-            gene = CGC_stanrdard(fields)
-            geneid2gene[gene.Protein_ID] = gene
-            cgcid2gene.setdefault(gene.CGCID, []).append(gene)
-            cgcid2geneid.setdefault(gene.CGCID, []).append(gene.Protein_ID)
-    return geneid2gene, cgcid2gene, cgcid2geneid
+        calls = V.read_substrates(sub_file)
+        pairs = [c for c in calls.values() if c.pul]
+        if not pairs:
+            logger.info(f"No CGC with a dbCAN-PUL hit in {sub_file}; no synteny plots.")
+            return 0, 0
+        cgcs = V.read_cgc_table(self.output_dir / P.CGC_RESULT_FILE)
+        ok = failed = 0
+        for call in pairs:
+            try:
+                draw_cgc_vs_pul(self.output_dir, self.db_dir, call.cgcid, self.pdf_dir, pul=call.pul,
+                                cutoffs=self.cutoffs, revcomp=self.revcomp, cgc_table=cgcs,
+                                substrate_calls=calls)
+                ok += 1
+            except Exception as e:
+                failed += 1
+                logger.error(f"Synteny plot {call.cgcid} vs {call.pul} failed: {e}")
+        logger.info(f"Generated {ok} synteny plot(s) in {self.pdf_dir}" + (f"; {failed} failed" if failed else ""))
+        return ok, failed

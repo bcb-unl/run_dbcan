@@ -5,6 +5,24 @@ SignalP 6.0 and DeepTMHMM (optional tools)
 
 ``run_dbcan`` can add **signal peptide** and **transmembrane topology** columns to ``overview.tsv`` during ``CAZyme_annotation``. These features rely on **SignalP 6.0** and/or **DeepTMHMM**, which are **not** distributed or installed as dependencies of the ``dbcan`` package. You must install them yourself, verify that they run in your environment, and only then enable the corresponding flags.
 
+Which proteins are analyzed?
+-----------------------------
+
+Both tools run after the CAZyme search, on the proteins of ``overview.tsv`` that have a ``Recommend Results`` value
+(i.e. ``#ofTools`` >= 2). Their sequences are written to ``topology_input_recommended.faa``; all other rows get ``-``.
+
+.. note::
+
+   * Each tool runs when its own flag is given: ``--run_signalp`` and ``--run_deeptmhmm`` can be used alone or
+     together.
+   * If a requested tool cannot run (``signalp6`` not on ``PATH``, ``--deeptmhmm_dir`` missing or without
+     ``predict.py``), ``CAZyme_annotation`` stops with a usage error (exit status 2) **before** the CAZyme
+     searches start. If a tool fails while running, ``CAZyme_annotation`` exits with a non-zero status after the
+     CAZyme results are written. When both tools are requested and only one fails, the column of the other one is still added to
+     ``overview.tsv``. Check the log and the ``signalp6_out`` / ``deeptmhmm_out`` folders.
+   * The **SignalP** / **DeepTMHMM** columns are recomputed on every run (``overview.tsv`` is rewritten by each
+     ``CAZyme_annotation`` run). ``--force_topology`` is deprecated: it is still accepted but ignored.
+
 Why separate installation?
 ---------------------------
 
@@ -17,7 +35,7 @@ SignalP 6.0
 
 **Role in run_dbcan**
 
-When you pass ``--run_signalp`` to ``CAZyme_annotation``, the pipeline invokes the ``signalp6`` executable, writes results under the output directory, and fills the **SignalP** column in ``overview.tsv``.
+When you pass ``--run_signalp`` to ``CAZyme_annotation``, the pipeline invokes the ``signalp6`` executable (fast mode), writes results to ``signalp6_out/`` under the output directory, and fills the **SignalP** column in ``overview.tsv``.
 
 **Install**
 
@@ -49,7 +67,7 @@ DeepTMHMM
 
 **Role in run_dbcan**
 
-When you pass ``--run_deeptmhmm`` and ``--deeptmhmm_dir``, the pipeline runs a local **DeepTMHMM** ``predict.py`` from that directory (with working directory set there), writes outputs to a ``deeptmhmm_out`` folder under your ``CAZyme_annotation`` output directory, and fills the **DeepTMHMM** column in ``overview.tsv``.
+When you pass ``--run_deeptmhmm`` and ``--deeptmhmm_dir``, the pipeline runs a local **DeepTMHMM** ``predict.py`` from that directory (with working directory set there), writes outputs to a ``deeptmhmm_out`` folder (``deeptmhmm_out_1``, ``deeptmhmm_out_2``, ... if it already exists) under your ``CAZyme_annotation`` output directory, and fills the **DeepTMHMM** column in ``overview.tsv``.
 
 **Install**
 
@@ -72,7 +90,7 @@ Some DeepTMHMM checkpoints are pickled objects (not “weights only”). If you 
 
 **Column overwrite**
 
-Use ``--force_topology`` if you want to **replace** existing **SignalP** / **DeepTMHMM** values in ``overview.tsv`` instead of only filling empty cells.
+The columns are recomputed on every run; the deprecated ``--force_topology`` flag is accepted but ignored.
 
 Example (both tools enabled)
 -----------------------------

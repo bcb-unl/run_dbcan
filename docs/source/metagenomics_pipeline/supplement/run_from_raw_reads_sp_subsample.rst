@@ -49,7 +49,19 @@ S4. Configure databases required by run_dbcan (~2h)
 ```````````````````````````````````````````````````
 To install the databases, execute the following commands:
 
-.. include:: prepare_the_database.rst
+Follow :doc:`/user_guide/prepare_the_database`. In short:
+
+.. code-block:: shell
+
+    run_dbcan database --db_dir db
+
+.. note::
+
+   This protocol was originally written for run_dbcan 5.0.3. The ``run_dbcan`` commands below have been
+   updated for the current command-line interface, but some example directory listings and descriptions
+   still show legacy output names: ``overview.txt`` is now ``overview.tsv``, ``cgc_standard.out`` is now
+   ``cgc_standard_out.tsv``, and ``PUL.out`` is now ``PUL_blast.out``. See :doc:`/user_guide/CAZyme_annotation`
+   and :doc:`/FAQ/troubleshooting` for the current outputs.
 
 
 Download database required by Kraken2 (very slow; can be skipped
@@ -269,8 +281,8 @@ P5. CAZyme annotation at the CAZyme family level (TIMING ~10min)
 
 .. code-block:: shell
 
-    run_dbcan easy_CAZyme --input_raw_data Wet2014.faa --mode protein --output_dir Wet2014.CAZyme --db_dir db
-    run_dbcan easy_CAZyme --input_raw_data Dry2014.faa --mode protein --output_dir Dry2014.CAZyme --db_dir db
+    run_dbcan CAZyme_annotation --input_raw_data Wet2014.faa --mode protein --output_dir Wet2014.CAZyme --db_dir db
+    run_dbcan CAZyme_annotation --input_raw_data Dry2014.faa --mode protein --output_dir Dry2014.CAZyme --db_dir db
 
 Two arguments are required for ``run_dbcan``: the input sequence file (faa files) and the sequence type (protein).
 By default, ``run_dbcan`` will use three methods (``pyHMMER`` vs ``dbCAN HMMdb``, ``DIAMOND`` vs ``CAZy``, ``pyHMMER`` vs ``dbCAN-sub HMMdb``) for
@@ -288,8 +300,8 @@ The following commands will re-run run_dbcan to not only predict CAZymes but als
 
 .. code-block:: shell
 
-    run_dbcan easy_CGC --input_raw_data Wet2014.faa --mode protein --output_dir Wet2014.PUL --db_dir db  --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal
-    run_dbcan easy_CGC --input_raw_data Dry2014.faa --mode protein --output_dir Dry2014.PUL --db_dir db  --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal
+    run_dbcan easy_CGC --input_raw_data Wet2014.faa --mode protein --output_dir Wet2014.PUL --db_dir db --input_gff Wet2014.gff --gff_type prodigal
+    run_dbcan easy_CGC --input_raw_data Dry2014.faa --mode protein --output_dir Dry2014.PUL --db_dir db --input_gff Dry2014.gff --gff_type prodigal
 
 
 As mentioned above (see Fig. 1), CGC prediction is a featured function added into dbCAN2 in 2018.
@@ -310,8 +322,8 @@ P7. Substrate prediction for CAZymes and CGCs (TIMING ~5h)
 
 .. code-block:: shell
 
-    run_dbcan easy_substrate --input_raw_data Wet2014.faa --mode protein --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal --output_dir Wet2014.dbCAN
-    run_dbcan easy_substrate --input_raw_data Dry2014.faa --mode protein --input_format NCBI --input_gff Wet2014.gff --gff_type prodigal --output_dir Dry2014.dbCAN
+    run_dbcan easy_substrate --input_raw_data Wet2014.faa --mode protein --input_gff Wet2014.gff --gff_type prodigal --output_dir Wet2014.dbCAN
+    run_dbcan easy_substrate --input_raw_data Dry2014.faa --mode protein --input_gff Dry2014.gff --gff_type prodigal --output_dir Dry2014.dbCAN
 
 
 
@@ -473,6 +485,12 @@ We developed a set of Python scripts as dbcan_utils (included in the run_dbcan p
 - **RPM** = # of mapped reads to a gene G / (total # of mapped reads to all genes/106).
 
 - **TPM** = [# of mapped reads to a gene G / (gene G length/1000)] / sum [# of mapped reads to each gene / (the gene length/1000)].
+
+.. note::
+   ``cal_coverage`` counts each read pair once by default (``--count-mode fragments``), ignores
+   secondary, supplementary, QC-fail and duplicate alignments, and accepts NCBI GFFs and run_dbcan's
+   ``cgc.gff`` as well as Prodigal GFFs. ``-a`` accepts RPM, TPM, FPKM and RPKM (the same formula as FPKM),
+   and ``-o`` sets the output directory of the ``*_abund`` functions. See :doc:`/user_guide/abundance`.
 
 
 Box 7. Example output of dbcan_utils

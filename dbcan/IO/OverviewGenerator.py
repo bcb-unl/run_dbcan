@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Iterable, Tuple, Any
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 
 from dbcan.configs.base_config import OverviewGeneratorConfig
@@ -30,6 +31,12 @@ import dbcan.constants.process_utils_constants as PU
 # )
 
 logger = logging.getLogger(__name__)
+
+_CAZY_FAMILY_RE = re.compile(O.CAZY_ID_PATTERN)
+
+# CAZyme_annotation method name (--methods, lower-cased) -> result key used below
+METHOD_TO_RESULT_KEY = {"diamond": "diamond", "hmm": "dbcan_hmm", "dbcansub": "dbcan_sub"}
+RESULT_KEY_TO_METHOD = {"diamond": "diamond", "dbcan_hmm": "hmm", "dbcan_sub": "dbCANsub"}
 
 class OverviewGenerator:
     """Generate overview of CAZyme annotations."""
@@ -86,6 +93,26 @@ class OverviewGenerator:
         }
 
     @property
+    def selected_result_keys(self) -> set:
+        """Result tables to merge: only the methods run in this CAZyme_annotation call.
+
+        Files of other methods may be left in output_dir by an earlier run; merging them would
+        report stale hits and inflate #ofTools. ``methods=None`` (direct API use) keeps all three.
+        """
+        methods = getattr(self.config, "methods", None)
+        if methods is None:
+            return set(self.result_file_map)
+        if isinstance(methods, str):
+            methods = [m.strip() for m in methods.split(",") if m.strip()]
+        keys = set()
+        for m in methods:
+            key = METHOD_TO_RESULT_KEY.get(str(m).lower())
+            if key is None:
+                raise ValueError(f"Unknown CAZyme annotation method: {m!r} (expected diamond, hmm, dbCANsub)")
+            keys.add(key)
+        return keys
+
+    @property
     def column_names_map(self) -> Dict[str, List[str]]:
         cols = {
             "diamond": list(O.DIAMOND_COLUMN_NAMES_OVERVIEW),
@@ -129,11 +156,13 @@ class OverviewGenerator:
         overview transparently falls back to span overlap.
         """
         self._matched_intervals = {}
+        selected = self.selected_result_keys
         for source, path in self.alignment_details_map.items():
-            if not path.exists():
+            # a sidecar of a method not run in this call is left over from an earlier run
+            if source not in selected or not path.exists():
                 continue
             try:
-                df = pd.read_csv(path, sep='\t')
+                df = read_tsv(path)
             except Exception as e:
                 logger.warning(f"Could not read alignment details {path}: {e}")
                 continue
@@ -171,7 +200,15 @@ class OverviewGenerator:
 
     def load_data(self) -> Dict[str, pd.DataFrame]:
         data: Dict[str, pd.DataFrame] = {}
+        selected = self.selected_result_keys
         for key, path in self.result_file_map.items():
+            if key not in selected:
+                if path.exists():
+                    logger.warning(
+                        f"Ignoring {path.name}: method '{RESULT_KEY_TO_METHOD[key]}' was not selected with --methods in this run "
+                        f"(the file is left over from an earlier run)."
+                    )
+                continue
             if not path.exists():
                 logger.warning(f"{key} results not found at {path}")
                 continue
@@ -181,11 +218,11 @@ class OverviewGenerator:
                 if file_size_mb > 100:
                     logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {key}")
                     chunks = []
-                    for chunk in pd.read_csv(path, sep='\t', chunksize=100000):
+                    for chunk in read_tsv(path, chunksize=100000):
                         chunks.append(chunk)
                     df = pd.concat(chunks, ignore_index=True)
                 else:
-                    df = pd.read_csv(path, sep='\t')
+                    df = read_tsv(path)
                 
                 required = list(self.column_names_map[key])
                 missing = [c for c in required if c not in df.columns]
@@ -227,46 +264,24 @@ class OverviewGenerator:
     @staticmethod
     def extract_cazy_id(cazy_id):
         """
-        Extract CAZy family ids from a '|' separated string.
-        Rules:
-          - If any token contains 'fasta' (case-insensitive), truncate at the first pure-digit token
-            (drop that token and everything after it).
-          - Find the first token matching O.CAZY_ID_PATTERN; return all matching tokens from that
-            position onward, joined by O.RESULT_SEPARATOR (keeps multi-domain like GH5|GH3|GH6).
-          - If truncation happened but no CAZy token found, return the first remaining token.
-          - Otherwise, return the original value.
+        CAZy families of one CAZy DIAMOND subject header (sseqid), joined with O.RESULT_SEPARATOR.
+
+        The header is '|' separated: an accession followed by families and EC numbers
+        ('CAD7272370.1|GH33', '1803517A|GH13_6|GH13_6|3.2.1.1') or, for JGI entries, families
+        followed by a numeric protein ID and the source file
+        ('GH15|CBM20|716895|Lacbi81306_1_GeneCatalog_proteins_20140617.aa.fasta').
+
+        Only whole family tokens (O.CAZY_ID_PATTERN, e.g. GH13 or GH13_6) are returned, in order
+        and without repeats, so accessions such as 'AAK49401.1' (starts with 'AA'), EC numbers,
+        protein numbers and file names are never reported as families. If no token is a family
+        the value is returned unchanged.
         """
         if not isinstance(cazy_id, str) or not cazy_id:
             return cazy_id
-
-        parts = [p.strip() for p in cazy_id.split('|')]
-        truncated = False
-
-        # Special handling when filename present
-        if any("fasta" in p.lower() for p in parts if isinstance(p, str)):
-            for idx, tok in enumerate(parts):
-                if tok.isdigit():
-                    parts = parts[:idx]
-                    truncated = True
-                    break
-
-        # Find first CAZy token index
-        first_idx = None
-        for i, t in enumerate(parts):
-            if re.match(O.CAZY_ID_PATTERN, t or ""):
-                first_idx = i
-                break
-
-        if first_idx is not None:
-            # Collect all CAZy tokens from first match to the end (preserve multi-domain)
-            matches = [t for t in parts[first_idx:] if re.match(O.CAZY_ID_PATTERN, t or "")]
-            if matches:
-                return O.RESULT_SEPARATOR.join(matches)
-
-        # Fallbacks
-        if truncated and parts:
-            return parts[0]
-        return cazy_id
+        families = [t for t in (p.strip() for p in cazy_id.split('|')) if _CAZY_FAMILY_RE.match(t)]
+        if not families:
+            return cazy_id
+        return O.RESULT_SEPARATOR.join(dict.fromkeys(families))
 
     def calculate_overlap(self, start1: int, end1: int, start2: int, end2: int) -> bool:
         """Alignment-span overlap: the fallback when no match-state data exists."""
@@ -362,8 +377,9 @@ class OverviewGenerator:
                     flat: List[str] = []
                     for s in subs_raw:
                         flat.extend([p for p in re.split(r'[;,]', s) if p])
+                    # one entry per EC token; '-' marks an EC without a substrate
                     uniq = sorted(
-                        {p.strip() for p in flat if p and p.strip()}
+                        {p.strip() for p in flat if p.strip() and p.strip() != O.EMPTY_RESULT_PLACEHOLDER}
                     )
                     if uniq:
                         results[O.SUBSTRATE_FIELD] = O.SUB_SEPARATOR.join(uniq)
@@ -548,12 +564,14 @@ class OverviewGenerator:
                 else:
                     id_col = O.GENE_ID_FIELD
                 if id_col in df.columns:
-                    unique_ids = df[id_col].unique()
-                    gene_ids.update(unique_ids)
+                    # IDs are opaque strings (issue #82): the same str() key is used for
+                    # the gene list and for the per-gene index.
+                    df = df.assign(**{id_col: df[id_col].astype(str)})
+                    gene_ids.update(df[id_col].unique())
                     # Build per-gene index to avoid repeated full-table scans
                     groups: Dict[str, pd.DataFrame] = {}
                     for gid, sub_df in df.groupby(id_col, sort=False):
-                        groups[str(gid)] = sub_df
+                        groups[gid] = sub_df
                     indexed[key] = groups
 
             aggregated_df = self.aggregate_data(gene_ids, indexed)
@@ -562,3 +580,4 @@ class OverviewGenerator:
 
         except Exception as e:
             logger.error(f"Error generating overview: {e}", exc_info=True)
+            raise

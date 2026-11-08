@@ -2,15 +2,18 @@ import os
 import sys
 import logging
 import subprocess
-from typing import List, Dict
+from typing import List, Dict, NamedTuple, Optional
 from Bio import SeqIO
 import pandas as pd
 import numpy as np
 import math
 import json
+import re
 import time
 from dbcan.configs.cgc_substrate_config import CGCSubstrateConfig
-import dbcan.constants.cgc_substrate_prediction_constants as CSP  
+import dbcan.constants.cgc_substrate_prediction_constants as CSP
+# One parser for CGC protein query IDs (CGC.faa, PUL_blast.out), shared with the synteny plots.
+from dbcan.IO.cgc_ids import QueryID, cgc_query_id, parse_query_id, role_family, split_cgc_key  # noqa: F401
 # from dbcan.constants import (
 #     CAZYME, TC, TF, STP, PUL, NULL, CGC_RESULT_FILE,
 #     DBCAN_SUB_OUT_FILE, OVERVIEW_FILE, INPUT_PROTEIN_NAME,
@@ -45,22 +48,34 @@ class blastp_hit(object):
         return "\t".join([str(self.__dict__[attr]) for attr in self.__dict__])
 
     def format_str(self):
-        qseqids = self.qseqid.split("|")
+        """One row of the dbCAN-PUL hit table (--odbcanpul); needs ``self.query`` (see parse_query_id)."""
+        query = getattr(self, "query", None) or parse_query_id(self.qseqid)
+        if query is None:
+            raise ValueError(f"Cannot parse CGC query ID: {self.qseqid}")
         sseqids = self.sseqid.split(":")
-        qtype = qseqids[3] if len(qseqids) > 3 else ""
-        stype = sseqids[5] if len(sseqids) > 5 else ""
-        if qtype == CSP.CAZYME:
-            families = ";".join(qseqids[4:])
-            qseqid = qseqids[2] + "|" + qseqids[3] + "|" + families
+        # PUL.dmnd headers: <PULID>_<n>:<PULID>:<protein>:<type>:<family>
+        stype = sseqids[-2] if len(sseqids) >= 3 else ""
+        sfam = sseqids[-1] if len(sseqids) >= 3 else ""
+        if query.type == CSP.CAZYME:
+            qseqid = f"{query.protein}|{query.type}|{query.family}"
         else:
-            qseqid = qseqids[2] + "|" + qseqids[3]
-        if stype == CSP.CAZYME and len(sseqids) > 6:
-            sseqid = sseqids[0] + "|" + sseqids[5] + "|" + sseqids[6].replace("|",";")
-        else:
-            sseqid = sseqids[0] + "|" + (sseqids[5] if len(sseqids) > 5 else "")
-        cgcid = qseqids[0] + "|" + qseqids[1]
+            qseqid = f"{query.protein}|{query.type}"
+        sprot = sseqids[2] if len(sseqids) >= 5 else sseqids[0]
+        sseqid = f"{sprot}|{stype}|{sfam}" if stype == CSP.CAZYME else f"{sprot}|{stype}"
         pulid = sseqids[1] if len(sseqids) > 1 else ""
-        return "\t".join([qseqid,sseqid,cgcid,pulid,str(self.pident),str(self.length),str(self.mismatch),str(self.gapopen),str(self.qstart),str(self.qend),str(self.sstart),str(self.send),str(self.evalue),str(self.bitscore),str(self.qlen),str(self.slen)])
+        return "\t".join([qseqid, sseqid, query.cgc_id, pulid, str(self.pident), str(self.length),
+                          str(self.mismatch), str(self.gapopen), str(self.qstart), str(self.qend),
+                          str(self.sstart), str(self.send), str(self.evalue), str(self.bitscore),
+                          str(self.qlen), str(self.slen)])
+
+
+def cgc_sort_key(cgcid: str):
+    """Row order of substrate_prediction.tsv: contig, then CGC number numerically."""
+    parts = split_cgc_key(cgcid)
+    if not parts:
+        return (cgcid, -1)
+    return (parts[0], int(parts[1][3:]))
+
 
 class Gene(object):
     def __init__(self, lines, cluster_number=0):
@@ -71,12 +86,11 @@ class Gene(object):
         self.start =    int(lines[4])
         self.end =      int(lines[5])
         self.strand =   lines[6]
-        if self.type == CSP.TC:
-            self.Protein_Fam = ".".join(lines[7].split("|")[1].split(".")[0:3])
-        elif self.type == CSP.NULL:
-            self.Protein_Fam = CSP.NULL
-        else:
-            self.Protein_Fam = lines[7].split("|")[1]
+        # Family of the role named by Gene Type (the CGCFinder priority role) of a possibly
+        # multi-role annotation ('CAZyme|GH32_e132+Sulfatase|S1_7' -> 'GH32_e132'); TC IDs are
+        # cut to the subfamily level (1.A.1.1.3 -> 1.A.1). Never contains '|' (query IDs).
+        self._query = cgc_query_id(self.contig, self.clusterid, self.Protein_ID, self.type, lines[7])
+        self.Protein_Fam = self._query.family
         self.CGC_ID = self.contig + "|" + self.clusterid
 
     def format_out(self):
@@ -86,7 +100,10 @@ class Gene(object):
         return "-"
 
     def Get_CAzyID(self):
-        return self.contig+"|"+self.clusterid+"|"+self.Protein_ID+"|"+self.type+"|"+self.Protein_Fam
+        return self.query_id().format()
+
+    def query_id(self) -> QueryID:
+        return QueryID(self.contig, self.clusterid, self.Protein_ID, self.type, self.Protein_Fam)
 
 class dbCAN_Out(object):
     def __init__(self, filename):
@@ -139,12 +156,30 @@ class CGC_hub(object):
     def CGCID2CGC(self) -> Dict[str, CGC]:
         return {cgc.ID: cgc for cgc in self}
 
+def split_dbsub_substrates(field: str) -> List[str]:
+    """Unique substrates of one dbCAN-sub hit, in order of appearance.
+
+    The Substrate column of dbCANsub_hmm_results.tsv holds one entry per EC token, joined
+    with ';' in the order of Subfam EC; an entry that lists several substrates uses ','
+    (``chitin,peptidoglycan``) and ``-`` marks an EC without a substrate. The scoring below
+    splits on ',' only, so the column is normalised here to the comma-separated list of
+    real substrates (as in run_dbcan 4 / the web server, where the column was
+    ``substrate, substrate``). ``-;-`` becomes '' (no substrate).
+    """
+    out: List[str] = []
+    for piece in re.split(r"[;,]", field or ""):
+        piece = piece.strip()
+        if piece and piece != "-" and piece not in out:
+            out.append(piece)
+    return out
+
+
 class dbSub_record(object):
     def __init__(self, lines):
         self.dbcan_sub_subfam = lines[0]
         self.Subfam_Composition = lines[1]
         self.Subfam_EC = lines[2]
-        self.Substrate = lines[3] if lines[3] != "-" else ""
+        self.Substrate = ",".join(split_dbsub_substrates(lines[3]))
         self.hmm_Length = lines[4]
         self.GeneID = lines[5]
         self.GeneLen = lines[6]
@@ -217,8 +252,6 @@ class dbCAN_substrate_prediction:
 
         self.odbcan_sub = config.odbcan_sub
         self.odbcanpul = config.odbcanpul
-        self.dbcanpul_tmp = CSP.DBCANPUL_TMP
-        self.dbcan_sub_tmp = CSP.DBCAN_SUB_TMP
 
         self.run_dbCAN_sub = True
         self.run_dbCAN_PUL = True
@@ -230,6 +263,9 @@ class dbCAN_substrate_prediction:
         self.seqs = []
         self.seqid2seq = {}
         self.protid2gene = {}
+        # DIAMOND query ID (Gene.Get_CAzyID) -> QueryID, so IDs containing '|' are not split by position
+        self.query_ids: Dict[str, QueryID] = {}
+        self._missing_pul_ids = set()
         self.dbCAN_hits = None
         self.cgcs = None
         self.cgcid2cgc = {}
@@ -263,6 +299,7 @@ class dbCAN_substrate_prediction:
         self.dbCAN_hits = dbCAN_Out(self.cgc_standard_out)
         self.seqid2seq = SeqIO.to_dict(SeqIO.parse(self.protein_db, 'fasta'))
         self.protid2gene = self.dbCAN_hits.ProteinID2genes()
+        self.query_ids = {gene.Get_CAzyID(): gene.query_id() for gene in self.dbCAN_hits}
         self.seqs = []
         for seqid in self.seqid2seq:
             if seqid in self.protid2gene:
@@ -303,6 +340,20 @@ class dbCAN_substrate_prediction:
         if "substrate_final" not in self.Puls.columns:
             raise ValueError("PUL excel missing column 'substrate_final'")
 
+    def pul_substrate(self, pulid: str) -> str:
+        """substrate_final of a PUL in dbCAN-PUL.xlsx; '-' (with a warning) if the ID is not listed."""
+        values = self.Puls.loc[self.Puls["ID"] == pulid, "substrate_final"].values
+        if len(values) == 0:
+            if pulid not in self._missing_pul_ids:
+                self._missing_pul_ids.add(pulid)
+                logger.warning(
+                    f"PUL {pulid} is in {CSP.PUL_DIAMOND_DB} but not in {CSP.PUL_EXCEL_FILE}; "
+                    "its dbCAN-PUL substrate is reported as '-'. Re-download the database if this persists."
+                )
+            return "-"
+        value = values[0]
+        return "-" if pd.isna(value) else str(value)
+
     def read_blastp_result(self, filename):
         logger.info(f"Reading DIAMOND result: {filename}")
         querydict = {}
@@ -315,18 +366,20 @@ class dbCAN_substrate_prediction:
                 if len(parts) < 14:
                     continue
                 qseqid, sseqid, pident, length, mismatch, gapopen, qstart, qend, sstart, send, evalue, bitscore, qlen, slen = parts[:14]
-                qids = qseqid.split("|")
-                if len(qids) < 2:
-                    logger.warning(f"Invalid qseqid (no '|'): {qseqid}")
+                query = parse_query_id(qseqid, self.query_ids)
+                if query is None:
+                    logger.warning(f"Cannot parse CGC query ID <contig>|<CGC#>|<protein>|<type>|<family>: {qseqid}")
                     continue
-                queryid = qids[0] + "|" + qids[1]
+                queryid = query.cgc_id
                 if float(evalue) > self.homologous_parameters.evalue_cutoff:
                     continue
                 if float(pident) < self.homologous_parameters.identity_cutoff:
                     continue
                 if (float(qend) - float(qstart) + 1) / float(qlen) < self.homologous_parameters.coverage_cutoff:
                     continue
-                querydict.setdefault(queryid, []).append(blastp_hit(parts))
+                hit = blastp_hit(parts)
+                hit.query = query
+                querydict.setdefault(queryid, []).append(hit)
         self.hitdict = querydict
 
     def Uniq_blastp_hit(self, blast_list: List[blastp_hit]):
@@ -338,14 +391,15 @@ class dbCAN_substrate_prediction:
                 genes.append(tmp)
                 uniq_sseqid.add(tmp.sseqid)
             hit_type = tmp.sseqid.split(":")[-2] if ":" in tmp.sseqid else ""
-            qparts = tmp.qseqid.split("|")
-            query_type = qparts[3] if len(qparts) > 3 else ""
+            query = getattr(tmp, "query", None) or parse_query_id(tmp.qseqid, self.query_ids)
+            query_type = query.type if query else ""
             if hit_type and query_type:
                 homologous_pairs.append(query_type + "-" + hit_type)
         CAZyme_pairs_num = homologous_pairs.count("CAZyme-CAZyme")
+        # -upghn: distinct PUL genes hit (subjects); -uqcgn: distinct CGC genes with a hit (queries)
         cond_base = (
-            len(uniq_sseqid) >= self.homologous_parameters.uqcgn and
-            len({h.qseqid for h in blast_list}) >= self.homologous_parameters.upghn and
+            len(uniq_sseqid) >= self.homologous_parameters.upghn and
+            len({h.qseqid for h in blast_list}) >= self.homologous_parameters.uqcgn and
             CAZyme_pairs_num >= self.homologous_parameters.cpn and
             len(homologous_pairs) >= self.homologous_parameters.tpn
         )
@@ -426,7 +480,7 @@ class dbCAN_substrate_prediction:
             max_score_index = score_orders[-1]
             best_score = scores[max_score_index]
             bestpulid = self.queryCGC2pulids[queryCGC][max_score_index]
-            substrate = self.Puls[self.Puls["ID"] == bestpulid].substrate_final.values[0]
+            substrate = self.pul_substrate(bestpulid)
             mapped_types = self.queryCGCmapedtypes[queryCGC][max_score_index]
             queryCGC2hit[queryCGC] = PULhit(best_score, bestpulid, substrate, mapped_types)
             self.queryCGC_best_genes_blastp_hit[queryCGC] = self.queryCGC2blastp_hits.get(queryCGC, [])[max_score_index] if self.queryCGC2blastp_hits.get(queryCGC) else []
@@ -530,7 +584,7 @@ class dbCAN_substrate_prediction:
         logger.info(f"Writing substrate prediction result to file: {self.out}")
         with open(self.out, 'w') as f:
             f.write("#cgcid\tPULID\tdbCAN-PUL substrate\tbitscore\tsignature pairs\tdbCAN-sub substrate\tdbCAN-sub substrate score\n")
-            for cgcid in shared_cgcids:
+            for cgcid in sorted(shared_cgcids, key=cgc_sort_key):
                 dbcan_pul_part = self.queryCGC2hit.get(cgcid, "")
                 dbcan_sub_substate = self.dbcan_sub_CGC2substrates.get(cgcid, "")
                 PULID = dbcan_pul_part.pulid if dbcan_pul_part else ""
@@ -539,6 +593,44 @@ class dbCAN_substrate_prediction:
                 sig_pairs = ";".join(dbcan_pul_part.maped_types) if dbcan_pul_part else ""
                 dbcan_sub_maxscore = self.dbcan_sub_CGC2maxscore.get(cgcid, "")
                 f.write(f"{cgcid}\t{PULID}\t{dbcan_pul_sub}\t{bitscore}\t{sig_pairs}\t{dbcan_sub_substate}\t{dbcan_sub_maxscore}\n")
+
+    def dbcan_sub_intermediate_file(self):
+        """--odbcan_sub: per-CGC dbCAN-sub evidence behind the dbCAN-sub substrate call.
+
+        One row per dbCAN-sub hit (after -hmmevalue / -hmmcov) of a CGC protein, with the CGC-level
+        substrate scores (substrate:score for every substrate; '-' when the CGC did not pass -ndsc /
+        -npsc), the predicted substrate and its score ('-' when below -subs).
+        """
+        path = os.path.join(self.input_folder, CSP.DBCAN_SUB_DETAIL_FILE)
+        cgc2records = getattr(self, "cgcid2substrate_dbcan_sub", {}) or {}
+        cgc2scores = getattr(self, "dbcan_sub_CGC2scores", {}) or {}
+        with open(path, "w") as f:
+            f.write("\t".join(CSP.DBCAN_SUB_DETAIL_COLUMNS) + "\n")
+            for cgcid in sorted(cgc2records):
+                scores = cgc2scores.get(cgcid)
+                score_str = ";".join(f"{sub}:{sc:g}" for sub, sc in sorted(scores.items(), key=lambda x: (-x[1], x[0]))) if scores else "-"
+                predicted = self.dbcan_sub_CGC2substrates.get(cgcid) or "-"
+                maxscore = self.dbcan_sub_CGC2maxscore.get(cgcid)
+                maxscore = f"{maxscore:g}" if maxscore is not None else "-"
+                for records in cgc2records[cgcid]:
+                    for r in records:
+                        f.write("\t".join([cgcid, r.GeneID, r.dbcan_sub_subfam, r.Subfam_EC or "-",
+                                           r.Substrate or "-", r.E_Value, r.Cov, score_str, predicted,
+                                           maxscore]) + "\n")
+        logger.info(f"dbCAN-sub substrate evidence written to {path}")
+        return path
+
+    def dbcan_pul_hits_file(self):
+        """--odbcanpul: DIAMOND hits between each CGC and its best-scoring dbCAN-PUL."""
+        path = os.path.join(self.input_folder, CSP.DBCAN_PUL_HITS_FILE)
+        best = getattr(self, "queryCGC_best_genes_blastp_hit", {}) or {}
+        with open(path, "w") as f:
+            f.write("\t".join(CSP.DBCAN_PUL_HITS_COLUMNS) + "\n")
+            for cgcid in sorted(best):
+                for hit in best[cgcid] or []:
+                    f.write(hit.format_str() + "\n")
+        logger.info(f"dbCAN-PUL homology hits written to {path}")
+        return path
 
 class PULhit(object):
     def __init__(self, score, pulid, substrate, mapped_types):
@@ -565,7 +657,33 @@ def cgc_substrate_prediction(config: CGCSubstrateConfig):
     logger.info(f"Substrate prediction done! {t1 - t0:.2f}s")
     sp.result_print_to_file()
     if sp.odbcan_sub:
-        sp.dbcan_sub_intermediate_file()
+        if sp.run_dbCAN_sub:
+            sp.dbcan_sub_intermediate_file()
+        else:
+            logger.warning("--odbcan_sub: no dbCAN-sub results in the output directory; nothing to export.")
+    if sp.odbcanpul:
+        sp.dbcan_pul_hits_file()
+def parse_extra_pairs(extra_pair_type: Optional[str], extra_pair_type_num: Optional[str]):
+    """-ept / -eptn: signature pair types (e.g. 'TC-TC,STP-STP') and their minimum counts ('1,2').
+
+    Returns (types, counts) or (None, 0) when no extra pair type is given. Raises ValueError when the
+    two lists differ in length or a count is not a non-negative integer.
+    """
+    if not extra_pair_type:
+        return None, 0
+    types = [t.strip() for t in extra_pair_type.split(",")]
+    counts = [c.strip() for c in (extra_pair_type_num or "").split(",")]
+    if len(types) != len(counts):
+        raise ValueError(
+            f"--extra_pair_type has {len(types)} entries ({','.join(types)}) but --extra_pair_type_num has "
+            f"{len(counts)} ({','.join(counts)}); give one count per pair type."
+        )
+    for c in counts:
+        if not c.isdigit():
+            raise ValueError(f"--extra_pair_type_num must be non-negative integers, got {c!r}")
+    return types, counts
+
+
 class HitParamter(object):
     '''
     design for parameters, how to identify real homologous hit for genes in GCG
@@ -577,17 +695,12 @@ class HitParamter(object):
         self.uqcgn = config.uniq_query_cgc_gene_num
         self.cpn = config.CAZyme_pair_num
         self.tpn = config.total_pair_num
-        self.ept = config.extra_pair_type.split(",") if config.extra_pair_type else None
-        self.eptn = config.extra_pair_type_num.split(",") if self.ept else 0
+        self.ept, self.eptn = parse_extra_pairs(config.extra_pair_type, config.extra_pair_type_num)
         self.identity_cutoff = config.identity_cutoff
         self.coverage_cutoff  = config.coverage_cutoff
         self.bitscore_cutoff = config.bitscore_cutoff
         self.evalue_cutoff = config.evalue_cutoff
 
-        ### check the additional requires for the other signature pairs
-        if self.ept and len(self.ept) != len(self.eptn):
-            print(f"The optional chocices of {self.ept} is not equal to {self.eptn}.",file=sys.stderr)
-            exit()
 
     def __repr__(self):
         return "\n".join([name + ": " +str(self.__dict__[name]) for name in self.__dict__])

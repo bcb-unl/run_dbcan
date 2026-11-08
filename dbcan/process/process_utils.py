@@ -4,6 +4,7 @@ from typing import Dict, Iterable, Set, List, Optional
 import time
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 
 logger = logging.getLogger(__name__)
@@ -105,9 +106,8 @@ def process_results(
             if file_size_mb > 100:
                 logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading from {temp_hits_file}")
                 chunks = []
-                for chunk in pd.read_csv(
+                for chunk in read_tsv(
                     temp_hits_file,
-                    sep='\t',
                     header=None,
                     names=column_names,
                     chunksize=100000,
@@ -116,7 +116,7 @@ def process_results(
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(temp_hits_file, sep='\t', header=None, names=column_names)
+                df = read_tsv(temp_hits_file, header=None, names=column_names)
                 total_rows = len(df)
         elif results:
             # results provided in-memory
@@ -288,19 +288,62 @@ def filter_overlaps(
 #: understands the model semantics (pyhmmer + process_results, which applies
 #: match-state-aware resolution). Re-filtering them here with the ali-span rule
 #: would undo that resolution, so they are passed through untouched.
-CGC_SIG_PRERESOLVED_SOURCES = frozenset({"STP", "TF_fungi"})
+CGC_SIG_PRERESOLVED_SOURCES = PU.HMM_SIGNATURE_SOURCES
+
+
+def _best_hit_per_protein(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep one DIAMOND hit per protein: lowest E-value, then highest query coverage.
+
+    DIAMOND signature databases (TCDB, PRODORIC TF, SulfAtlas, MEROPS) hold full-length
+    proteins, so a hit is a protein-level label, not a domain; its query interval is an
+    alignment span and is never compared with other annotations by coordinates.
+    """
+    if df.empty:
+        return df
+    ranked = df.assign(
+        _ev=pd.to_numeric(df[PU.IEVALUE_COLUMN], errors='coerce').fillna(float('inf')),
+        _cov=pd.to_numeric(df[PU.COVERAGE_COLUMN], errors='coerce').fillna(0.0),
+    ).sort_values([PU.TARGET_NAME_COLUMN, '_ev', '_cov'], ascending=[True, True, False], kind='mergesort')
+    return ranked.drop_duplicates(subset=[PU.TARGET_NAME_COLUMN], keep='first').drop(columns=['_ev', '_cov'])
+
+
+def _drop_non_peptidase_units(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only MEROPS peptidase units in the Peptidase signature.
+
+    peptidase_db.dmnd is built from MEROPS pepunit.lib, which also contains peptidase
+    *inhibitor* units (families I01..I99, e.g. I04 serpins, I39 alpha-2-macroglobulins)
+    and a few entries whose family field is malformed (an organism name). Neither is a
+    peptidase, so they are not reported as ``Peptidase|...``; they remain visible in the
+    raw diamond.out.peptidase file.
+    """
+    if df.empty:
+        return df
+    ids = df[PU.ANNOTATE_NAME_COLUMN].astype(str)
+    keep = ids.str.match(PU.MEROPS_PEPTIDASE_ID_PATTERN)
+    dropped = df.loc[~keep, PU.ANNOTATE_NAME_COLUMN]
+    if not dropped.empty:
+        n_inh = int(dropped.astype(str).str.match(PU.MEROPS_INHIBITOR_ID_PATTERN).sum())
+        logger.info(
+            f"Peptidase: excluded {len(dropped)} hits that are not peptidase units "
+            f"({n_inh} MEROPS inhibitor units, {len(dropped) - n_inh} unclassified entries)"
+        )
+    return df.loc[keep]
 
 
 def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, sulfatase_config, peptidase_config) -> None:
-    """Combine TCDB, TF, STP, sulfatase and peptidase results into one file.
+    """Combine TC, TF, STP, sulfatase and peptidase results into total_cgc_info.tsv.
 
-    Overlap resolution here is *source-aware*. CGC signature classes (CAZyme,
-    TC, TF, STP, sulfatase, peptidase) are not mutually exclusive — a gene can
-    legitimately carry an STP domain and a TF domain, or a transporter and a
-    peptidase — so a generic HMM family-competition rule must not be applied
-    across them. Each source is therefore resolved on its own (DIAMOND-derived
-    sources only; HMM-derived sources arrive already resolved) and the accepted
-    annotations are simply combined afterwards.
+    Signature classes are not mutually exclusive: one protein can carry a transporter
+    label and STP domains, or a TF label and STP domains. Annotations from different
+    sources are therefore never filtered against each other (this used to compare
+    DIAMOND alignment spans with Pfam domain coordinates, and DIAMOND E-values with
+    HMMER i-Evalues, and dropped e.g. STP SBP_bac_1/TOBE domains of ABC transporter
+    proteins).
+
+    - DIAMOND sources (TC, TF_prok, Sulfatase, Peptidase) are protein-level labels: one
+      best hit per protein, no coordinate-based overlap handling.
+    - HMM sources (STP, TF_fungi) are domain-level and were already overlap-resolved
+      within their own library by the pyHMMER step.
     """
     try:
         columns = PU.CGC_SIG_RESULT_COLUMN
@@ -333,11 +376,11 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 if file_size_mb > 100:
                     logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {name}")
                     chunks = []
-                    for chunk in pd.read_csv(fpath, sep='\t', header=0, chunksize=100000):
+                    for chunk in read_tsv(fpath, header=0, chunksize=100000):
                         chunks.append(chunk)
                     df = pd.concat(chunks, ignore_index=True)
                 else:
-                    df = pd.read_csv(fpath, sep='\t', header=0)
+                    df = read_tsv(fpath, header=0)
                 
                 # align columns
                 missing = [c for c in columns if c not in df.columns]
@@ -362,19 +405,20 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
 
                 _TYPE_MAP = {'TF_prok': 'TF', 'TF_fungi': 'TF'}
                 df['Type'] = _TYPE_MAP.get(name, name)
-
-                # Source-aware resolution: within one annotation source only.
-                if name in CGC_SIG_PRERESOLVED_SOURCES:
-                    logger.info(
-                        f"{name} annotations already resolved by their own tool; "
-                        f"skipping the CGC-level overlap filter"
-                    )
-                else:
+                # Source keeps TF DIAMOND (TF_prok) and TF HMM (TF_fungi) apart for the CGC step.
+                df[PU.SIGNATURE_SOURCE_COLUMN] = name
+                if name == 'Peptidase':
+                    df = _drop_non_peptidase_units(df)
+                # Source-aware resolution, within one annotation source only:
+                # DIAMOND sources are full-length protein labels (one best hit per protein);
+                # HMM sources (CGC_SIG_PRERESOLVED_SOURCES) were already resolved by pyHMMER.
+                if name in PU.DIAMOND_SIGNATURE_SOURCES:
                     before = len(df)
-                    df = filter_overlaps(df)
+                    df = _best_hit_per_protein(df)
                     if len(df) != before:
-                        logger.info(f"{name}: resolved {before} -> {len(df)} annotations within source")
-
+                        logger.info(f"{name}: kept best hit per protein ({before} -> {len(df)} rows)")
+                elif name in CGC_SIG_PRERESOLVED_SOURCES:
+                    logger.info(f"{name} annotations already resolved by pyHMMER; no CGC-level overlap filter")
                 frames.append(df)
                 logger.info(f"Loaded {len(df)} {name} annotations from {fpath}")
             except Exception as e:
@@ -383,7 +427,7 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         out_file = out_dir_path / B.GFF_CGC_SIG_FILE
         if not frames:
             logger.warning("No valid CGC annotation data found")
-            pd.DataFrame(columns=columns + ['Type']).to_csv(out_file, index=False, sep='\t')
+            pd.DataFrame(columns=columns + ['Type', PU.SIGNATURE_SOURCE_COLUMN]).to_csv(out_file, index=False, sep='\t')
             return
 
         # Optimize DataFrame concatenation for large datasets
@@ -401,13 +445,9 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         else:
             total_df = pd.concat(frames, ignore_index=True)
 
-        # No cross-source overlap filter here: each source has already been
-        # resolved above, and suppressing a TF because it overlaps an STP (or a
-        # peptidase because it overlaps a transporter) is not biologically
-        # justified. Sorting only, so the combined table stays deterministic.
+        # No cross-source overlap filtering (see docstring); stable order for the GFF step.
         total_df = total_df.sort_values(
-            by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN],
-            kind="stable",
+            by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN, 'Type'], kind='mergesort'
         )
         total_df.to_csv(out_file, index=False, sep='\t')
         logger.info(f"Saved {len(total_df)} CGC annotations to {out_file}")
@@ -440,11 +480,11 @@ def process_cgc_null_pfam_annotation(Pfam_config) -> None:
         if file_size_mb > 100:
             logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading")
             chunks = []
-            for chunk in pd.read_csv(pfam_hmm_output, sep='\t', header=0, chunksize=100000):
+            for chunk in read_tsv(pfam_hmm_output, header=0, chunksize=100000):
                 chunks.append(chunk)
             df = pd.concat(chunks, ignore_index=True)
         else:
-            df = pd.read_csv(pfam_hmm_output, sep='\t', header=0)
+            df = read_tsv(pfam_hmm_output, header=0)
         
         # align to HMMER_COLUMN_NAMES
         missing = [c for c in PU.HMMER_COLUMN_NAMES if c not in df.columns]
@@ -539,7 +579,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
     file_size_mb = pfam_path.stat().st_size / (1024 * 1024)
     if file_size_mb > 100:
         logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for mapping")
-        for chunk in pd.read_csv(pfam_path, sep='\t', header=0, chunksize=100000):
+        for chunk in read_tsv(pfam_path, header=0, chunksize=100000):
             if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(chunk.columns):
                 logger.warning(f"PFAM result missing required columns in {pfam_path}")
                 return
@@ -548,7 +588,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
                 annot = str(row[PU.HMM_NAME_COLUMN])
                 pfam_map[protein_id] = annot
     else:
-        df = pd.read_csv(pfam_path, sep='\t', header=0)
+        df = read_tsv(pfam_path, header=0)
         if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(df.columns):
             logger.warning(f"PFAM result missing required columns in {pfam_path}")
             return

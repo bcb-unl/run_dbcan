@@ -1,7 +1,8 @@
 import pandas as pd
 
 from dbcan.plot.expression_plots import build_cgc_gene_matrix_with_labels
-from dbcan.utils.plots import CGC, cgc_standard_line
+from dbcan.plot.expression_track import CGC
+from dbcan.utils.utils import cgc_standard_line
 
 
 def _minimal_cgc():

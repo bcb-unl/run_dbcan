@@ -54,6 +54,12 @@ class PyHMMERProcessor(ABC):
     # COVERAGE_ATTR: str = ""        # name of coverage attribute in config
     # USE_NULL_INPUT: bool = False   # for Pfam (optional alternate input)
 
+    # dbCAN.hmm (V14 and earlier) splits GT2 into several GT2_* profiles that are
+    # reported as plain GT2. Only the dbCAN HMM processor enables this; dbCAN-sub
+    # profiles such as ``GT2_e2592.hmm|GT2:11|2.4.1.12:6`` must keep their full name
+    # so that subfamily, composition and EC can be parsed.
+    MERGE_GT2_PROFILES: bool = False
+
     def __init__(self, config: PyHMMERConfig):
         self.config = config
         self._hmm_profile_count: Optional[int] = None
@@ -62,6 +68,12 @@ class PyHMMERProcessor(ABC):
         # --dbcan-legacy-overlap / config.matched_overlap = False.
         self.matched_overlap = bool(getattr(config, "matched_overlap", True))
         self._validate_basic()
+
+    def _output_hmm_name(self, hmm_name: str) -> str:
+        """Name written to the result table for a matched profile."""
+        if self.MERGE_GT2_PROFILES and hmm_name.startswith(P.GT2_PREFIX):
+            return P.GT2_FAMILY_NAME
+        return hmm_name
 
     # -------- Properties --------
     @property
@@ -182,9 +194,9 @@ class PyHMMERProcessor(ABC):
         # occupancy variant before considering a switch.
         coverage = (aln.hmm_to - aln.hmm_from + 1) / aln.hmm_length
         exact_hmm_name = _safe_decode(aln.hmm_name)
-        output_hmm_name = exact_hmm_name
-        if P.GT2_PREFIX in output_hmm_name:
-            output_hmm_name = P.GT2_FAMILY_NAME
+        # GT2_* profiles are merged to GT2 for dbCAN.hmm only (MERGE_GT2_PROFILES);
+        # cutoff policies still see the exact profile name.
+        output_hmm_name = self._output_hmm_name(exact_hmm_name)
         i_evalue = domain.i_evalue
         bitscore = domain.score
         if not self._passes_domain(exact_hmm_name, i_evalue, coverage, bitscore):
@@ -646,6 +658,7 @@ class PyHMMERProcessor(ABC):
 
 
 class PyHMMERDBCANProcessor(PyHMMERProcessor):
+    MERGE_GT2_PROFILES = True
 
     def __init__(self, config: PyHMMERDBCANConfig):
         self.family_cutoff_policy = None
