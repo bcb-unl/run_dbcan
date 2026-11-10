@@ -168,8 +168,13 @@ def parse_attributes(col9: str) -> Tuple[Dict[str, str], bool]:
 
 
 def _open_text(path: Path):
+    """Open a GFF/GTF for reading; gzip (``.gz`` suffix or gzip magic bytes) is read transparently."""
     path = Path(path)
-    if path.suffix == ".gz":
+    is_gz = path.suffix == ".gz"
+    if not is_gz:
+        with path.open("rb") as fh:
+            is_gz = fh.read(2) == b"\x1f\x8b"
+    if is_gz:
         return gzip.open(path, "rt", encoding="utf-8", errors="replace")
     return path.open(encoding="utf-8", errors="replace")
 

@@ -91,6 +91,13 @@ Unreleased
    ``Clostridium``), malformed identifiers and exact duplicates are left out, inhibitor units are kept as decoys
    (run_dbcan never reports them as Peptidase; ``--drop-inhibitors`` leaves them out), and ``diamond makedb`` is
    run. See :ref:`rebuild-peptidase-db`. The distributed database is not changed by this.
+#. New ``fam-substrate-mapping.tsv`` (version line ``2026-11-10``, md5 ``0129c4b557ff3d5a9bc2ba316a66c2a7``,
+   1,095 rows), built from the ``db_current`` table and checked against the CAZy family pages: 99 corrected rows
+   (wrong class, EC or name), 64 activities listed by CAZy but missing from the table, rows for the families new in
+   ``dbCAN.hmm`` V15 (CBM107-CBM115, CE25, CE26, GT139, GT140), family-level rows that keep a family's default class,
+   one ``Substrate_curated`` style ("substrate (context)", ``;`` between substrates), and the new classes ``cutin``
+   and ``mycothiol S-conjugate``. Over all 53,411 dbCAN-sub profiles, 744 change their substrate relative to the S3
+   release ``db_v5-2-9_11-3-2026``; the release has to replace the table in both download locations.
 
 .. rubric:: Figures
 
@@ -123,6 +130,20 @@ Unreleased
 #. Assembly-free DIAMOND counting: CAZy family tokens are parsed at any position, JGI sequence IDs keep the protein
    number, and ``.fq/.fastq/.fa/.fasta/.fna`` (optionally ``.gz``) read files are accepted.
 #. The GFF match report counts a childless gene with a non-coding biotype (e.g. *E. coli* ``ralA``) as non-coding.
+#. ``dbcan_asmfree`` substrate abundance reads ``fam-substrate-mapping.tsv`` with leading ``#`` version lines and
+   splits a class cell on ``;`` as well as ``,``.
+#. SignalP6 or DeepTMHMM that exits 0 but writes no (or an empty) result file is a failed step (non-zero exit; the
+   other tool's column is still written); an ``overview.tsv`` without genes gets the ``-`` columns of the requested tools.
+#. CAZyme overview: a result table of a method selected with ``--methods`` that cannot be read, or that has rows but
+   lacks required columns, fails the step (non-zero exit) instead of being skipped; empty tables are still accepted.
+#. ``gff_process`` reads a gzipped ``--input_gff`` (``.gz``) for every ``--gff_type``, like the gene/protein match
+   check; before, a ``.gz`` GFF passed the check and failed only after the signature searches.
+#. ``cgc_finder``: an error while finding CGCs fails the step (non-zero exit) instead of writing empty result tables
+   that look like "no CGCs found"; a run that finds no CGC still writes the empty tables and succeeds.
+#. ``CAZyme_annotation`` (also inside ``easy_CGC``/``easy_substrate``) replaces the result file of a method not in
+   ``--methods`` that an earlier run left in ``--output_dir`` (``diamond.out``, ``dbCAN_hmm_results.tsv``,
+   ``dbCANsub_hmm_results.tsv``/``_raw.tsv``) with an empty table, so substrate prediction and ``dbcan_utils`` no
+   longer read old dbCAN-sub hits.
 
 .. rubric:: Known issues / to test
 
@@ -131,13 +152,17 @@ Unreleased
    be tested before the next release. The fungal taxon profile on the dev branch is locked to the previous
    ``dbCAN.hmm`` and has to be recalibrated for V15.
 #. ``fam-substrate-mapping.tsv``: for an incomplete EC (``a.b.c.-``) with several substrates under the same family
-   (25 keys, e.g. GH94 + 2.4.1.-) the last substrate alphabetically is used, as in 5.2.9. A per-subfamily
-   substrate table (``dbCAN-sub-substrate.tsv``) in the database directory replaces this lookup.
-#. Three different ``fam-substrate-mapping.tsv`` files are in circulation: the S3 release ``db_v5-2-9_11-3-2026``
-   (1,018 rows), the HTTP ``db_current`` snapshot (1,024 rows; 33 (substrate, family, EC) triples not in S3, 21 the
-   other way round) and the dbCAN-sub web release ``fam-substrate-mapping-08262025.tsv`` (with the
-   ``new_Substrate_high_level``/``type`` columns). run_dbcan reads all three formats; the release should ship one of
-   them in both places.
+   (25 keys in the 2026-11-10 table, e.g. GH3 + 3.2.1.-) the last substrate alphabetically is used, as in 5.2.9. A
+   per-subfamily substrate table (``dbCAN-sub-substrate.tsv``) in the database directory replaces this lookup. Two
+   activities CAZy lists were left out of the table because of this rule (GH172 alpha-D-fructofuranosidase and
+   PL38 exo-glucuronan lyase, both 3.2.1.-/4.2.2.-); their text is kept on the sibling row.
+#. ``dbCAN-sub`` profiles of the old GT families (GT1-GT118) have no substrate rows (only GT119-GT140 do).
+#. dbCAN-PUL has to be rebuilt with this version before the next database release: the PUL gene annotations
+   (``dbCAN-PUL.xlsx`` / ``PUL.dmnd`` and the per-PUL GFF/CGC files) were made with 5.2.9 rules, and this version
+   changes CGC membership (final Gene Type per gene, CAZyme wins over full-length labels, best full-length label by
+   bitscore, sulfatase subject coverage), the TC family in ``PUL_blast.out`` query IDs (cut to three levels) and the
+   substrate mapping. Re-run CAZyme annotation, ``gff_process`` and ``cgc_finder`` on every PUL, rebuild
+   ``PUL.dmnd`` and the PUL table, and compare the PUL-to-substrate assignments with the current release.
 #. ``dbcan_asmfree``: ``CAZyID_subfam_mapping.tsv`` and ``subfam_EC_mapping.tsv`` are not downloaded by
    ``run_dbcan database`` and are keyed by full CAZy FASTA headers, of which only about 56% match the headers of the
    current ``CAZy.dmnd``. Both tables have to be regenerated from the current CAZy data (TODO for the next database

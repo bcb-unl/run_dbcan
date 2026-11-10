@@ -180,7 +180,10 @@ class CGCFinder:
             return False
 
     def find_cgc_clusters(self):
-        """Identify CGC clusters based on the defined criteria"""
+        """Identify CGC clusters based on the defined criteria.
+
+        Returns the list of clusters (empty when no CGC is found), or None when clustering failed.
+        """
         try:
             if not hasattr(self, 'df') or self.df.empty:
                 logger.error("No GFF data loaded or no signature genes marked.")
@@ -249,7 +252,7 @@ class CGCFinder:
             logger.error(f"Error finding CGC clusters: {str(e)}")
             import traceback
             traceback.print_exc()
-            return []
+            return None
 
     # NEW: safe base-window slicer using positional indices
     def _get_base_cluster_window(self, contig_df: pd.DataFrame, start_index, end_index) -> pd.DataFrame:
@@ -466,6 +469,9 @@ class CGCFinder:
         if not self.mark_signature_genes():
             return False
         clusters = self.find_cgc_clusters()
+        if clusters is None:
+            # a crash is not "no CGCs": write no (empty) result tables and fail the step
+            return False
         self.output_clusters(clusters)
         logger.info("CGCFinder run completed")
         return True

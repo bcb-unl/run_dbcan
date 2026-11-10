@@ -8,6 +8,7 @@ import pytest
 from click.testing import CliRunner
 
 from dbcan.configs.base_config import GeneralConfig
+from dbcan.annotation.signalp_tmhmm import SignalPTMHMMProcessor
 from dbcan.configs.signalp_tmhmm_config import SignalPTMHMMConfig
 from dbcan.core import DbcanStepError, run_dbCAN_topology_annotation
 from dbcan.main import cli
@@ -75,6 +76,55 @@ def test_missing_signalp_raises_but_keeps_deeptmhmm_columns(outdir, tmp_path):
             run_dbCAN_topology_annotation(cfg)
     ov = pd.read_csv(outdir / "overview.tsv", sep="\t", dtype=str).set_index("Gene ID")
     assert ov.loc["p1", "DeepTMHMM"] == "TM"
+
+
+def _fake_runner(outdir, name, content):
+    """Mock tool runner that exits 0 and writes ``name`` with ``content`` (None: writes nothing)."""
+    def run(self, faa):
+        d = outdir / f"{name}.out"
+        d.mkdir(exist_ok=True)
+        if content is not None:
+            (d / name).write_text(content)
+        return d
+    return run
+
+
+SIGNALP_OK = "# ID\tPrediction\np1\tSP\n"
+DEEPTMHMM_OK = ">p1 | TM\nMKVLA\nMMMMM\n"
+
+
+@pytest.mark.parametrize("signalp_out, deeptmhmm_out, failing", [
+    (None, DEEPTMHMM_OK, "SignalP6"),           # SignalP exit 0, no prediction_results.txt
+    ("", DEEPTMHMM_OK, "SignalP6"),             # empty prediction_results.txt
+    ("# ID\tPrediction\n", DEEPTMHMM_OK, "SignalP6"),  # header only
+    (SIGNALP_OK, None, "DeepTMHMM"),            # DeepTMHMM exit 0, no predicted_topologies.3line
+    (SIGNALP_OK, "", "DeepTMHMM"),              # empty predicted_topologies.3line
+])
+def test_missing_or_empty_result_file_raises_and_keeps_other_column(outdir, signalp_out, deeptmhmm_out, failing):
+    cfg = SignalPTMHMMConfig(output_dir=str(outdir), run_signalp=True, run_deeptmhmm=True,
+                             deeptmhmm_dir=str(outdir), deeptmhmm_python=sys.executable)
+    (outdir / "predict.py").write_text("")
+    with patch.object(SignalPTMHMMProcessor, "run_signalp_predict",
+                      _fake_runner(outdir, "prediction_results.txt", signalp_out)), \
+         patch.object(SignalPTMHMMProcessor, "run_deeptmhmm_predict",
+                      _fake_runner(outdir, "predicted_topologies.3line", deeptmhmm_out)):
+        with pytest.raises(DbcanStepError, match=failing):
+            run_dbCAN_topology_annotation(cfg)
+    ov = pd.read_csv(outdir / "overview.tsv", sep="\t", dtype=str).set_index("Gene ID")
+    if failing == "SignalP6":
+        assert ov.loc["p1", "DeepTMHMM"] == "TM"
+    else:
+        assert ov.loc["p1", "SignalP"] == "SP"
+
+
+def test_no_gene_ids_adds_placeholder_columns(tmp_path):
+    (tmp_path / "overview.tsv").write_text("Gene ID\tRecommend Results\n")
+    cfg = SignalPTMHMMConfig(output_dir=str(tmp_path), run_signalp=True)
+    with patch.object(SignalPTMHMMProcessor, "run_signalp_predict") as runner:
+        assert SignalPTMHMMProcessor(cfg).run() == {}
+    runner.assert_not_called()
+    ov = pd.read_csv(tmp_path / "overview.tsv", sep="\t", dtype=str)
+    assert "SignalP" in ov.columns and "DeepTMHMM" not in ov.columns
 
 
 def test_missing_deeptmhmm_dir_raises(outdir):
@@ -173,3 +223,21 @@ def test_threads_reach_gene_prediction(tmp_path):
             "--db_dir", str(tmp_path), "--threads", "2"])
     assert result.exit_code == 0, result.output
     assert inp.call_args.args[0].threads == 2
+
+
+def test_signalp_rerun_does_not_reuse_old_predictions(outdir):
+    """signalp6 exits 0 but writes nothing: the previous run's prediction_results.txt must not be used."""
+    import subprocess
+    old = outdir / "signalp6_out"
+    old.mkdir()
+    (old / "prediction_results.txt").write_text(
+        "# SignalP-6.0\n# ID\tPrediction\tOTHER\tSP(Sec/SPI)\tCS Position\np1\tSP\t0.01\t0.99\tCS pos: 20-21\n")
+    cfg = SignalPTMHMMConfig(output_dir=str(outdir), run_signalp=True)
+
+    def fake(cmd, *a, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with patch("dbcan.annotation.signalp_tmhmm.subprocess.run", side_effect=fake):
+        with pytest.raises(DbcanStepError, match="SignalP6"):
+            run_dbCAN_topology_annotation(cfg)
+    assert not (old / "prediction_results.txt").exists()

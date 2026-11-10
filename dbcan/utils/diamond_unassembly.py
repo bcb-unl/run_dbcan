@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from pathlib import Path
 import gzip
@@ -682,16 +683,29 @@ def Cal_FPKM(paf1, paf2, totalreadnumber, normalized, threads=1):
     return cazyfpkm, readtable, cazy2seqid
 
 def read_EC2substrate_table(args):
+    """EC number -> substrate classes (column 1 of fam-substrate-mapping.tsv), over all families.
+
+    Leading '#' lines (version notes) and the header are skipped; a class cell may list several
+    classes separated by ';' (or ',' in older tables).
+    """
     famEC2substrate = {}
     db_path = Path(args.db)
     map_table = db_path / "fam-substrate-mapping.tsv"
-    map_table_lines = map_table.read_text().splitlines()
-    for line in map_table_lines[1:]:
+    header_seen = False
+    for line in map_table.read_text().splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        if not header_seen:
+            header_seen = True
+            continue
         lines = line.rstrip("\n").split("\t")
-        substrates = [sub_tmp.strip(" ") for sub_tmp in lines[0].strip().replace("and", "").split(',')]
-        famEC2substrate.setdefault(lines[-1], []).extend(substrates)
+        ec = lines[-1].strip()
+        if not ec or ec == "-":
+            continue
+        substrates = [s.strip() for s in re.split(r"[;,]|\band\b", lines[0]) if s.strip() and s.strip() != "-"]
+        famEC2substrate.setdefault(ec, []).extend(substrates)
     for fam in famEC2substrate:
-        famEC2substrate[fam] = list(set(famEC2substrate[fam]))
+        famEC2substrate[fam] = sorted(set(famEC2substrate[fam]))
     return famEC2substrate
 
 def read_CAZyID2subfam_table(args):

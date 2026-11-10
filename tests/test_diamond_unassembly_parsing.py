@@ -75,3 +75,18 @@ def test_count_reads_fastq_gz_and_fasta(tmp_path):
     fa.write_text(">a\nACGT\n>b\nACGT\n>c\nA\n")
     assert get_count_reads(str(fq)) == 2.0
     assert get_count_reads(str(fa)) == 3.0
+
+
+def test_ec_substrate_table_skips_version_line_and_splits_classes(tmp_path):
+    from types import SimpleNamespace
+    from dbcan.utils.diamond_unassembly import read_EC2substrate_table
+    (tmp_path / "fam-substrate-mapping.tsv").write_text(
+        "# fam-substrate-mapping version 2026-11-10 | note\n"
+        "Substrate_high_level\tSubstrate_curated\tFamily\tName\tEC_Number\n"
+        "fructan;sucrose\tsucrose; fructans\tGH32\tinvertase\t3.2.1.26\n"
+        "sucrose\tsucrose\tGH100\tinvertase\t3.2.1.26\n"
+        "galactosaminogalactan\tPel\tCE21\tdeacetylase\t3.1.1.58\n"
+        "pectin\tRG-I\tCBM107\tbinds pectin\t\n"
+    )
+    t = read_EC2substrate_table(SimpleNamespace(db=str(tmp_path)))
+    assert t == {"3.2.1.26": ["fructan", "sucrose"], "3.1.1.58": ["galactosaminogalactan"]}
