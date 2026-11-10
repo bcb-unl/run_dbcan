@@ -138,6 +138,8 @@ Unreleased
    lacks required columns, fails the step (non-zero exit) instead of being skipped; empty tables are still accepted.
 #. ``gff_process`` reads a gzipped ``--input_gff`` (``.gz``) for every ``--gff_type``, like the gene/protein match
    check; before, a ``.gz`` GFF passed the check and failed only after the signature searches.
+#. ``cgc_finder``: an error while finding CGCs fails the step (non-zero exit) instead of writing empty result tables
+   that look like "no CGCs found"; a run that finds no CGC still writes the empty tables and succeeds.
 
 .. rubric:: Known issues / to test
 
