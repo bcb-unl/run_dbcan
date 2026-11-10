@@ -358,7 +358,8 @@ class SignalPTMHMMProcessor:
         df = self.load_overview()
         gene_ids = self.collect_all_gene_ids(df)
         if not gene_ids:
-            logger.info("No gene IDs to process for topology annotation")
+            logger.info("No gene IDs to process for topology annotation; adding empty columns only.")
+            self.update_overview_with_topology({}, {})
             return {}
 
         fasta = self.extract_fasta(gene_ids)
@@ -376,14 +377,20 @@ class SignalPTMHMMProcessor:
             signalp_out_dir = self.run_signalp_predict(fasta)
             if signalp_out_dir:
                 signalp_results = self.parse_signalp_results(signalp_out_dir)
-            else:
+                if not signalp_results:
+                    # Exit 0 but no (or an empty) prediction_results.txt for a non-empty FASTA.
+                    logger.error("SignalP6 wrote no predictions to %s", signalp_out_dir / C.SIGNALP_RESULT_TSV)
+            if not signalp_results:
                 failed.append("SignalP6")
 
         if self.run_deeptmhmm:
             deeptmhmm_out_dir = self.run_deeptmhmm_predict(fasta)
             if deeptmhmm_out_dir:
                 deeptmhmm_results = self.parse_deeptmhmm_results(deeptmhmm_out_dir)
-            else:
+                if not deeptmhmm_results:
+                    # Exit 0 but no (or an empty) predicted_topologies.3line for a non-empty FASTA.
+                    logger.error("DeepTMHMM wrote no predictions to %s", deeptmhmm_out_dir / C.DEEPTMHMM_RESULT_3LINE)
+            if not deeptmhmm_results:
                 failed.append("DeepTMHMM")
 
         # Write the columns of the tools that worked even if another one failed.
