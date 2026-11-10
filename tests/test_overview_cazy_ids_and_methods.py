@@ -213,3 +213,66 @@ def test_cazyme_annotation_fails_on_unreadable_selected_result(tmp_path):
                 cfg,
                 ("hmm",),
             )
+
+
+def test_unselected_methods_results_of_earlier_run_are_replaced(tmp_path, caplog):
+    """Only hmm is selected now: diamond.out and the dbCAN-sub tables of an earlier full run are
+    replaced by empty tables, since substrate prediction and dbcan_utils read them directly."""
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    import dbcan.core as core
+
+    _write_all_results(tmp_path)
+    pd.DataFrame([["GH5_e12.hmm", 300, "p1", 400, 1e-50, 1, 290, 10, 300, 0.96, "dbCAN-sub"]],
+                 columns=HMM_COLS).to_csv(tmp_path / "dbCANsub_hmm_raw.tsv", sep="\t", index=False)
+    hmm_table = (tmp_path / "dbCAN_hmm_results.tsv").read_text()
+    caplog.set_level(logging.INFO)
+    with patch.object(core, "run_dbCAN_hmmer",
+                      side_effect=lambda c: (tmp_path / "dbCAN_hmm_results.tsv").write_text(hmm_table)):
+        core.run_dbCAN_CAZyme_annotation(
+            SimpleNamespace(output_dir=str(tmp_path), output_file="diamond.out", column_names=None),
+            SimpleNamespace(output_dir=str(tmp_path), output_file="dbCAN_hmm_results.tsv"),
+            SimpleNamespace(output_dir=str(tmp_path)),
+            OverviewGeneratorConfig(output_dir=str(tmp_path)),
+            ("hmm",),
+        )
+    for name in ("diamond.out", "dbCANsub_hmm_results.tsv", "dbCANsub_hmm_raw.tsv"):
+        assert (tmp_path / name).is_file()
+        assert len(read_tsv(tmp_path / name)) == 0, name
+        assert f"Replacing {name} with an empty table" in caplog.text
+    assert list(read_tsv(tmp_path / "dbCANsub_hmm_results.tsv").columns) == SUB_COLS
+    assert len(read_tsv(tmp_path / "dbCAN_hmm_results.tsv")) == 1   # the selected method's result
+    # nothing stale left for the overview to warn about
+    assert "Ignoring" not in caplog.text
+
+
+def test_unselected_placeholder_is_not_reported_as_earlier_run(tmp_path, caplog):
+    """A header-only table (placeholder of an earlier run with the same --methods) is not logged as stale."""
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    import dbcan.core as core
+
+    _write_all_results(tmp_path)
+    pd.DataFrame(columns=D.CAZY_COLUMN_NAMES).to_csv(tmp_path / "diamond.out", sep="\t", index=False)
+    hmm_table = (tmp_path / "dbCAN_hmm_results.tsv").read_text()
+    sub_table = (tmp_path / "dbCANsub_hmm_results.tsv").read_text()
+
+    def fake_sub(_cfg):
+        (tmp_path / "dbCANsub_hmm_results.tsv").write_text(sub_table)
+
+    caplog.set_level(logging.INFO)
+    with patch.object(core, "run_dbCAN_hmmer",
+                      side_effect=lambda c: (tmp_path / "dbCAN_hmm_results.tsv").write_text(hmm_table)), \
+         patch.object(core, "run_dbCAN_dbcansub_hmmer", side_effect=fake_sub):
+        core.run_dbCAN_CAZyme_annotation(
+            SimpleNamespace(output_dir=str(tmp_path), output_file="diamond.out", column_names=None),
+            SimpleNamespace(output_dir=str(tmp_path), output_file="dbCAN_hmm_results.tsv"),
+            SimpleNamespace(output_dir=str(tmp_path)),
+            OverviewGeneratorConfig(output_dir=str(tmp_path)),
+            ("hmm", "dbCANsub"),
+        )
+    assert "Replacing" not in caplog.text
+    assert len(read_tsv(tmp_path / "diamond.out")) == 0
+    # selected methods' tables are this run's
+    assert len(read_tsv(tmp_path / "dbCANsub_hmm_results.tsv")) == 1
+    assert read_tsv(tmp_path / "overview.tsv").set_index("Gene ID").loc["p1", "#ofTools"] == 2

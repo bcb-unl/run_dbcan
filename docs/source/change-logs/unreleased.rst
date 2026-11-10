@@ -140,6 +140,10 @@ Unreleased
    check; before, a ``.gz`` GFF passed the check and failed only after the signature searches.
 #. ``cgc_finder``: an error while finding CGCs fails the step (non-zero exit) instead of writing empty result tables
    that look like "no CGCs found"; a run that finds no CGC still writes the empty tables and succeeds.
+#. ``CAZyme_annotation`` (also inside ``easy_CGC``/``easy_substrate``) replaces the result file of a method not in
+   ``--methods`` that an earlier run left in ``--output_dir`` (``diamond.out``, ``dbCAN_hmm_results.tsv``,
+   ``dbCANsub_hmm_results.tsv``/``_raw.tsv``) with an empty table, so substrate prediction and ``dbcan_utils`` no
+   longer read old dbCAN-sub hits.
 
 .. rubric:: Known issues / to test
 

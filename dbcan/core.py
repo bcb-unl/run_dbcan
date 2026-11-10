@@ -128,6 +128,24 @@ def _remove_stale_results(paths):
             logging.debug(f"Removed {p} of an earlier run before re-running its method")
 
 
+def _remove_unselected_results(paths):
+    """Delete result files of methods not selected now, so that the empty placeholder written
+    next replaces them: substrate prediction and dbcan_utils read these files directly, and
+    must not take an earlier run's hits (made with other --methods) as this run's."""
+    import logging
+    from pathlib import Path
+    for p in paths:
+        p = Path(p)
+        if not p.is_file():
+            continue
+        with open(p, errors="replace") as fh:
+            fh.readline()
+            had_rows = any(line.strip() for line in fh)
+        p.unlink()
+        if had_rows:   # a header-only table is already the placeholder of an unselected method
+            logging.info(f"Replacing {p.name} with an empty table: it is from an earlier run with other --methods")
+
+
 def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, overviewconfig, methods):
     import logging
     from pathlib import Path
@@ -145,6 +163,15 @@ def run_dbCAN_CAZyme_annotation(diamondconfig, dbcanconfig, dbcansubconfig, over
         stale += [Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RESULT_FILE,
                   Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RAW_FILE]
     _remove_stale_results(stale)
+    unselected = []
+    if 'diamond' not in methods:
+        unselected.append(Path(diamondconfig.output_dir) / diamondconfig.output_file)
+    if 'hmm' not in methods:
+        unselected.append(Path(dbcanconfig.output_dir) / dbcanconfig.output_file)
+    if 'dbCANsub' not in methods:
+        unselected += [Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RESULT_FILE,
+                       Path(dbcansubconfig.output_dir) / PS.DBCAN_SUB_HMM_RAW_FILE]
+    _remove_unselected_results(unselected)
     if 'diamond' in methods:
         logging.info("DIAMOND CAZy...")
         try:
