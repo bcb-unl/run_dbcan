@@ -147,10 +147,14 @@ Unreleased
 
 .. rubric:: Known issues / to test
 
-#. ``dbCAN.hmm`` V15 merges the ``GT2_*`` models into one ``GT2`` profile (881 profiles). This is kept as is for
-   now; its effect on GT2 sensitivity (fewer GT2 calls than with the split models were seen on test genomes) is to
-   be tested before the next release. The fungal taxon profile on the dev branch is locked to the previous
-   ``dbCAN.hmm`` and has to be recalibrated for V15.
+#. ``dbCAN.hmm`` V15 merges the nine ``GT2_*`` models into one ``GT2`` profile (227 positions; 881 profiles). Tested
+   on all 484,389 CAZy GT2 sequences of ``CAZy.dmnd`` with the run_dbcan filter (i-Evalue < 1e-15, coverage > 0.35):
+   V15 finds GT2 in 61.0% of them, the previous nine models in 85.0%; in ``CAZyme_annotation --methods hmm`` on
+   20,000 random CAZy GT2 sequences GT2 is called for 60.1% (V15) vs 84.2% (previous models). The missed sequences
+   fail the E-value, not the coverage (median best i-Evalue about 1e-11 with V15); at 1e-10 about 62% of them would
+   be found. GT2 needs either the split models back or a GT2-specific cut-off (checked against the other GT-A
+   families for false positives) before the next release. The fungal taxon profile on the dev branch is locked to
+   the previous ``dbCAN.hmm`` and has to be recalibrated for V15.
 #. ``fam-substrate-mapping.tsv``: for an incomplete EC (``a.b.c.-``) with several substrates under the same family
    (25 keys in the 2026-11-10 table, e.g. GH3 + 3.2.1.-) the last substrate alphabetically is used, as in 5.2.9. A
    per-subfamily substrate table (``dbCAN-sub-substrate.tsv``) in the database directory replaces this lookup. Two
