@@ -145,6 +145,12 @@ Unreleased
    activities CAZy lists were left out of the table because of this rule (GH172 alpha-D-fructofuranosidase and
    PL38 exo-glucuronan lyase, both 3.2.1.-/4.2.2.-); their text is kept on the sibling row.
 #. ``dbCAN-sub`` profiles of the old GT families (GT1-GT118) have no substrate rows (only GT119-GT140 do).
+#. dbCAN-PUL has to be rebuilt with this version before the next database release: the PUL gene annotations
+   (``dbCAN-PUL.xlsx`` / ``PUL.dmnd`` and the per-PUL GFF/CGC files) were made with 5.2.9 rules, and this version
+   changes CGC membership (final Gene Type per gene, CAZyme wins over full-length labels, best full-length label by
+   bitscore, sulfatase subject coverage), the TC family in ``PUL_blast.out`` query IDs (cut to three levels) and the
+   substrate mapping. Re-run CAZyme annotation, ``gff_process`` and ``cgc_finder`` on every PUL, rebuild
+   ``PUL.dmnd`` and the PUL table, and compare the PUL-to-substrate assignments with the current release.
 #. ``dbcan_asmfree``: ``CAZyID_subfam_mapping.tsv`` and ``subfam_EC_mapping.tsv`` are not downloaded by
    ``run_dbcan database`` and are keyed by full CAZy FASTA headers, of which only about 56% match the headers of the
    current ``CAZy.dmnd``. Both tables have to be regenerated from the current CAZy data (TODO for the next database
