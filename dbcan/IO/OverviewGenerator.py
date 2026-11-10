@@ -152,6 +152,12 @@ class OverviewGenerator:
             if not path.exists():
                 logger.warning(f"{key} results not found at {path}")
                 continue
+            if path.stat().st_size == 0:
+                # Zero-byte table of a method that found nothing: no hits to merge.
+                logger.warning(f"{key} results file {path} is empty; no {key} hits to merge")
+                continue
+            # A selected method's table that cannot be read, or that has rows but lacks required
+            # columns, raises: the overview step must fail rather than silently drop its hits.
             try:
                 # Use chunked reading for large files (>100MB)
                 file_size_mb = path.stat().st_size / (1024 * 1024)
@@ -172,11 +178,15 @@ class OverviewGenerator:
                         df[O.DBCAN_SUB_SUBSTRATE_COLUMN] = "-"
                         missing = [m for m in missing if m != O.DBCAN_SUB_SUBSTRATE_COLUMN]
                     if missing:
-                        logger.warning(
+                        msg = (
                             f"Missing columns in {path}. Expected subset: {required}. "
-                            f"Found: {df.columns.tolist()}. Missing: {missing}. Skipping dataset."
+                            f"Found: {df.columns.tolist()}. Missing: {missing}."
                         )
-                        continue
+                        if df.empty:
+                            # Header-only table: skipping it loses no hits.
+                            logger.warning(f"{msg} The table has no rows; skipping dataset.")
+                            continue
+                        raise ValueError(msg)
 
                 df = df[self.column_names_map[key]]
 
@@ -195,7 +205,7 @@ class OverviewGenerator:
                 data[key] = df
                 logger.info(f"Loaded {len(df)} rows from {key} results")
             except Exception as e:
-                logger.error(f"Error loading {key} results: {e}")
+                raise RuntimeError(f"Error loading {key} results from {path}: {e}") from e
         return data
 
     # ---------------------------

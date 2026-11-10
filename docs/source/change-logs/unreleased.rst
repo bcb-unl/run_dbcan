@@ -134,6 +134,8 @@ Unreleased
    splits a class cell on ``;`` as well as ``,``.
 #. SignalP6 or DeepTMHMM that exits 0 but writes no (or an empty) result file is a failed step (non-zero exit; the
    other tool's column is still written); an ``overview.tsv`` without genes gets the ``-`` columns of the requested tools.
+#. CAZyme overview: a result table of a method selected with ``--methods`` that cannot be read, or that has rows but
+   lacks required columns, fails the step (non-zero exit) instead of being skipped; empty tables are still accepted.
 
 .. rubric:: Known issues / to test
 
