@@ -14,6 +14,7 @@ PLOTS_DIR = "plots"
 CGC_EXPRESSION_PLOTS_DIR = "CGC_expression"
 DEG_VOLCANO_PDF = "DEG_volcano.pdf"
 DEG_CGC_BAR_PDF = "DEG_CGC_bar.pdf"
+CGC_EXPRESSION_HEATMAP_PDF = "CGC_expression_heatmap.pdf"
 
 DEFAULT_ALPHA = 0.05
 DEFAULT_LFC_THRESHOLD = 1.0

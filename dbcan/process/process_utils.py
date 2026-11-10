@@ -4,12 +4,14 @@ from typing import Dict, Iterable, Set, List, Optional
 import time
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 
 logger = logging.getLogger(__name__)
 import dbcan.constants.process_utils_constants as PU
 import dbcan.constants.base_constants as B
 from dbcan.process.domain_resolution import hit_from_mapping, resolve_domain_hits
+import dbcan.constants.diamond_constants as D
 
 
 def _is_nonempty_file(path: Path) -> bool:
@@ -19,53 +21,13 @@ def _to_path(p) -> Path:
     return p if isinstance(p, Path) else Path(p)
 
 
-def alignment_details_path(output_file) -> Path:
-    """Sidecar path for the optional match-state diagnostics of a result file.
-
-    ``dbCAN_hmm_results.tsv`` -> ``dbCAN_hmm_alignment_details.tsv``.
-    """
-    out_path = _to_path(output_file)
-    stem = out_path.stem
-    for suffix in ("_results", "_raw"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    return out_path.with_name(f"{stem}_alignment_details{out_path.suffix}")
-
-
 def _write_public_results(df: pd.DataFrame, out_path: Path) -> None:
-    """Write a HMM result table using the historical public column schema.
-
-    ``Matched Intervals`` is internal resolution metadata, never part of the
-    public schema: the same columns must appear whether the run used matched or
-    legacy overlap and whether the result is empty or not.
-    """
-    public = df.drop(columns=[PU.MATCHED_INTERVALS_COLUMN], errors="ignore")
+    """Write a HMM result table with the ``HMMER_COLUMN_NAMES`` columns, also when it is empty."""
+    public = df.copy()
     for col in PU.HMMER_COLUMN_NAMES:
         if col not in public.columns:
             public[col] = pd.Series(dtype=object)
-    public = public[[c for c in PU.HMMER_COLUMN_NAMES if c in public.columns]]
-    public.to_csv(out_path, index=False, sep='\t')
-
-
-def _write_alignment_details(df: pd.DataFrame, out_path: Path) -> None:
-    """Write the optional match-state diagnostics sidecar.
-
-    It carries the resolved domain identity (alignment span *and* matched
-    intervals) so downstream consumers such as the overview generator do not
-    have to re-infer the architecture from the continuous span alone.  Domain
-    bit scores are not currently carried on the internal hit row, so the
-    sidecar reports i-Evalue and coverage only.
-    """
-    details = pd.DataFrame(columns=PU.ALIGNMENT_DETAILS_COLUMNS)
-    if not df.empty:
-        available = [c for c in PU.ALIGNMENT_DETAILS_COLUMNS if c in df.columns]
-        details = df[available].copy()
-        for col in PU.ALIGNMENT_DETAILS_COLUMNS:
-            if col not in details.columns:
-                details[col] = ""
-        details = details[PU.ALIGNMENT_DETAILS_COLUMNS]
-    details.to_csv(out_path, index=False, sep='\t')
+    public[PU.HMMER_COLUMN_NAMES].to_csv(out_path, index=False, sep='\t')
 
 
 def process_results(
@@ -73,26 +35,13 @@ def process_results(
     output_file,
     temp_hits_file: Optional[Path] = None,
     coexistence_pairs: Optional[Set[frozenset[str]]] = None,
-    matched_overlap: bool = False,
-    write_alignment_details: bool = True,
 ) -> None:
     """Write HMMER hits to disk and filter highly-overlapping domains (per target).
 
     Accepts either an in-memory iterable of hit rows or a temporary hits TSV file.
-    When ``matched_overlap`` is True the hit rows carry an extra matched-intervals
-    column that drives match-state-aware overlap resolution.  That column is
-    internal: it is used for resolution and mirrored into the optional
-    ``*_alignment_details.tsv`` sidecar, but never written to the public result
-    table, whose schema stays ``HMMER_COLUMN_NAMES`` in every mode.
     """
     out_path = _to_path(output_file)
-    # The matched-region mode appends one extra internal column to every hit row.
-    column_names = (
-        PU.HMMER_COLUMN_NAMES + [PU.MATCHED_INTERVALS_COLUMN]
-        if matched_overlap
-        else PU.HMMER_COLUMN_NAMES
-    )
-    details_path = alignment_details_path(out_path) if (matched_overlap and write_alignment_details) else None
+    column_names = PU.HMMER_COLUMN_NAMES
     df = pd.DataFrame(columns=column_names)
 
     try:
@@ -105,9 +54,8 @@ def process_results(
             if file_size_mb > 100:
                 logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading from {temp_hits_file}")
                 chunks = []
-                for chunk in pd.read_csv(
+                for chunk in read_tsv(
                     temp_hits_file,
-                    sep='\t',
                     header=None,
                     names=column_names,
                     chunksize=100000,
@@ -116,7 +64,7 @@ def process_results(
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(temp_hits_file, sep='\t', header=None, names=column_names)
+                df = read_tsv(temp_hits_file, header=None, names=column_names)
                 total_rows = len(df)
         elif results:
             # results provided in-memory
@@ -132,8 +80,6 @@ def process_results(
 
         if df.empty:
             _write_public_results(df, out_path)
-            if details_path is not None:
-                _write_alignment_details(df, details_path)
             logger.info(f"process_results: no hits after loading/cleaning, wrote empty file to {out_path}")
             return
 
@@ -149,9 +95,7 @@ def process_results(
         df.sort_values(by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN], inplace=True)
 
         filter_start = time.time()
-        df_filtered = filter_overlaps(
-            df, coexistence_pairs=coexistence_pairs, matched_overlap=matched_overlap
-        )
+        df_filtered = filter_overlaps(df, coexistence_pairs=coexistence_pairs)
         filter_elapsed = time.time() - filter_start
         logger.info(
             f"process_results: filtered overlaps from {len(df)} to {len(df_filtered)} rows "
@@ -160,15 +104,10 @@ def process_results(
 
         _write_public_results(df_filtered, out_path)
         logger.info(f"process_results: wrote filtered results to {out_path}")
-        if details_path is not None:
-            _write_alignment_details(df_filtered, details_path)
-            logger.info(f"process_results: wrote alignment details to {details_path}")
     except Exception as e:
         logger.error(f"Error in process_results: {e}", exc_info=True)
         # write empty as fallback, using the same public schema as a real result
         _write_public_results(pd.DataFrame(columns=PU.HMMER_COLUMN_NAMES), out_path)
-        if details_path is not None:
-            _write_alignment_details(pd.DataFrame(columns=PU.ALIGNMENT_DETAILS_COLUMNS), details_path)
     finally:
         if temp_hits_file:
             try:
@@ -185,7 +124,6 @@ _HMMER_HIT_COLUMNS = {
     "hmm_to": PU.HMM_TO_COLUMN,
     "ali_from": PU.TARGET_FROM_COLUMN,
     "ali_to": PU.TARGET_TO_COLUMN,
-    "matched_intervals": PU.MATCHED_INTERVALS_COLUMN,
     "i_evalue": PU.IEVALUE_COLUMN,
     "coverage": PU.COVERAGE_COLUMN,
 }
@@ -195,7 +133,6 @@ def filter_overlaps(
     df: pd.DataFrame,
     overlap_ratio_threshold: float = PU.OVERLAP_RATIO_THRESHOLD,
     coexistence_pairs: Optional[Set[frozenset[str]]] = None,
-    matched_overlap: bool = False,
 ) -> pd.DataFrame:
     """Within each Target Name, resolve competing HMM domains.
 
@@ -204,15 +141,8 @@ def filter_overlaps(
     conflict/coexistence/ranking policy lives there and is shared with every
     other consumer.
 
-    When ``matched_overlap`` is True and the internal ``Matched Intervals``
-    column is present, overlap and domain length are measured on the
-    match-state intervals rather than on the continuous alignment span.  That
-    stops a long catalytic domain from "covering" a short accessory domain
-    (e.g. a CBM) that only sits inside the long domain's insert-state region.
-    With ``matched_overlap`` False the historical ali-span arithmetic is used
-    verbatim, for reproducibility.
-
-    Resolution is order-independent: hits form a conflict graph and each
+    Overlap is measured on the alignment span (``Target From``-``Target To``)
+    with the 5.2.9 arithmetic.  Resolution is order-independent: hits form a conflict graph and each
     connected component is resolved best-evidence first, so the outcome no
     longer depends on which hit happened to be retained most recently.
     """
@@ -240,14 +170,6 @@ def filter_overlaps(
         f"(avg {avg_per_target:.1f} hits/target)"
     )
 
-    # Matched-region mode only activates when the internal column was emitted.
-    use_matched = bool(matched_overlap) and PU.MATCHED_INTERVALS_COLUMN in df.columns
-    if matched_overlap and not use_matched:
-        logger.warning(
-            "filter_overlaps: matched_overlap requested but '%s' column absent; "
-            "falling back to ali-span overlap",
-            PU.MATCHED_INTERVALS_COLUMN,
-        )
     # The coexistence allowlist is keyed on base HMM families, so it is only
     # meaningful when the table actually carries model names.
     pairs = coexistence_pairs if (coexistence_pairs and PU.HMM_NAME_COLUMN in df.columns) else None
@@ -268,7 +190,6 @@ def filter_overlaps(
             hits,
             overlap_ratio_threshold=overlap_ratio_threshold,
             coexistence_pairs=pairs,
-            use_matched=use_matched,
         )
         kept_rows.extend(group.iloc[hit.index] for hit in resolved)
 
@@ -284,23 +205,126 @@ def filter_overlaps(
     return pd.DataFrame(kept_rows, columns=df.columns)
 
 
-#: CGC signature sources whose domains were already resolved by the tool that
-#: understands the model semantics (pyhmmer + process_results, which applies
-#: match-state-aware resolution). Re-filtering them here with the ali-span rule
-#: would undo that resolution, so they are passed through untouched.
-CGC_SIG_PRERESOLVED_SOURCES = frozenset({"STP", "TF_fungi"})
+#: CGC signature sources whose domains were already resolved per HMM library by
+#: pyHMMER + process_results; they are passed through untouched.
+CGC_SIG_PRERESOLVED_SOURCES = PU.HMM_SIGNATURE_SOURCES
+
+def _numeric(df: pd.DataFrame, col: str, fill: float) -> pd.Series:
+    """Numeric column (``fill`` where missing or not a number; all ``fill`` if the column is absent)."""
+    if col not in df.columns:
+        return pd.Series(fill, index=df.index, dtype=float)
+    return pd.to_numeric(df[col], errors='coerce').fillna(fill)
+
+
+def _best_hit_per_protein(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep one DIAMOND hit per protein: highest bit score, then lowest E-value, then highest coverage.
+
+    DIAMOND signature databases (TCDB, PRODORIC TF, SulfAtlas, MEROPS) hold full-length
+    proteins (MEROPS: peptidase units), so a hit is a protein-level label, not a domain; its
+    query interval is an alignment span and is never compared with other annotations by
+    coordinates. Within one database the bit score and the E-value rank hits the same way, but
+    the bit score still separates hits whose E-value is reported as 0. Files written before the
+    bit score was added (no ``Bitscore`` column) are ranked by E-value and coverage as before.
+    """
+    if df.empty:
+        return df
+    ranked = df.assign(
+        _bits=_numeric(df, PU.SIGNATURE_BITSCORE_COLUMN, float('-inf')),
+        _ev=_numeric(df, PU.IEVALUE_COLUMN, float('inf')),
+        _cov=_numeric(df, PU.COVERAGE_COLUMN, 0.0),
+    ).sort_values([PU.TARGET_NAME_COLUMN, '_bits', '_ev', '_cov'], ascending=[True, False, True, False],
+                  kind='mergesort')
+    return ranked.drop_duplicates(subset=[PU.TARGET_NAME_COLUMN], keep='first').drop(columns=['_bits', '_ev', '_cov'])
+
+
+def best_full_length_labels(df: pd.DataFrame, protein_col: str = PU.TARGET_NAME_COLUMN) -> pd.DataFrame:
+    """Keep the one best full-length label (TC, TF DIAMOND, sulfatase) of each protein.
+
+    ``df`` holds full-length database rows (``Source`` in FULL_LENGTH_SIGNATURE_SOURCES) with the
+    total_cgc_info.tsv columns. These databases hold whole proteins, so their hits cannot be
+    placed at domain level and several of them on one protein are competing names for the same
+    protein. They are ranked by:
+
+    1. DIAMOND bit score (higher first). For one query protein the bit score does not depend on
+       the size of the database searched, unlike the E-value, and ranking by bit score is the
+       same as ranking by the blast score ratio (bit score / self-score of the query);
+    2. min(query coverage, subject coverage) of the alignment (higher first);
+    3. E-value (lower first);
+    4. FULL_LENGTH_SOURCE_PRIORITY (TC > TF_prok > Sulfatase).
+
+    A protein with a row that has no bit score (tables written before the column existed) keeps
+    all of its rows: they cannot be compared.
+    """
+    if df.empty:
+        return df
+    bits = pd.to_numeric(df[PU.SIGNATURE_BITSCORE_COLUMN], errors='coerce') \
+        if PU.SIGNATURE_BITSCORE_COLUMN in df.columns else pd.Series(float('nan'), index=df.index)
+    multi = df[protein_col].duplicated(keep=False)
+    unscored = set(df.loc[bits.isna() & multi, protein_col])
+    if unscored:
+        logger.warning("%d protein(s) have a full-length label without a bit score; all of their "
+                       "full-length labels are kept", len(unscored))
+
+    def _cov(start_col, end_col, len_col):
+        span = (_numeric(df, end_col, 0.0) - _numeric(df, start_col, 0.0)).abs() + 1
+        length = _numeric(df, len_col, 0.0)
+        return (span / length.where(length > 0)).clip(upper=1.0).fillna(0.0)
+
+    min_cov = pd.concat([
+        _cov(PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN, PU.TARGET_LENGTH_COLUMN),        # query
+        _cov(PU.ANNOTATE_FROM_COLUMN, PU.ANNOTATE_TO_COLUMN, PU.ANNOTATE_LENGTH_COLUMN),  # subject
+    ], axis=1).min(axis=1)
+    order = {s: i for i, s in enumerate(PU.FULL_LENGTH_SOURCE_PRIORITY)}
+    prio = df[PU.SIGNATURE_SOURCE_COLUMN].map(order).fillna(len(order)) \
+        if PU.SIGNATURE_SOURCE_COLUMN in df.columns else pd.Series(len(order), index=df.index)
+    ranked = df.assign(
+        _bits=bits.fillna(float('-inf')), _mincov=min_cov,
+        _ev=_numeric(df, PU.IEVALUE_COLUMN, float('inf')), _prio=prio,
+    ).sort_values([protein_col, '_bits', '_mincov', '_ev', '_prio'],
+                  ascending=[True, False, False, True, True], kind='mergesort')
+    scored = ~ranked[protein_col].isin(unscored)
+    best = ranked[scored].drop_duplicates(subset=[protein_col], keep='first')
+    keep_idx = best.index.union(ranked.index[~scored])
+    return df.loc[df.index.isin(keep_idx)]
+
+
+def _drop_non_peptidase_units(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only MEROPS peptidase units in the Peptidase signature.
+
+    peptidase_db.dmnd is built from MEROPS pepunit.lib, which also contains peptidase
+    *inhibitor* units (families I01..I99, e.g. I04 serpins, I39 alpha-2-macroglobulins)
+    and a few entries whose family field is malformed (an organism name). Neither is a
+    peptidase, so they are not reported as ``Peptidase|...``; they remain visible in the
+    raw diamond.out.peptidase file.
+    """
+    if df.empty:
+        return df
+    ids = df[PU.ANNOTATE_NAME_COLUMN].astype(str)
+    keep = ids.str.match(PU.MEROPS_PEPTIDASE_ID_PATTERN)
+    dropped = df.loc[~keep, PU.ANNOTATE_NAME_COLUMN]
+    if not dropped.empty:
+        n_inh = int(dropped.astype(str).str.match(PU.MEROPS_INHIBITOR_ID_PATTERN).sum())
+        logger.info(
+            f"Peptidase: excluded {len(dropped)} hits that are not peptidase units "
+            f"({n_inh} MEROPS inhibitor units, {len(dropped) - n_inh} unclassified entries)"
+        )
+    return df.loc[keep]
 
 
 def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, sulfatase_config, peptidase_config) -> None:
-    """Combine TCDB, TF, STP, sulfatase and peptidase results into one file.
+    """Combine TC, TF, STP, sulfatase and peptidase results into total_cgc_info.tsv.
 
-    Overlap resolution here is *source-aware*. CGC signature classes (CAZyme,
-    TC, TF, STP, sulfatase, peptidase) are not mutually exclusive — a gene can
-    legitimately carry an STP domain and a TF domain, or a transporter and a
-    peptidase — so a generic HMM family-competition rule must not be applied
-    across them. Each source is therefore resolved on its own (DIAMOND-derived
-    sources only; HMM-derived sources arrive already resolved) and the accepted
-    annotations are simply combined afterwards.
+    Signature classes are not mutually exclusive: one protein can carry a transporter
+    label and STP domains, or a TF label and STP domains. Annotations from different
+    sources are therefore never filtered against each other (this used to compare
+    DIAMOND alignment spans with Pfam domain coordinates, and DIAMOND E-values with
+    HMMER i-Evalues, and dropped e.g. STP SBP_bac_1/TOBE domains of ABC transporter
+    proteins).
+
+    - DIAMOND sources (TC, TF_prok, Sulfatase, Peptidase) are protein-level labels: one
+      best hit per protein, no coordinate-based overlap handling.
+    - HMM sources (STP, TF_fungi) are domain-level and were already overlap-resolved
+      within their own library by the pyHMMER step.
     """
     try:
         columns = PU.CGC_SIG_RESULT_COLUMN
@@ -333,12 +357,17 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
                 if file_size_mb > 100:
                     logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for {name}")
                     chunks = []
-                    for chunk in pd.read_csv(fpath, sep='\t', header=0, chunksize=100000):
+                    for chunk in read_tsv(fpath, header=0, chunksize=100000):
                         chunks.append(chunk)
                     df = pd.concat(chunks, ignore_index=True)
                 else:
-                    df = pd.read_csv(fpath, sep='\t', header=0)
-                
+                    df = read_tsv(fpath, header=0)
+
+                # DIAMOND bit score (by name; files written before it was added have none)
+                bits = None
+                if D.DIAMOND_BITSCORE_COLUMN in df.columns:
+                    bits = pd.to_numeric(df.pop(D.DIAMOND_BITSCORE_COLUMN), errors='coerce')
+
                 # align columns
                 missing = [c for c in columns if c not in df.columns]
                 if missing:
@@ -362,28 +391,32 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
 
                 _TYPE_MAP = {'TF_prok': 'TF', 'TF_fungi': 'TF'}
                 df['Type'] = _TYPE_MAP.get(name, name)
-
-                # Source-aware resolution: within one annotation source only.
-                if name in CGC_SIG_PRERESOLVED_SOURCES:
-                    logger.info(
-                        f"{name} annotations already resolved by their own tool; "
-                        f"skipping the CGC-level overlap filter"
-                    )
-                else:
+                # Source keeps TF DIAMOND (TF_prok) and TF HMM (TF_fungi) apart for the CGC step.
+                df[PU.SIGNATURE_SOURCE_COLUMN] = name
+                df[PU.SIGNATURE_BITSCORE_COLUMN] = bits.reindex(df.index) if bits is not None else float('nan')
+                if name == 'Peptidase':
+                    df = _drop_non_peptidase_units(df)
+                # Source-aware resolution, within one annotation source only:
+                # DIAMOND sources are full-length protein labels (one best hit per protein);
+                # HMM sources (CGC_SIG_PRERESOLVED_SOURCES) were already resolved by pyHMMER.
+                if name in PU.DIAMOND_SIGNATURE_SOURCES:
                     before = len(df)
-                    df = filter_overlaps(df)
+                    df = _best_hit_per_protein(df)
                     if len(df) != before:
-                        logger.info(f"{name}: resolved {before} -> {len(df)} annotations within source")
-
+                        logger.info(f"{name}: kept best hit per protein ({before} -> {len(df)} rows)")
+                elif name in CGC_SIG_PRERESOLVED_SOURCES:
+                    logger.info(f"{name} annotations already resolved by pyHMMER; no CGC-level overlap filter")
                 frames.append(df)
                 logger.info(f"Loaded {len(df)} {name} annotations from {fpath}")
             except Exception as e:
                 logger.error(f"Error reading {name} output file: {e}", exc_info=True)
 
         out_file = out_dir_path / B.GFF_CGC_SIG_FILE
+        # Type (column 11) and Source keep their positions; the bit score is the last column.
+        out_columns = columns + ['Type', PU.SIGNATURE_SOURCE_COLUMN, PU.SIGNATURE_BITSCORE_COLUMN]
         if not frames:
             logger.warning("No valid CGC annotation data found")
-            pd.DataFrame(columns=columns + ['Type']).to_csv(out_file, index=False, sep='\t')
+            pd.DataFrame(columns=out_columns).to_csv(out_file, index=False, sep='\t')
             return
 
         # Optimize DataFrame concatenation for large datasets
@@ -401,14 +434,10 @@ def process_cgc_sig_results(tc_config, tfdiamond_config, tf_config, stp_config, 
         else:
             total_df = pd.concat(frames, ignore_index=True)
 
-        # No cross-source overlap filter here: each source has already been
-        # resolved above, and suppressing a TF because it overlaps an STP (or a
-        # peptidase because it overlaps a transporter) is not biologically
-        # justified. Sorting only, so the combined table stays deterministic.
+        # No cross-source overlap filtering (see docstring); stable order for the GFF step.
         total_df = total_df.sort_values(
-            by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN],
-            kind="stable",
-        )
+            by=[PU.TARGET_NAME_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN, 'Type'], kind='mergesort'
+        )[out_columns]
         total_df.to_csv(out_file, index=False, sep='\t')
         logger.info(f"Saved {len(total_df)} CGC annotations to {out_file}")
     except Exception as e:
@@ -419,11 +448,10 @@ def process_cgc_null_pfam_annotation(Pfam_config) -> None:
     """Post-process PFAM HMM null annotations for CGC pipeline outputs.
 
     The Pfam table is written by ``PyHMMERPfamProcessor`` through
-    :func:`process_results`, so its domains have already been resolved with the
-    match-state-aware rule. This step only normalises columns and ordering; it
-    deliberately does **not** re-run an overlap filter, which would collapse a
-    valid multidomain architecture again using the continuous alignment span.
-    Pfam clan-aware conflict resolution would need clan metadata the repository
+    :func:`process_results`, so its domains have already been resolved (5.2.9 ran
+    the overlap filter a second time here; on a resolved table the conflict-graph
+    resolution keeps every row, so the second pass is gone). This step only
+    normalises columns and ordering. Pfam clan-aware conflict resolution would need clan metadata the repository
     does not ship, so no Pfam-specific competition rule is invented here.
     """
     output_dir = Path(getattr(Pfam_config, 'output_dir', '.'))
@@ -440,11 +468,11 @@ def process_cgc_null_pfam_annotation(Pfam_config) -> None:
         if file_size_mb > 100:
             logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading")
             chunks = []
-            for chunk in pd.read_csv(pfam_hmm_output, sep='\t', header=0, chunksize=100000):
+            for chunk in read_tsv(pfam_hmm_output, header=0, chunksize=100000):
                 chunks.append(chunk)
             df = pd.concat(chunks, ignore_index=True)
         else:
-            df = pd.read_csv(pfam_hmm_output, sep='\t', header=0)
+            df = read_tsv(pfam_hmm_output, header=0)
         
         # align to HMMER_COLUMN_NAMES
         missing = [c for c in PU.HMMER_COLUMN_NAMES if c not in df.columns]
@@ -539,7 +567,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
     file_size_mb = pfam_path.stat().st_size / (1024 * 1024)
     if file_size_mb > 100:
         logger.info(f"Large file detected ({file_size_mb:.1f}MB), using chunked reading for mapping")
-        for chunk in pd.read_csv(pfam_path, sep='\t', header=0, chunksize=100000):
+        for chunk in read_tsv(pfam_path, header=0, chunksize=100000):
             if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(chunk.columns):
                 logger.warning(f"PFAM result missing required columns in {pfam_path}")
                 return
@@ -548,7 +576,7 @@ def annotate_cgc_null_with_pfam_and_gff(cgc_standard_out_file, pfam_hmm_result_f
                 annot = str(row[PU.HMM_NAME_COLUMN])
                 pfam_map[protein_id] = annot
     else:
-        df = pd.read_csv(pfam_path, sep='\t', header=0)
+        df = read_tsv(pfam_path, header=0)
         if not {PU.TARGET_NAME_COLUMN, PU.HMM_NAME_COLUMN}.issubset(df.columns):
             logger.warning(f"PFAM result missing required columns in {pfam_path}")
             return

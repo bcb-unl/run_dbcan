@@ -1,109 +1,75 @@
-User Guide
-==========
+run_dbCAN
+=========
 
-Update: What's New in run_dbCAN
-================================
+**run_dbCAN** annotates carbohydrate-active enzymes (CAZymes) in genomes, metagenomes and proteomes, finds
+CAZyme gene clusters (CGCs) and predicts the glycan substrates of these clusters. It is the standalone version of
+the `dbCAN3 web server <https://bcb.unl.edu/dbCAN2/>`_.
 
-The new version of **run_dbCAN** introduces multiple new features and significant performance improvements, making the pipeline more user-friendly and efficient. We highly recommend users to upgrade to this version.
-If you have any questions or suggestions, please feel free to contact us:
+.. figure:: _static/img/figures/pipeline_overview.png
+   :width: 100%
+   :alt: The four steps of run_dbcan with their tools, databases and output files
+
+   The four steps of run_dbcan. Each step is one command; ``easy_CGC`` and ``easy_substrate`` run several of
+   them in one go.
+
+Start here
+----------
+
+#. :doc:`getting_started/installation` (conda, pip or Docker)
+#. :doc:`user_guide/prepare_the_database` (``run_dbcan database --db_dir db``, about 8 GB; files:
+   :doc:`getting_started/database_description`)
+#. :doc:`getting_started/quick_start`: one command per task on example genomes
+#. The step pages of the user guide, for options and output columns
+
+Problems or unexpected results? See :doc:`FAQ/troubleshooting`. To start from raw metagenomic reads, use the
+:doc:`metagenomics_pipeline/run_from_raw_reads` (updated protocol:
+`bioRxiv 2024.01.10.575125 <https://www.biorxiv.org/content/10.1101/2024.01.10.575125v1>`_) or the
+:doc:`nextflow/index`.
+
+What is new in version 5
+------------------------
+
+.. list-table::
+   :widths: 28 72
+   :header-rows: 1
+
+   * - Area
+     - Change
+   * - Databases
+     - ``run_dbcan database`` downloads everything; ``--aws_s3`` for a pinned, reproducible release;
+       ``--no-cgc`` for the CAZyme databases only.
+   * - Speed
+     - `pyrodigal <https://pyrodigal.readthedocs.io/en/stable/>`_ replaces Prodigal,
+       `pyHMMER <https://pyhmmer.readthedocs.io/en/stable/>`_ replaces HMMER (with a low-memory mode), DIAMOND
+       replaces BLAST in substrate prediction.
+   * - ``overview.tsv``
+     - Domain coordinates for dbCAN-HMM and dbCAN-sub, a ``Recommend Results`` consensus (proteins found by
+       >= 2 tools) and a ``Substrate`` column; see :ref:`overview-columns`.
+   * - CGCs
+     - NCBI, JGI, Prodigal, funannotate, BRAKER, GFF3 and GTF annotations; eukaryotic (e.g. fungal) proteomes with
+       their GFF (**beta**); peptidase and sulfatase signature genes.
+   * - Figures
+     - Genome-wide CGC plots, CGC maps with read depth, synteny with dbCAN-PUL: see the :ref:`figure_gallery`.
+   * - Optional tools
+     - SignalP 6.0 and DeepTMHMM columns in ``overview.tsv`` (installed by the user):
+       :doc:`user_guide/signalp6_deeptmhmm`.
+   * - Logging
+     - ``--log-level`` (DEBUG/INFO/WARNING/ERROR/CRITICAL, default ``WARNING``), ``--log-file`` and ``-v``
+       (= ``--log-level DEBUG``) on every command.
+
+Contact
+-------
 
 * Dr. Yanbin Yin, Professor (yyin@unl.edu)
 * Xinpeng Zhang, PhD Student (xzhang55@huskers.unl.edu)
-* Dr. Haidong Yi, Software Engineer  (hyi@stjude.org)
+* Dr. Haidong Yi, Software Engineer (hyi@stjude.org)
 
-All conda environments dependencies can be found at the following link:
-`run_dbCAN Conda Environments <https://github.com/bcb-unl/run_dbcan_new/tree/master/envs>`_
-
-
-Key Features and Improvements
------------------------------
-
-1. **Simplified Database Downloading**
-
-   - Added a new `database` command for downloading database files, making the process simpler than before.
-
-   - Supports downloading from both HTTP and AWS S3 sources (use `--aws_s3` flag for faster and more stable downloads).
-
-   - Use `--cgc/--no-cgc` option to control whether to download CGC-related databases.
-
-2. **Enhanced Input Processing**
-
-   - Replaced `prodigal` with `pyrodigal <https://pyrodigal.readthedocs.io/en/stable/>`_ for input processing.
-
-3. **Improved HMMER Performance**
-
-   - Replaced `HMMER` with `pyHMMER <https://pyhmmer.readthedocs.io/en/stable/>`_, which is faster and more efficient.
-
-   - Redesigned memory usage to support both low-memory and high-efficiency modes (https://pyhmmer.readthedocs.io/en/stable/examples/performance_tips.html).
-
-4. **Modular Code Structure**
-
-   - Reorganized the logic and structure of `run_dbCAN` by splitting functions into modules and following Object Oriented Programming.
-
-   - Rewrote non-Python code in Python for improved readability.
-
-   - Centralized parameter management using configuration files.
-
-   - Leveraged the power of `pandas` for efficient data processing.
-
-   - Added extensive logging and time reporting to make the pipeline more user-friendly.
-
-5. **Enhanced dbCAN-sub and overview Features**
-
-   - Added coverage justifications and location information for dbCAN-sub.
-
-   - Included CAZyme justification in the final results with an extra column called "Best Results."
-
-   - Now follow the rule: `CAZy-sub > dbCAN-sub > dbCAN-fam` for the final results.
-
-6. **Redesigned CGCFinder**
-
-   - Now supports JGI, NCBI, and Prodigal gff formats.
-
-   - Directly searches eukaryotic genomes, including fungi (**beta function**).
-
-   - Added a new function to visualize the CGCs on the genome (**beta function**).
-
-7.  **Faster Substrate Prediction**
-
-   - Replaced `blastp` with `DIAMOND` for substrate prediction, significantly improving speed and efficiency.
-
-8.  **Updated Metagenomic Protocols**
-
-   - Improved steps for metagenomic data processing (https://www.biorxiv.org/content/10.1101/2024.01.10.575125v1).
-
-9. **SignalP 6.0 and DeepTMHMM (optional topology)**
-
-   - **SignalP 6.0**: signal peptide prediction in the `CAZyme_annotation` command via `--run_signalp`. Results are merged into `overview.tsv` in a **SignalP** column. Organism class: `--signalp_org` (`other` / `euk`).
-
-   - **DeepTMHMM**: transmembrane topology via `--run_deeptmhmm` and `--deeptmhmm_dir` (directory containing the user-installed `predict.py`). Results are merged into **DeepTMHMM** in `overview.tsv`.
-
-   - Neither tool is bundled with `dbcan`. Install and test them locally, then enable the flags. See :doc:`user_guide/signalp6_deeptmhmm` and the `SignalP 6.0 installation instructions <https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md>`_.
-
-10. **Global Logging System**
-
-    - Implemented comprehensive logging system available for all commands.
-
-    - Use `--log-level` to set logging level (DEBUG/INFO/WARNING/ERROR/CRITICAL, default: WARNING).
-
-    - Use `--log-file` to write logs to a file in addition to console output.
-
-    - Use `--verbose` or `-v` flag for detailed debug logging (equivalent to --log-level DEBUG).
-
-.. hint::
-
-   If you want to run the pipeline from raw metagenomic reads, please refer to the following part:
-   **metagenomics_pipeline**
-
-
-Otherwise, refer to the instructions below. Please note that some precomputed results may have different names compared to the previous version.
-
-.. note::
-   For detailed instructions, refer to the respective sections in the documentation.
+Conda environment files: `run_dbcan/envs <https://github.com/bcb-unl/run_dbcan/tree/master/envs>`_.
+Please report problems on `GitHub issues <https://github.com/bcb-unl/run_dbcan/issues>`_.
 
 .. toctree::
    :maxdepth: 1
-   :caption: Getting start
+   :caption: Getting started
 
    getting_started/installation
    getting_started/database_description
@@ -122,7 +88,15 @@ Otherwise, refer to the instructions below. Please note that some precomputed re
    user_guide/CGC_annotation
    user_guide/predict_CGC_substrate
    user_guide/CGC_plots
+   user_guide/figure_gallery
+   user_guide/abundance
    user_guide/expression_analysis
+
+.. toctree::
+   :maxdepth: 1
+   :caption: FAQ
+
+   FAQ/troubleshooting
 
 .. toctree::
    :maxdepth: 1

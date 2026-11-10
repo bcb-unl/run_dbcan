@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from types import SimpleNamespace
 
 import pandas as pd
 
 from dbcan.configs.expression_config import ExpressionConfig
+from dbcan.configs.utils_config import CoverageConfig
 from dbcan.constants.base_constants import CGC_RESULT_FILE, OVERVIEW_FILE
 from dbcan.constants.expression_constants import COUNT_MATRIX_FILE
 from dbcan.expression.samplesheet import Samplesheet
@@ -50,8 +50,13 @@ def run_cal_coverage(
     depth_out: Path,
     config: ExpressionConfig,
 ) -> Path:
-    """Run cal_coverage for one sample."""
-    args = SimpleNamespace(
+    """Run cal_coverage for one sample.
+
+    Counting follows dbcan_utils cal_coverage defaults (fragments: both mates of a pair
+    count once; unstranded; genes keyed by protein_id/proteinId, else ID/Name/locus_tag),
+    which is what DESeq2 expects as raw counts.
+    """
+    cov_cfg = CoverageConfig(
         input=str(bam_path),
         gff=gff_path,
         output=str(depth_out),
@@ -62,7 +67,7 @@ def run_cal_coverage(
         hifi=config.hifi,
     )
     depth_out.parent.mkdir(parents=True, exist_ok=True)
-    cal_coverage(args)
+    cal_coverage(cov_cfg)
     return depth_out
 
 
@@ -82,7 +87,7 @@ def build_count_matrix(
         run_cal_coverage(bam_map[sample.sample_id], config.gff, depth_path, config)
         depth_paths[sample.sample_id] = depth_path
 
-        seqid2info, _ = ReadBedtools(str(depth_path))
+        seqid2info, _, _ = ReadBedtools(str(depth_path))
         row = {"sample_id": sample.sample_id}
         for gid, rec in seqid2info.items():
             if gene_filter is not None and gid not in gene_filter:

@@ -21,9 +21,10 @@ from dbcan.constants.expression_constants import (
     PLOT_METRIC_CHOICES,
     SAMPLE_METADATA_FILE,
 )
+from dbcan.constants.base_constants import CGC_FEATURE_COLORS, CGC_OTHER_GENE_TYPE
 from dbcan.constants.plots_constants import CGC_RESULT_FILE
 from dbcan.constants.utils_constants import OVERVIEW_FILE
-from dbcan.utils.plots import (
+from dbcan.plot.expression_track import (
     CGC,
     CGC_Standard_Out,
     CGC_standard_out_2CGC,
@@ -49,15 +50,9 @@ LEGEND_LINE_WIDTH = 1.6
 
 DEG_UP_COLOR = "#D62728"
 DEG_DOWN_COLOR = "#1F77B4"
-GENE_COLORS = {
-    "CAZyme": "#E67E22",
-    "TC": "#2ECC71",
-    "TF": "#9B59B6",
-    "STP": "#F1C40F",
-    "Peptidase": "#16A085",
-    "Sulfatase": "#34495E",
-}
-DEFAULT_GENE_COLOR = "#95A5A6"
+# Gene-type colours: the dbcan_plot palette (single source in base_constants).
+GENE_COLORS = {k: v for k, v in CGC_FEATURE_COLORS.items() if k != CGC_OTHER_GENE_TYPE}
+DEFAULT_GENE_COLOR = CGC_FEATURE_COLORS[CGC_OTHER_GENE_TYPE]
 
 _CAZYME_FAMILY_RE = re.compile(r"(GH|GT|PL|CE|AA|CBM|SLH|COH|dockerin)\d+", re.I)
 _PFAM_RE = re.compile(r"PF\d{5}", re.I)

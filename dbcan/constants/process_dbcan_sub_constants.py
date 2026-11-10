@@ -1,3 +1,4 @@
+import re
 import dbcan.constants.base_constants as base_constants
 import dbcan.constants.process_utils_constants as process_utils_constants
 
@@ -67,3 +68,18 @@ DBCAN_SUB_CBM_PREFIX = "CBM"
 DBCAN_SUB_HMM_SUFFIX = ".hmm"
 DBCAN_SUB_SEPARATOR = "|"
 
+
+# EC number core inside dbCAN-sub eHMM names: a.b.c.d where b/c/d may be '-' and d may be 'nX'
+EC_CORE_PATTERN = re.compile(r"^\d+\.(?:\d+|-)\.(?:\d+|-)\.(?:n?\d+|-)$")
+
+# fam-substrate-mapping.tsv columns
+MAPPING_SUBSTRATE_COLUMN = "Substrate_high_level"
+MAPPING_NEW_SUBSTRATE_COLUMN = "new_Substrate_high_level"
+MAPPING_FAMILY_COLUMN = "Family"
+MAPPING_EC_COLUMN = "EC_Number"
+MAPPING_TYPE_COLUMN = "type"
+
+# CAZy family token in an eHMM composition: GH5_5 -> GH5
+FAMILY_TOKEN_PATTERN = re.compile(r"^((?:GH|GT|PL|CE|AA|CBM)\d+)(?:_\d+)?$")
+# Optional per-subfamily substrate table exported from the dbCAN-sub web server
+DBCANSUB_SUBSTRATE_TABLE_FILE = "dbCAN-sub-substrate.tsv"

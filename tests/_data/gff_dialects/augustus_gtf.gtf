@@ -1,0 +1,28 @@
+KV407454.1	AUGUSTUS	gene	200468	204195	.	+	.	g75
+KV407454.1	AUGUSTUS	transcript	200468	204195	.	+	.	g75.t1
+KV407454.1	AUGUSTUS	CDS	200468	200693	.	+	0	transcript_id "g75.t1"; gene_id "g75";
+KV407454.1	AUGUSTUS	CDS	200889	201212	.	+	2	transcript_id "g75.t1"; gene_id "g75";
+KV407454.1	AUGUSTUS	CDS	201293	204027	.	+	2	transcript_id "g75.t1"; gene_id "g75";
+KV407454.1	AUGUSTUS	CDS	204088	204195	.	+	0	transcript_id "g75.t1"; gene_id "g75";
+KV407454.1	AUGUSTUS	gene	205232	208366	.	-	.	g76
+KV407454.1	AUGUSTUS	transcript	205232	208366	.	-	.	g76.t1
+KV407454.1	AUGUSTUS	CDS	207101	208086	.	-	0	transcript_id "g76.t1"; gene_id "g76";
+KV407454.1	AUGUSTUS	CDS	206290	207027	.	-	1	transcript_id "g76.t1"; gene_id "g76";
+KV407454.1	AUGUSTUS	CDS	205996	206168	.	-	1	transcript_id "g76.t1"; gene_id "g76";
+KV407454.1	AUGUSTUS	CDS	205232	205875	.	-	2	transcript_id "g76.t1"; gene_id "g76";
+KV407454.1	AUGUSTUS	gene	208868	210893	.	+	.	g77
+KV407454.1	AUGUSTUS	transcript	208868	210893	.	+	.	g77.t1
+KV407454.1	AUGUSTUS	CDS	209115	209590	.	+	0	transcript_id "g77.t1"; gene_id "g77";
+KV407454.1	AUGUSTUS	CDS	209657	210076	.	+	1	transcript_id "g77.t1"; gene_id "g77";
+KV407454.1	AUGUSTUS	CDS	210136	210463	.	+	1	transcript_id "g77.t1"; gene_id "g77";
+KV407454.1	AUGUSTUS	gene	210943	212948	.	+	.	g78
+KV407454.1	AUGUSTUS	transcript	210943	212948	.	+	.	g78.t1
+KV407454.1	AUGUSTUS	CDS	211155	211451	.	+	0	transcript_id "g78.t1"; gene_id "g78";
+KV407454.1	AUGUSTUS	CDS	211543	212682	.	+	0	transcript_id "g78.t1"; gene_id "g78";
+KV407454.1	AUGUSTUS	gene	213216	213335	.	-	.	g79
+KV407454.1	AUGUSTUS	transcript	213216	213335	.	-	.	g79.t1
+KV407454.1	AUGUSTUS	gene	213838	217553	.	-	.	g80
+KV407454.1	AUGUSTUS	transcript	213838	217553	.	-	.	g80.t1
+KV407454.1	AUGUSTUS	CDS	215982	217148	.	-	0	transcript_id "g80.t1"; gene_id "g80";
+KV407454.1	AUGUSTUS	CDS	215351	215925	.	-	0	transcript_id "g80.t1"; gene_id "g80";
+KV407454.1	AUGUSTUS	CDS	214306	215290	.	-	1	transcript_id "g80.t1"; gene_id "g80";

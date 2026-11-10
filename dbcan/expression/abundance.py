@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 from dbcan.configs.expression_config import ExpressionConfig
@@ -14,10 +13,9 @@ from dbcan.constants.expression_constants import (
 )
 from dbcan.expression.samplesheet import Samplesheet
 from dbcan.utils.utils import (
-    CAZyme_Abundance_estimate,
-    AbundParameters,
     ReadBedtools,
     Read_cgc_standard_out,
+    run_abundance,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,42 +34,14 @@ def _run_abundance_function(
     depth_path: Path,
     sample_dir: Path,
 ) -> None:
-    """Run one dbcan_utils abundance function in sample_dir."""
-    cwd = os.getcwd()
-    input_dir = str(Path(config.input_dir).resolve())
-    depth_abs = str(Path(depth_path).resolve())
-    sample_dir = Path(sample_dir).resolve()
-    try:
-        os.chdir(sample_dir)
-        abund_cfg = AbundanceConfig(
-            input_dir=input_dir,
-            bedtools_depth=depth_abs,
-            output_dir=str(sample_dir),
-            abundance=config.abundance,
-            overlap_base_ratio=config.overlap_base_ratio,
-            mapping_quality=config.mapping_quality,
-            identity=config.identity,
-            threads=config.threads,
-            hifi=config.hifi,
-        )
-        pars = AbundParameters(abund_cfg, function)
-        est = CAZyme_Abundance_estimate(pars)
-        est.Cal_Seq_Abundance(config.abundance)
-        if function == "fam_abund":
-            est.Cal_Famliy_Abundance()
-            est.output_family_abund()
-        elif function == "fam_substrate_abund":
-            est.Cal_Substrate_Abundance()
-            est.output_substrate_abund()
-        elif function == "CGC_abund":
-            est.Cal_PUL_Abundance()
-            est.output_cgc_abund()
-        elif function == "CGC_substrate_abund":
-            est.Cal_PUL_Abundance()
-            est.Cal_PUL_Substrate_Abundance()
-            est.output_cgcsubstrate_abund()
-    finally:
-        os.chdir(cwd)
+    """Run one dbcan_utils abundance function; its *.out file is written to sample_dir."""
+    abund_cfg = AbundanceConfig(
+        input_dir=str(Path(config.input_dir).resolve()),
+        bedtools_depth=str(Path(depth_path).resolve()),
+        output_dir=str(Path(sample_dir).resolve()),
+        abundance=config.abundance,
+    )
+    run_abundance(abund_cfg, function)
 
 
 def run_per_sample_abundance(
@@ -111,8 +81,8 @@ def build_cgc_gene_counts_and_matrix(
 
     for sample in samplesheet:
         depth = depth_paths[sample.sample_id]
-        seqid2info, normalized_tpm = ReadBedtools(str(depth))
-        norm_reads = max(sum(r.read_count for r in seqid2info.values()), 1.0) / 1e6
+        seqid2info, normalized_tpm, total = ReadBedtools(str(depth))
+        norm_reads = max(total, 1.0) / 1e6
         denom_tpm = max(normalized_tpm, 1e-9)
 
         for cgcid, records in cgcid2records.items():

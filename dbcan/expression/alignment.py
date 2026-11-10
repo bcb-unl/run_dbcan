@@ -78,7 +78,15 @@ def resolve_bam_paths(
                     target.unlink()
                 target.symlink_to(src.resolve())
             bam_map[sample.sample_id] = target
-            if not Path(f"{target}.bai").is_file() and not Path(f"{target}.bam.bai").is_file():
+            target_bai = Path(f"{target}.bai")
+            if not target_bai.is_file():
+                # reuse the index of the user's BAM (s.bam.bai or s.bai) instead of re-indexing
+                src_bai = next((p for p in (Path(f"{src}.bai"), src.with_suffix(".bai")) if p.is_file()), None)
+                if src_bai is not None:
+                    if target_bai.is_symlink():
+                        target_bai.unlink()
+                    target_bai.symlink_to(src_bai.resolve())
+            if not target_bai.is_file():
                 _run_cmd(["samtools", "index", str(target)], f"samtools index {sample.sample_id}")
         elif sample.has_fastq:
             if not config.reference_fasta:

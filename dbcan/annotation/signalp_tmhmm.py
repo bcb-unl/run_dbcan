@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import psutil
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from Bio import SeqIO
 import time
 
@@ -131,11 +132,11 @@ class SignalPTMHMMProcessor:
         if file_size_mb > 100:
             logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
             chunks = []
-            for chunk in pd.read_csv(path, sep="\t", chunksize=100000):
+            for chunk in read_tsv(path, chunksize=100000):
                 chunks.append(chunk)
             return pd.concat(chunks, ignore_index=True)
         else:
-            return pd.read_csv(path, sep="\t")
+            return read_tsv(path)
 
     def collect_all_gene_ids(self, df: pd.DataFrame) -> set:
         if C.GENE_ID_COL not in df.columns:
@@ -152,11 +153,11 @@ class SignalPTMHMMProcessor:
             if file_size_mb > 100:
                 logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
                 chunks = []
-                for chunk in pd.read_csv(overview_path, sep="\t", chunksize=100000):
+                for chunk in read_tsv(overview_path, chunksize=100000):
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(overview_path, sep="\t")
+                df = read_tsv(overview_path)
         except Exception as e:
             raise RuntimeError(f"failed to read overview.tsv: {e}")
         if C.GENE_ID_COL not in df.columns:
@@ -189,10 +190,15 @@ class SignalPTMHMMProcessor:
     def run_signalp_predict(self, faa: Path) -> Path | None:
         out_dir = self.output_dir / C.SIGNALP_OUT_DIR
         out_dir.mkdir(exist_ok=True)
+        # the folder is reused between runs: drop the previous predictions so that a run that
+        # writes nothing is seen as failed instead of reporting the old file
+        stale = out_dir / C.SIGNALP_RESULT_TSV
+        if stale.exists():
+            stale.unlink()
         faa_abs = faa.expanduser().resolve()
         out_dir_abs = out_dir.expanduser().resolve()
         cmd = [
-            "signalp6",
+            C.SIGNALP_EXECUTABLE,
             "--fastafile", str(faa_abs),
             "--output_dir", str(out_dir_abs),
             "--mode", self.signalp_mode,
@@ -328,11 +334,11 @@ class SignalPTMHMMProcessor:
             if file_size_mb > 100:
                 logger.info(f"Large overview file detected ({file_size_mb:.1f}MB), using chunked reading")
                 chunks = []
-                for chunk in pd.read_csv(overview_path, sep="\t", chunksize=100000):
+                for chunk in read_tsv(overview_path, chunksize=100000):
                     chunks.append(chunk)
                 df = pd.concat(chunks, ignore_index=True)
             else:
-                df = pd.read_csv(overview_path, sep="\t")
+                df = read_tsv(overview_path)
             if signalp_results:
                 df[C.SIGNALP_COL] = df[C.GENE_ID_COL].astype(str).map(lambda x: signalp_results.get(x, C.DEFAULT_EMPTY))
             elif self.run_signalp:
@@ -348,39 +354,54 @@ class SignalPTMHMMProcessor:
             df.to_csv(overview_path, sep="\t", index=False)
             logger.info("Updated overview with topology predictions")
         except Exception as e:
-            logger.error(f"Error updating overview: {e}")
+            raise RuntimeError(f"Error updating {overview_path} with topology predictions: {e}") from e
 
     def run(self):
         if not self.run_signalp and not self.run_deeptmhmm:
             logger.info("No topology annotation tool requested; skipping.")
             return {}
-        try:
-            df = self.load_overview()
-        except Exception as e:
-            logger.error("Failed to load overview: %s", e)
-            return {}
+        df = self.load_overview()
         gene_ids = self.collect_all_gene_ids(df)
         if not gene_ids:
-            logger.info("No gene IDs to process for topology annotation")
+            logger.info("No gene IDs to process for topology annotation; adding empty columns only.")
+            self.update_overview_with_topology({}, {})
             return {}
 
         fasta = self.extract_fasta(gene_ids)
+        if fasta.stat().st_size == 0:
+            logger.warning("No CAZyme sequences for topology annotation; adding empty columns only.")
+            self.update_overview_with_topology({}, {})
+            return {}
         signalp_out_dir = None
         deeptmhmm_out_dir = None
         signalp_results = {}
         deeptmhmm_results = {}
 
+        failed = []
         if self.run_signalp:
             signalp_out_dir = self.run_signalp_predict(fasta)
-        if signalp_out_dir:
-            signalp_results = self.parse_signalp_results(signalp_out_dir)
+            if signalp_out_dir:
+                signalp_results = self.parse_signalp_results(signalp_out_dir)
+                if not signalp_results:
+                    # Exit 0 but no (or an empty) prediction_results.txt for a non-empty FASTA.
+                    logger.error("SignalP6 wrote no predictions to %s", signalp_out_dir / C.SIGNALP_RESULT_TSV)
+            if not signalp_results:
+                failed.append("SignalP6")
 
         if self.run_deeptmhmm:
             deeptmhmm_out_dir = self.run_deeptmhmm_predict(fasta)
-        if deeptmhmm_out_dir:
-            deeptmhmm_results = self.parse_deeptmhmm_results(deeptmhmm_out_dir)
+            if deeptmhmm_out_dir:
+                deeptmhmm_results = self.parse_deeptmhmm_results(deeptmhmm_out_dir)
+                if not deeptmhmm_results:
+                    # Exit 0 but no (or an empty) predicted_topologies.3line for a non-empty FASTA.
+                    logger.error("DeepTMHMM wrote no predictions to %s", deeptmhmm_out_dir / C.DEEPTMHMM_RESULT_3LINE)
+            if not deeptmhmm_results:
+                failed.append("DeepTMHMM")
 
+        # Write the columns of the tools that worked even if another one failed.
         self.update_overview_with_topology(signalp_results, deeptmhmm_results)
+        if failed:
+            raise RuntimeError(f"{' and '.join(failed)} failed; see the log above for details.")
 
         results = {}
         if signalp_out_dir:

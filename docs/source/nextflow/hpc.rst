@@ -25,21 +25,25 @@ Important Notes
 ~~~~~~~~~~~~~~~
 
 1. **Login Node Restrictions**
+
    - Login nodes should only be used for lightweight tasks (editing files, submitting jobs, monitoring, etc.)
    - **Do not run Nextflow pipelines on login nodes**, as they may be terminated
    - Jobs must be submitted through Slurm
 
 2. **Resource Requests**
+
    - Must explicitly specify runtime (``--time``), memory (``--mem`` or ``--mem-per-cpu``), and CPU count
    - Default resources may be very limited, causing job failures
    - Maximum runtime is **7 days**
 
 3. **Storage Locations**
+
    - Output should be placed in ``/work/group/user`` or ``$WORK`` directory
    - Avoid storing large amounts of data in ``$HOME``
    - Using ``/scratch`` space can improve I/O performance
 
 4. **QoS (Quality of Service)**
+
    - Using ``--qos=ac_<group>`` can improve scheduling priority
    - Requires research group to have acknowledgement credit
 

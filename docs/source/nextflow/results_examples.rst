@@ -190,7 +190,7 @@ The visualizations provided above demonstrate the comprehensive output of the Ne
 
 - **Performance Metrics**: The pipeline provides detailed statistics on computational requirements and result quality, helping users choose the most appropriate analysis mode for their datasets.
 
-For more information about interpreting specific outputs, see the :ref:`nextflow-output` documentation.
+For more information about interpreting specific outputs, see the *Output Files* section of each analysis mode page (for example :ref:`shortreads-mode`).
 
 See Also
 --------
@@ -199,4 +199,3 @@ See Also
 - :ref:`shortreads-subsample` - Subsampling mode documentation
 - :ref:`shortreads-coassembly` - Co-assembly mode documentation
 - :ref:`assemfree-mode` - Assembly-free mode documentation
-- :ref:`nextflow-output` - Output documentation

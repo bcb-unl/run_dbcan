@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess
 import logging
 import pandas as pd
+from dbcan.IO.table import read_tsv
 from abc import ABC
 import time
 
@@ -11,6 +12,17 @@ from dbcan.configs.diamond_config import (
 import dbcan.constants.diamond_constants as D
 
 logger = logging.getLogger(__name__)
+
+def _bitscore_last(cols):
+    """Column order of a formatted diamond.out.* file: the bit score goes after 'Database'.
+
+    The first columns ('<DB> ID' ... 'COVERAGE', 'Database') keep the positions they had before
+    the bit score was added, so readers that address them by position still work.
+    """
+    if D.DIAMOND_BITSCORE_COLUMN not in cols:
+        return list(cols)
+    return [c for c in cols if c != D.DIAMOND_BITSCORE_COLUMN] + [D.DIAMOND_BITSCORE_COLUMN]
+
 
 class DiamondProcessor(ABC):
     def __init__(self, config: DiamondConfig):
@@ -67,7 +79,14 @@ class DiamondProcessor(ABC):
             D.DIAMOND_CMD_VERBOSE if self.verbose_option else D.DIAMOND_CMD_QUIET
         ]
         if self.config.coverage_threshold is not None:
-            cmd.extend([D.DIAMOND_CMD_QUERY_COVER, str(self.config.coverage_threshold)])
+            mode = getattr(self.config, "coverage_mode", "query")
+            if mode not in ("query", "subject"):
+                raise ValueError(f"coverage_mode must be 'query' or 'subject', got {mode!r}")
+            flag = D.DIAMOND_CMD_SUBJECT_COVER if mode == "subject" else D.DIAMOND_CMD_QUERY_COVER
+            cmd.extend([flag, str(self.config.coverage_threshold)])
+        subject_cov = getattr(self.config, "subject_coverage_threshold", None)
+        if subject_cov is not None and getattr(self.config, "coverage_mode", "query") == "query":
+            cmd.extend([D.DIAMOND_CMD_SUBJECT_COVER, str(subject_cov)])
 
         logger.info("Running DIAMOND BLASTp: %s", " ".join(cmd))
         start = time.time()
@@ -94,17 +113,18 @@ class DiamondProcessor(ABC):
             # Keep the 'Database' column convention if label is provided
             if self.config.label and 'Database' not in cols:
                 cols.append('Database')
-            header_df = pd.DataFrame(columns=cols)
+            header_df = pd.DataFrame(columns=_bitscore_last(cols))
             of.parent.mkdir(parents=True, exist_ok=True)
             header_df.to_csv(of, sep='\t', index=False)
             logger.info(f"No DIAMOND hits. Wrote header-only file: {self.output_file}")
             return
         try:
-            df = pd.read_csv(of, sep='\t', header=None, names=self.config.column_names)
+            df = read_tsv(of, header=None, names=self.config.column_names)
             if self.config.id_column:
                 self._postprocess_ids(df, self.config.id_column)
             if self.config.label:
                 df['Database'] = self.config.label
+            df = df[_bitscore_last(list(df.columns))]
             df.to_csv(of, sep='\t', index=False)
             logger.info(f"Results formatted and saved to {self.output_file}")
         except Exception as e:

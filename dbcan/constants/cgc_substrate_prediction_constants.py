@@ -14,6 +14,7 @@ TF=base_constants.TF
 STP=base_constants.STP
 PUL=base_constants.PUL
 NULL=base_constants.NULL
+TC_FAMILY_LEVELS = base_constants.CGC_QUERY_TC_LEVELS
 
 
 
@@ -43,8 +44,14 @@ PUL_FAA_FILE = base_constants.PUL_FAA_FILE
 # CAZYME_FAA_FILE = "CAZyme.faa"
 # PUL_FAA_FILE = "PUL.faa"
 
-DBCANPUL_TMP="dbcanpul.tmp.txt"
-DBCAN_SUB_TMP="dbcan_sub.tmp.txt"
+# Optional detail tables of substrate_prediction (--odbcan_sub / --odbcanpul)
+DBCAN_SUB_DETAIL_FILE = "substrate_prediction_dbcan_sub.tsv"
+DBCAN_SUB_DETAIL_COLUMNS = ["#cgcid", "Protein ID", "dbCAN-sub subfamily", "Subfam EC", "Substrate",
+                            "i-Evalue", "Coverage", "CGC substrate scores", "CGC dbCAN-sub substrate",
+                            "CGC dbCAN-sub substrate score"]
+DBCAN_PUL_HITS_FILE = "substrate_prediction_dbcan_pul.tsv"
+DBCAN_PUL_HITS_COLUMNS = ["CGC protein", "PUL protein", "#cgcid", "PULID", "pident", "length", "mismatch",
+                          "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore", "qlen", "slen"]
 
 DIAMOND_PUL_EVALUE = 0.01
 

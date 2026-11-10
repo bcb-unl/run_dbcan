@@ -1,6 +1,6 @@
 import rich_click as click
 from dbcan.parameter import (
-    create_config, general_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,diamond_tf_options,
+    create_config, general_options, input_options, deprecated_input_options, database_options, output_dir_option, methods_option, threads_option, diamond_options, diamond_tc_options,diamond_tf_options,
     pyhmmer_dbcan_options, dbcansub_options ,pyhmmer_tf, pyhmmer_stp, cgc_gff_option, cgc_options, cgc_sub_options, syn_plot_options,
     cgc_circle_plot_options, cgc_substrate_base_options, cgc_substrate_homology_params_options, cgc_substrate_dbcan_sub_param_options, pyhmmer_pfam,
     topology_annotation_options   # <--- added
@@ -31,12 +31,88 @@ def setup_logging(log_level: str, log_file: Optional[str] = None, verbose: bool 
         force=True  # Override any existing configuration
     )
 
+def _resolve_tf_route(kwargs):
+    """TF annotation: prokaryotes -> TF DIAMOND, fungi (--fungi) -> TF HMM.
+
+    --prokaryotic defaults to "not --fungi"; an explicit --prokaryotic/--no-prokaryotic wins.
+    """
+    fungi = bool(kwargs.get('fungi'))
+    if kwargs.get('prokaryotic') is None:
+        kwargs['prokaryotic'] = not fungi
+    if not kwargs['prokaryotic'] and not fungi:
+        logging.warning("--no-prokaryotic without --fungi: no TF annotation will be produced.")
+    logging.info(
+        "[gff_process] TF annotation: %s",
+        " + ".join(n for n, on in (("TF DIAMOND (prokaryotic)", kwargs['prokaryotic']), ("TF HMM (fungi)", fungi)) if on)
+        or "none",
+    )
+
+
+def _gff_type_choices() -> str:
+    from dbcan.constants.base_constants import GFF_FORMAT_CHOICES
+    return ", ".join(GFF_FORMAT_CHOICES)
+
+
+def _require_gff_for_protein_mode(kwargs):
+    """easy_* commands: protein input has no pyrodigal GFF, so --input_gff and --gff_type are
+    needed for steps 2-3 (no silent prodigal default: the GFF comes from another tool)."""
+    mode = str(kwargs.get('mode') or '').lower()
+    if mode == 'protein' and not kwargs.get('input_gff'):
+        raise click.UsageError(
+            "--input_gff and --gff_type are required when --mode=protein "
+            f"(--gff_type choices: {_gff_type_choices()})"
+        )
+    if kwargs.get('input_gff') and not kwargs.get('gff_type'):
+        raise click.UsageError(
+            f"--gff_type is required with --input_gff (--mode {mode or '?'}). "
+            f"Choose one of: {_gff_type_choices()}"
+        )
+
+
+def _precheck_protein_gff(kwargs):
+    """easy_* with --mode protein --input_gff: match the GFF genes to the input proteins before
+    step 1, so that a wrong --gff_type or GFF fails in seconds, not after the searches."""
+    if str(kwargs.get('mode') or '').lower() != 'protein' or not kwargs.get('input_gff'):
+        return
+    from dbcan.configs.base_config import GFFConfig
+    from dbcan.core import check_gff_protein_match
+    from dbcan.IO.gff_resolver import GffResolutionError
+
+    if not Path(kwargs['input_gff']).is_file():
+        raise click.UsageError(f"GFF file not found: {kwargs['input_gff']}")
+    if not Path(kwargs['input_raw_data']).is_file():
+        raise click.UsageError(f"Input file not found: {kwargs['input_raw_data']}")
+    cfg = create_config(GFFConfig, **kwargs)
+    try:
+        check_gff_protein_match(cfg, protein_fasta=kwargs['input_raw_data'], clean_ids=True)
+    except GffResolutionError as e:
+        raise click.ClickException(f"GFF check failed before step 1.\n{e}")
+
+
+def _precheck_topology(kwargs):
+    """--run_deeptmhmm / --run_signalp: fail before the CAZyme searches when the tool cannot run."""
+    import shutil
+    import dbcan.constants.signalp_tmhmm_constants as T
+    if kwargs.get('run_deeptmhmm'):
+        d = kwargs.get('deeptmhmm_dir')
+        if not d:
+            raise click.UsageError("--run_deeptmhmm needs --deeptmhmm_dir (the directory that contains DeepTMHMM "
+                                   f"{T.DEEPTMHMM_PREDICT_SCRIPT}).")
+        script = Path(d).expanduser() / T.DEEPTMHMM_PREDICT_SCRIPT
+        if not script.is_file():
+            raise click.UsageError(f"--deeptmhmm_dir {d}: {T.DEEPTMHMM_PREDICT_SCRIPT} not found ({script}).")
+    if kwargs.get('run_signalp') and shutil.which(T.SIGNALP_EXECUTABLE) is None:
+        raise click.UsageError(f"--run_signalp: '{T.SIGNALP_EXECUTABLE}' is not on PATH. Install SignalP 6 "
+                               "(DTU academic licence) or drop --run_signalp.")
+
+
 def _invoke_subset(ctx, cmd, all_kwargs):
     """
     Invoke a click command with a subset of parameters from all_kwargs.
     This allows reusing commands with only the relevant parameters.
     """
-    names = {p.name for p in cmd.params}
+    # Hidden parameters are deprecated compatibility shims; never forward to them.
+    names = {p.name for p in cmd.params if not getattr(p, "hidden", False)}
     sub_kwargs = {k: v for k, v in all_kwargs.items() if k in names}
     return ctx.invoke(cmd, **sub_kwargs)
 
@@ -84,6 +160,7 @@ def database_cmd(ctx, log_level, log_file, verbose, **kwargs):
 def cazyme_annotation_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """annotate CAZyme using run_dbcan with prokaryotic, metagenomics, and protein sequences."""
     setup_logging(log_level, log_file, verbose)
+    _precheck_topology(kwargs)
     from dbcan.configs.signalp_tmhmm_config import SignalPTMHMMConfig
     from dbcan.configs.diamond_config import DiamondCAZyConfig
     from dbcan.configs.pyhmmer_config import PyHMMERDBCANConfig
@@ -135,21 +212,31 @@ def gff_process_cmd(ctx, log_level, log_file, verbose, **kwargs):
     from dbcan.configs.base_config import GFFConfig
     from dbcan.core import run_dbCAN_CGCFinder_preprocess
 
-    mode = kwargs.get('mode', 'prok')
+    auto_gff = Path(kwargs['output_dir']).joinpath('uniInput.gff')
     if not kwargs.get('input_gff'):
-        if mode != 'protein':
-            auto_gff = Path(kwargs['output_dir']).joinpath('uniInput.gff')
-            kwargs['input_gff'] = str(auto_gff)
-            if not kwargs.get('gff_type'):
-                kwargs['gff_type'] = 'prodigal'
-            logging.info(f"[gff_process] Auto-set input_gff={kwargs['input_gff']} gff_type={kwargs['gff_type']} (mode={mode})")
+        kwargs['input_gff'] = str(auto_gff)
+        if not kwargs.get('gff_type'):
+            kwargs['gff_type'] = 'prodigal'
+        logging.info(f"[gff_process] Auto-set input_gff={kwargs['input_gff']} gff_type={kwargs['gff_type']}")
+    elif not kwargs.get('gff_type'):
+        if Path(kwargs['input_gff']).resolve() == auto_gff.resolve():
+            kwargs['gff_type'] = 'prodigal'  # the pyrodigal GFF of prok/meta mode
+            logging.info("[gff_process] Defaulting gff_type=prodigal for uniInput.gff")
         else:
-            raise click.UsageError("--input_gff is required when --mode=protein")
+            raise click.UsageError(
+                f"--gff_type is required with --input_gff. Choose one of: {_gff_type_choices()}"
+            )
 
-    if not kwargs.get('gff_type'):
-        # Fallback if user gave a custom GFF in non-protein mode but forgot type
-        kwargs['gff_type'] = 'prodigal'
-        logging.info(f"[gff_process] Defaulting gff_type=prodigal")
+    # Fail before the TC/TF/STP/sulfatase/peptidase searches if there is no GFF to annotate.
+    # gff_process has no --mode option, so a missing <output_dir>/uniInput.gff usually means
+    # protein input without --input_gff.
+    if not Path(kwargs['input_gff']).is_file():
+        raise click.UsageError(
+            f"GFF file not found: {kwargs['input_gff']}. For protein input (--mode protein) pass "
+            "--input_gff and --gff_type; for prok/meta input run CAZyme_annotation first."
+        )
+
+    _resolve_tf_route(kwargs)
 
     diamond_tc_config = create_config(DiamondTCConfig, namespace="tc", **kwargs)
     diamond_tf_config = create_config(DiamondTFConfig, namespace="tf_diamond", **kwargs)
@@ -159,15 +246,20 @@ def gff_process_cmd(ctx, log_level, log_file, verbose, **kwargs):
     diamond_peptidase_config = create_config(DiamondPeptidaseConfig, namespace="peptidase", **kwargs)
 
     gff_config = create_config(GFFConfig, **kwargs)
-    run_dbCAN_CGCFinder_preprocess(
-        diamond_tc_config,
-        diamond_tf_config,
-        pyhmmer_tf_config,
-        pyhmmer_stp_config,
-        diamond_sulfatlas_config,
-        diamond_peptidase_config,
-        gff_config
-    )
+    from dbcan.IO.gff_resolver import GffResolutionError
+    try:
+        run_dbCAN_CGCFinder_preprocess(
+            diamond_tc_config,
+            diamond_tf_config,
+            pyhmmer_tf_config,
+            pyhmmer_stp_config,
+            diamond_sulfatlas_config,
+            diamond_peptidase_config,
+            gff_config
+        )
+    except GffResolutionError as e:
+        # a wrong --gff_type / GFF: a clean message and exit 1, no traceback
+        raise click.ClickException(f"GFF check failed before the signature searches.\n{e}")
 
 @cli.command('cgc_finder')
 @logging_options
@@ -204,12 +296,21 @@ def pfam_null_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 @cgc_substrate_base_options
 @cgc_substrate_homology_params_options
 @cgc_substrate_dbcan_sub_param_options
+@deprecated_input_options
 @click.pass_context
 def substrate_prediction_cmd(ctx, log_level, log_file, verbose, **kwargs):
+    """predict substrate specificities of CAZyme Gene Clusters(CGCs)."""
     setup_logging(log_level, log_file, verbose)
     from dbcan.configs.cgc_substrate_config import CGCSubstrateConfig, SynPlotConfig
     from dbcan.core import run_dbCAN_CGCFinder_substrate, run_dbcan_syn_plot
-    """predict substrate specificities of CAZyme Gene Clusters(CGCs)."""
+    # Accepted for compatibility with older command lines; substrate_prediction only reads --output_dir.
+    kwargs.pop("input_raw_data", None)
+    kwargs.pop("mode", None)
+    from dbcan.annotation.cgc_substrate_prediction import parse_extra_pairs
+    try:
+        parse_extra_pairs(kwargs.get("extra_pair_type"), kwargs.get("extra_pair_type_num"))
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="'-ept' / '-eptn'")
     cgcsubconfig = create_config(CGCSubstrateConfig, **kwargs)
     run_dbCAN_CGCFinder_substrate(cgcsubconfig)
     synplotconfig = create_config(SynPlotConfig, **kwargs)
@@ -269,6 +370,8 @@ def _imply_fungi_from_taxon_profile(ctx, merged):
 def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, and CGC identification in one step."""
     setup_logging(log_level, log_file, verbose)
+    _require_gff_for_protein_mode(kwargs)
+    _precheck_protein_gff(kwargs)
     merged = {
         **kwargs,
         "log_level": log_level,
@@ -287,6 +390,8 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
         click.echo("step 3/3  CGC identification...")
         _invoke_subset(ctx, cgc_finder_cmd, merged)
         click.echo("CGC analysis completed.")
+    except click.ClickException:
+        raise
     except Exception as e:
         import traceback
         click.echo(f"error: {str(e)}")
@@ -296,6 +401,7 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 
 @cli.command('easy_substrate')
 @logging_options
+@input_options
 @cgc_sub_options
 @methods_option
 @threads_option
@@ -312,6 +418,8 @@ def easy_cgc_cmd(ctx, log_level, log_file, verbose, **kwargs):
 def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
     """Perform complete CGC analysis: CAZyme annotation, GFF processing, CGC identification, and substrate prediction in one step."""
     setup_logging(log_level, log_file, verbose)
+    _require_gff_for_protein_mode(kwargs)
+    _precheck_protein_gff(kwargs)
     merged = {
         **kwargs,
         "log_level": log_level,
@@ -337,6 +445,8 @@ def easy_substrate_cmd(ctx, log_level, log_file, verbose, **kwargs):
         _invoke_subset(ctx, substrate_prediction_cmd, merged)
 
 
+    except click.ClickException:
+        raise
     except Exception as e:
         import traceback
         click.echo(f"error: {str(e)}")

@@ -41,6 +41,9 @@ class Samplesheet:
     def __iter__(self):
         return iter(self.samples)
 
+    def __len__(self):
+        return len(self.samples)
+
     def sample_ids(self) -> List[str]:
         return [s.sample_id for s in self.samples]
 

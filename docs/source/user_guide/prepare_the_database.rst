@@ -1,112 +1,186 @@
 .. _prepare-database:
 
 Preparing Databases
-====================
+===================
 
-Database files are essential for running dbCAN analysis. This guide explains how to install and prepare these databases.
+Download all databases once into one folder and reuse it for every run:
 
-Automatic Database Installation
+.. code-block:: shell
+
+   run_dbcan database --db_dir db               # HTTP, moving snapshot "db_current"
+   run_dbcan database --db_dir db --aws_s3      # pinned S3 release: reproducible, often faster
+   run_dbcan database --db_dir db --no-cgc      # CAZyme annotation databases only
+
+A full download needs about **8 GB** (about 7.4 GB with ``--no-cgc``). The files are described in
+:doc:`../getting_started/database_description`.
+
+HTTP snapshot or pinned S3 release
 ----------------------------------
 
-The simplest way to obtain all required databases is using the built-in command in run_dbCAN:
+.. list-table::
+   :widths: 22 78
+   :header-rows: 1
+
+   * - Source
+     - Behaviour
+   * - HTTP (default)
+     - ``https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/<file>``.
+       ``db_current`` is replaced when the dbCAN team publishes an update, so two downloads months apart may differ.
+   * - ``--aws_s3``
+     - ``https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_5-5-2026/<file>``. The folder name is fixed in the
+       installed package (``S3_DATABASE_RELEASE`` in ``dbcan/constants/databases_constants.py``), so one ``dbcan``
+       version always downloads the same files.
+
+Use ``--aws_s3`` when results must be reproducible across machines or over time.
+
+Options
+-------
+
+.. list-table::
+   :widths: 32 68
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``--db_dir``
+     - Target directory (created if needed). Required.
+   * - ``--cgc`` / ``--no-cgc``
+     - Download (default) or skip the CGC and substrate databases (TCDB, TF, STP, peptidase, sulfatase, dbCAN-PUL).
+   * - ``--aws_s3``
+     - Pinned S3 release instead of the HTTP ``db_current`` snapshot.
+   * - ``--no-overwrite``
+     - Skip every file that already exists, without checking its size.
+   * - ``--resume`` / ``--no-resume``
+     - Resume an interrupted download from ``<file>.part`` (default) or start again.
+   * - ``--timeout`` / ``--retries``
+     - Per-request timeout in seconds (default 30) and retries of transient failures (default 3).
+   * - ``--verify-ssl`` / ``--no-verify-ssl``
+     - Verify TLS certificates (default). ``--no-verify-ssl`` is insecure.
+
+* Without ``--no-overwrite`` an existing file is skipped only when its size matches the remote ``Content-Length``.
+* ``dbCAN-PUL.tar.gz`` is extracted into ``dbCAN-PUL/`` and deleted.
+* If a file fails, the command exits with an error listing it; run it again to fetch only the missing files.
+  On a slow network: ``run_dbcan database --db_dir db --aws_s3 --timeout 60 --retries 5``.
+
+Files and sizes
+---------------
+
+Sizes of the S3 release ``db_v5-2-9_5-5-2026`` (the HTTP snapshot may differ slightly).
+
+.. list-table::
+   :widths: 34 12 54
+   :header-rows: 1
+
+   * - File
+     - Size
+     - Used by
+   * - ``dbCAN-sub.hmm`` (remote ``dbCAN_sub.hmm``)
+     - ~5.1 GB
+     - ``CAZyme_annotation``
+   * - ``CAZy.dmnd``
+     - ~2.2 GB
+     - ``CAZyme_annotation``
+   * - ``dbCAN.hmm``
+     - ~130 MB
+     - ``CAZyme_annotation``
+   * - ``fam-substrate-mapping.tsv``
+     - <1 MB
+     - ``CAZyme_annotation`` (``Substrate`` column); the 5-column file and the curated web format (comment line,
+       ``new_Substrate_high_level`` and ``type`` columns, ``REMOVED`` rows ignored) are both accepted
+   * - ``dbCAN-sub-substrate.tsv`` (optional, not downloaded)
+     - <1 MB
+     - ``CAZyme_annotation``: when present, substrates of subfamilies with EC numbers match the dbCAN-sub web
+       server exactly
+   * - ``peptidase_db.dmnd``
+     - ~330 MB
+     - ``gff_process``
+   * - ``sulfatlas_db.dmnd``
+     - ~100 MB
+     - ``gff_process``
+   * - ``TCDB.dmnd``, ``TF.hmm``, ``TF.dmnd``, ``STP.hmm``
+     - <15 MB each
+     - ``gff_process``
+   * - ``PUL.dmnd``, ``dbCAN-PUL.xlsx``, ``dbCAN-PUL/``
+     - <5 MB
+     - ``substrate_prediction``
+   * - ``Pfam-A.hmm`` (optional, not downloaded)
+     - ~1.6 GB
+     - ``Pfam_null_cgc`` only; download it by hand (below)
+
+Recording the database version
+------------------------------
 
 .. code-block:: shell
 
-   run_dbcan database --db_dir db
+   run_dbcan version
+   ls -l db/
+   md5sum db/*.dmnd db/*.hmm > db/checksums.md5
 
-To download from AWS S3 (faster and more stable in many regions), add the ``--aws_s3`` flag:
+Report the S3 release name (``db_v5-2-9_5-5-2026``) if you used ``--aws_s3``, otherwise the download date.
 
-.. code-block:: shell
+Manual download
+---------------
 
-   run_dbcan database --db_dir db --aws_s3
-
-To download only CAZyme-related databases (without CGC-related databases), use ``--no-cgc``:
-
-.. code-block:: shell
-
-   run_dbcan database --db_dir db --no-cgc
-
-This command will automatically download all necessary databases and organize them in the specified directory.
-The default HTTP source points at the moving ``db_current`` snapshot. The ``--aws_s3`` source points at the pinned
-``db_v5-2_9-13-2025`` release, which is preferable when you need reproducible database contents across machines.
-
-For unreliable networks, the downloader also supports retry and resume controls:
+Use the same file names as the downloader; only ``dbCAN_sub.hmm`` is saved under another name (``dbCAN-sub.hmm``,
+the name run_dbcan looks for).
 
 .. code-block:: shell
 
-   run_dbcan database --db_dir db --aws_s3 --timeout 60 --retries 5 --resume
+   mkdir -p db && cd db
+   BASE="https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current"
+   # or: BASE="https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_5-5-2026"
+   for f in CAZy.dmnd dbCAN.hmm fam-substrate-mapping.tsv \
+            TCDB.dmnd TF.hmm TF.dmnd STP.hmm peptidase_db.dmnd sulfatlas_db.dmnd \
+            PUL.dmnd dbCAN-PUL.xlsx dbCAN-PUL.tar.gz; do
+     wget -O "$f" "$BASE/$f"
+   done
+   wget -O dbCAN-sub.hmm "$BASE/dbCAN_sub.hmm"
+   tar -xzf dbCAN-PUL.tar.gz
 
-Use ``--no-overwrite`` to keep existing files untouched. By default, existing files may be checked by remote size and
-completed partial downloads are resumed when possible.
+   # optional, only for Pfam_null_cgc
+   wget -O Pfam-A.hmm "https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2-9_5-5-2026/Pfam-A.hmm"
 
-.. tip::
+Or copy the whole S3 release (about 12 GB: it also holds ``Pfam-A.hmm`` and the CAZy FASTA ``CAZyDB.<date>.fa``):
 
-   We recommend creating a dedicated directory for databases, as they will be reused for multiple analyses.
+.. code-block:: shell
 
-Manual Database Installation
------------------------------
+   aws s3 cp s3://dbcan/db_v5-2-9_5-5-2026/ ./db --recursive --no-sign-request
+   mv db/dbCAN_sub.hmm db/dbCAN-sub.hmm
 
-If you prefer to download database files manually or face connectivity issues, use the same paths as the built-in
-downloader. The HTTP source is:
+All files can also be browsed on the `dbCAN2 download page <https://bcb.unl.edu/dbCAN2/download/>`_. Test files
+are in its `test data folder <https://bcb.unl.edu/dbCAN2/download/test>`_; the
+:doc:`../getting_started/quick_start` uses them.
 
-.. code-block:: text
+.. _rebuild-peptidase-db:
 
-   https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/<filename>
+Rebuilding ``peptidase_db.dmnd`` (maintainers)
+----------------------------------------------
 
-The pinned S3 source is:
+Users download the finished file. For a new MEROPS release the dbCAN team rebuilds it from ``pepunit.lib``
+(DIAMOND on ``PATH``; ``--help`` lists all options):
 
-.. code-block:: text
+.. code-block:: shell
 
-   https://dbcan.s3.us-west-2.amazonaws.com/db_v5-2_9-13-2025/<filename>
+   wget https://ftp.ebi.ac.uk/pub/databases/merops/current_release/pepunit.lib     # ~440 MB
+   python -m dbcan.utils.build_peptidase_db --input pepunit.lib --output peptidase_db.dmnd \
+       --report peptidase_db.dropped.tsv --threads 4
 
-Step-by-Step Instructions:
-
-1. Create a database directory:
-
-   .. code-block:: shell
-
-      mkdir -p db && cd db
-
-2. Download the required database files:
-
-   .. code-block:: shell
-
-      # CAZyme databases
-      wget -O CAZy.dmnd "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/CAZy.dmnd"
-      wget -O dbCAN.hmm "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/dbCAN.hmm"
-      wget -O dbCAN-sub.hmm "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/dbCAN_sub.hmm"
-      wget -O fam-substrate-mapping.tsv "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/fam-substrate-mapping.tsv"
-
-      # CGC-related databases
-      wget -O TCDB.dmnd "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/TCDB.dmnd"
-      wget -O TF.hmm "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/TF.hmm"
-      wget -O TF.dmnd "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/TF.dmnd"
-      wget -O STP.hmm "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/STP.hmm"
-      wget -O PUL.dmnd "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/PUL.dmnd"
-      wget -O dbCAN-PUL.xlsx "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/dbCAN-PUL.xlsx"
-      wget -O dbCAN-PUL.tar.gz "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/dbCAN-PUL.tar.gz"
-      wget -O peptidase_db.dmnd "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/peptidase_db.dmnd"
-      wget -O sulfatlas_db.dmnd "https://pro.unl.edu/dbCAN2/download_file.php?file=run_dbCAN_database_total/db_current/sulfatlas_db.dmnd"
-
-      tar -xzf dbCAN-PUL.tar.gz
-
-3. Verify your downloads:
-
-   .. code-block:: shell
-
-      ls -lh
-      # You should see CAZy.dmnd, dbCAN.hmm, dbCAN-sub.hmm, fam-substrate-mapping.tsv, and other files.
+* **Identifier**: taken from the bracket right before ``#<family>#{... unit: ...}`` (``... [misleading] (Mus
+  musculus) [C19.972]#C19#{peptidase unit: ...}`` gives ``C19.972``) and written as ``>MER0003996|C19.972``. The
+  currently distributed database took the *first* bracket: 322 entries are named ``misleading``, ``Clostridium``, ...
+  and are never reported.
+* **Kept**: peptidase units and, by default, inhibitor units (``I*``) as decoys (``--drop-inhibitors`` leaves them
+  out). **Left out**: malformed identifiers (``a01.UNa``), records without ``MER`` accession or sequence, exact
+  duplicates; ``--report`` lists them.
+* **Result** (MEROPS 2023-02-22): 984,975 peptidase units (287 families) + 147,401 inhibitor units, ~313 MB, plus
+  the cleaned FASTA (``--fasta``, ``peptidase_db.faa``). On the test genomes it gives the results of the current
+  database plus the two ``C19`` peptidases that the current database has under the wrong identifier.
 
 .. note::
 
-   For a complete list of required database files and their descriptions,
-   please visit the `dbCAN2 database documentation <https://bcb.unl.edu/dbCAN2/download/>`_.
+   **Why keep inhibitor units?** Each protein keeps only its best DIAMOND hit and inhibitor hits are never reported
+   as ``Peptidase``, so a protein whose best match is an inhibitor cannot take a weaker peptidase hit instead
+   (*Xylona heveae*: ``I51.001`` would otherwise become ``C18.UPW``, a viral family). They also keep DIAMOND fast on
+   small genomes.
 
-Testing Your Installation
----------------------------
-
-After installing the databases, you can verify your setup using example files from our `test data repository <https://bcb.unl.edu/dbCAN2/download/test>`_.
-
-.. admonition:: Next Steps
-
-   Once your databases are installed, proceed to the :doc:`CAZyme Annotation <CAZyme_annotation>` section to start analyzing your sequences.
+Next: :doc:`CAZyme_annotation`.

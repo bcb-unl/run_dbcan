@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field, fields
-from typing import Optional, List
+from typing import Optional, List, Tuple
+
+from dbcan.constants.base_constants import GFF_MIN_MATCH_DEFAULT
 
 
 @dataclass
@@ -17,6 +19,8 @@ class GeneralConfig(BaseConfig):
     output_dir: str = None
     mode: str = None
     db_dir: str = None
+    # Worker threads for gene prediction (pyrodigal); None or <= 0 uses all CPUs.
+    threads: Optional[int] = None
 
     #thread
 
@@ -25,6 +29,9 @@ class GeneralConfig(BaseConfig):
 @dataclass
 class OverviewGeneratorConfig(BaseConfig):
     output_dir: str
+    # Methods run in this CAZyme_annotation call (--methods). Only their result files are merged;
+    # None merges every result file found (diamond.out, dbCAN_hmm_results.tsv, dbCANsub_hmm_results.tsv).
+    methods: Optional[Tuple[str, ...]] = None
 
 
 @dataclass
@@ -35,6 +42,8 @@ class GFFConfig(BaseConfig):
     # Prodigal: avoid BCBio GFF.parse on huge files (see annotate_prodigal_gff_streaming).
     prodigal_gff_streaming: str = "auto"  # auto | on | off
     prodigal_streaming_threshold_mb: int = 50
+    # Minimum fraction of protein-coding GFF genes that must match a protein of uniInput.faa.
+    gff_min_match: float = GFF_MIN_MATCH_DEFAULT
 
 
 
@@ -42,6 +51,7 @@ class GFFConfig(BaseConfig):
 @dataclass
 class CGCPlotConfig(BaseConfig):
     output_dir: str
+    layout: str = "auto"   # auto | circos | overview (see plot_cgc_circle_constants)
 
 
 @dataclass

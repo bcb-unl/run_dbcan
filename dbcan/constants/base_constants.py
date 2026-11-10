@@ -62,6 +62,8 @@ GENE_STRAND_FIELD = "Gene Strand"
 GENE_ANNOTATION_FIELD = "Gene Annotation"
 
 #plot for CGCs
+# The ONE gene-type palette used by every dbCAN figure (circle/overview, CGC map, coverage,
+# synteny). Do not copy these values elsewhere: import this dict.
 CGC_FEATURE_LEGEND = ['CAZyme', 'TC', 'TF', 'STP', 'Peptidase', 'Sulfatase']
 CGC_FEATURE_COLORS = {
     "CAZyme": "#E67E22",      # orange
@@ -75,6 +77,19 @@ CGC_FEATURE_COLORS = {
 GENE_LABEL_COLOR = list(CGC_FEATURE_COLORS.values())
 GENE_LABELS = list(CGC_FEATURE_COLORS.keys())
 
+# Gene Type priority for a gene with several signature roles (lower = wins). Used by
+# CGCFinder for the "Gene Type" column and by the plots to pick the single fill colour.
+CGC_GENE_TYPE_PRIORITY = {'CAZyme': 0, 'TC': 1, 'TF': 2, 'STP': 3, 'Sulfatase': 4, 'Peptidase': 5}
+# Spellings of the signature types found in cgc.gff / cgc_standard_out.tsv and in the
+# dbCAN-PUL reference gffs (SULFATLAS, PEPTIDASE), mapped to the palette keys.
+CGC_QUERY_TC_LEVELS = 3   # TC IDs in CGC.faa / PUL_blast.out query IDs: 1.A.1.1.3 -> 1.A.1
+CGC_OTHER_GENE_TYPE = "Other"   # genes without a signature role (null, tRNA, ...)
+CGC_GENE_TYPE_ALIASES = {
+    "cazyme": "CAZyme", "tc": "TC", "tf": "TF", "stp": "STP",
+    "sulfatase": "Sulfatase", "sulfatlas": "Sulfatase",
+    "peptidase": "Peptidase",
+}
+
 # common label for different feature types
 CAZYME = "CAZyme"
 TC = "TC"
@@ -84,6 +99,22 @@ PUL = "PUL"
 NULL = "null"
 PEPTIDASE = "Peptidase"
 SULFATASE = "Sulfatase"
+
+# A whole CAZy family/subfamily token in a '|' separated CAZy DIAMOND header, e.g. GH13 or GH13_6.
+# Anchored at both ends so that GenBank accessions such as AAK49401.1 or CEA12345.1 do not match.
+CAZY_FAMILY_TOKEN_PATTERN = r"^(?:GH|GT|PL|CE|AA|CBM)\d+(?:_\d+)?$"
+
+# Input processing
+# --mode protein: stop symbols removed at the end / replaced inside protein sequences
+PROTEIN_STOP_CHARS = "*."
+PROTEIN_UNKNOWN_AA = "X"
+# --mode prok/meta: warn when pyrodigal proteins look like a eukaryotic genome split at introns
+# (median protein length below EUK_WARN_MEDIAN_AA and more than EUK_WARN_SHORT_FRACTION of the
+# proteins shorter than EUK_WARN_SHORT_AA; complete genes only, at least EUK_WARN_MIN_GENES).
+EUK_WARN_MIN_GENES = 200
+EUK_WARN_MEDIAN_AA = 150
+EUK_WARN_SHORT_AA = 100
+EUK_WARN_SHORT_FRACTION = 0.30
 
 
 
@@ -121,6 +152,18 @@ GFF_FORMAT_NCBI_EUK = "NCBI_euk"
 GFF_FORMAT_NCBI_PROK = "NCBI_prok"
 GFF_FORMAT_JGI = "JGI"
 GFF_FORMAT_PRODIGAL = "prodigal"
+# Eukaryotic annotation pipelines (gene -> transcript -> CDS), read by dbcan.IO.gff_resolver
+GFF_FORMAT_FUNANNOTATE = "funannotate"
+GFF_FORMAT_BRAKER = "BRAKER"
+GFF_FORMAT_GFF3 = "GFF3"
+GFF_FORMAT_GTF = "GTF"
+GFF_LEGACY_FORMATS = (GFF_FORMAT_PRODIGAL, GFF_FORMAT_NCBI_PROK, GFF_FORMAT_NCBI_EUK, GFF_FORMAT_JGI)
+GFF_RESOLVER_FORMATS = (GFF_FORMAT_FUNANNOTATE, GFF_FORMAT_BRAKER, GFF_FORMAT_GFF3, GFF_FORMAT_GTF)
+GFF_FORMAT_CHOICES = GFF_LEGACY_FORMATS + GFF_RESOLVER_FORMATS
+
+# gene -> protein resolution report (gff_process / easy_* with --input_gff)
+GFF_RESOLUTION_FILE = "gff_resolution.tsv"
+GFF_MIN_MATCH_DEFAULT = 0.9
 
 # GFF attribute names
 GFF_PROTEIN_ID_ATTR_NCBI = "protein_id"

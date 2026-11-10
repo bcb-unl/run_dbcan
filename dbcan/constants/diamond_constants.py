@@ -33,9 +33,18 @@ DIAMOND_CMD_THREADS = "--threads"
 DIAMOND_CMD_VERBOSE = "--verbose"
 DIAMOND_CMD_QUIET = "--quiet"
 DIAMOND_CMD_QUERY_COVER = "--query-cover"
+DIAMOND_CMD_SUBJECT_COVER = "--subject-cover"
+
+# Bit score of the signature searches (TCDB, TF, SulfAtlas, MEROPS). It is the last DIAMOND
+# output field and is written as the last column of diamond.out.* (after 'Database'), so the
+# column positions of older files do not move. Used to pick the best hit of a protein: for one
+# query protein the bit score does not depend on database size (the E-value does), so hits
+# from different databases can be ranked by it.
+DIAMOND_BITSCORE_FIELD = 'bitscore'
+DIAMOND_BITSCORE_COLUMN = 'BITSCORE'
 
 # TCDB output format
-TCDB_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+TCDB_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp', DIAMOND_BITSCORE_FIELD]
 
 TCDB_ID_COLUMN = 'TCDB ID'
 TC=base_constants.TC
@@ -65,7 +74,8 @@ TCDB_COLUMN_NAMES = [
     'TCDB END',
     'QSTART',
     'QEND',
-    'COVERAGE'
+    'COVERAGE',
+    DIAMOND_BITSCORE_COLUMN,
 ]
 
 
@@ -78,7 +88,7 @@ TCDB_COLUMN_NAMES = [
 SULFATASE = base_constants.SULFATASE
 SULFATLAS_DIAMOND_DB = "sulfatlas_db.dmnd"
 SULFATLAS_DIAMOND_OUTPUT = base_constants.SULFATLAS_DIAMOND_OUTPUT
-SULFATLAS_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+SULFATLAS_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp', DIAMOND_BITSCORE_FIELD]
 SULFATLAS_ID_COLUMN = 'Sul ID'
 
 SULFATLAS_COLUMN_NAMES = [
@@ -91,16 +101,23 @@ SULFATLAS_COLUMN_NAMES = [
     'Sul END',
     'QSTART',
     'QEND',
-    'COVERAGE'
+    'COVERAGE',
+    DIAMOND_BITSCORE_COLUMN,
 ]
 DIAMOND_SULFATLAS_EVALUE_DEFAULT = 1e-4
 DIAMOND_SULFATLAS_COVERAGE_DEFAULT = 35
+# SulfAtlas holds full-length proteins, many of them sulfatase domains fused to other domains
+# (e.g. GH2/GH32). A protein that aligns only to the non-sulfatase part of such an entry would
+# take its S1_x label, so a hit must also cover most of the SulfAtlas protein (--subject-cover).
+DIAMOND_SULFATLAS_SUBJECT_COVERAGE_DEFAULT = 70
 
 # Peptidase Constants
 PEPTIDASE = base_constants.PEPTIDASE
 PEPTIDASE_DIAMOND_DB = "peptidase_db.dmnd"
 PEPTIDASE_DIAMOND_OUTPUT = base_constants.PEPTIDASE_DIAMOND_OUTPUT
-PEPTIDASE_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+# peptidase_db.dmnd holds MEROPS peptidase units (domains), so coverage is reported and
+# filtered on the subject (the unit), not on the query protein.
+PEPTIDASE_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'scovhsp', DIAMOND_BITSCORE_FIELD]
 PEPTIDASE_ID_COLUMN = 'Peptidase ID'
 
 PEPTIDASE_COLUMN_NAMES = [
@@ -113,7 +130,8 @@ PEPTIDASE_COLUMN_NAMES = [
     'Peptidase END',
     'QSTART',
     'QEND',
-    'COVERAGE'
+    'COVERAGE',
+    DIAMOND_BITSCORE_COLUMN,
 ]
 DIAMOND_PEPTIDASE_EVALUE_DEFAULT = 1e-4
 DIAMOND_PEPTIDASE_COVERAGE_DEFAULT = 35
@@ -124,7 +142,7 @@ DIAMOND_PEPTIDASE_COVERAGE_DEFAULT = 35
 TF = base_constants.TF
 TF_DIAMOND_DB = "TF.dmnd"
 TF_DIAMOND_OUTPUT = base_constants.TF_DIAMOND_OUTPUT
-TF_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp']
+TF_DIAMOND_OUTFMT_FIELDS = ['sseqid', 'slen', 'qseqid', 'qlen', 'evalue', 'sstart', 'send', 'qstart', 'qend', 'qcovhsp', DIAMOND_BITSCORE_FIELD]
 TF_ID_COLUMN = 'TF ID'
 TF_DATABASE = "prodoric"
 TF_COLUMN_NAMES = [
@@ -137,7 +155,8 @@ TF_COLUMN_NAMES = [
     'TF END',
     'QSTART',
     'QEND',
-    'COVERAGE'
+    'COVERAGE',
+    DIAMOND_BITSCORE_COLUMN,
 ]
 DIAMOND_TF_EVALUE_DEFAULT = 1e-4
 DIAMOND_TF_COVERAGE_DEFAULT = 35

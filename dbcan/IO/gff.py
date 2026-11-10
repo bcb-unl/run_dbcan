@@ -1,3 +1,4 @@
+import gzip
 import logging
 import sys
 import multiprocessing
@@ -5,6 +6,9 @@ from pathlib import Path
 from typing import Dict, Any
 
 import pandas as pd
+from dbcan.IO.table import read_tsv
+import dbcan.constants.process_utils_constants as PU
+from dbcan.process.process_utils import best_full_length_labels
 from Bio import SeqIO
 from BCBio import GFF
 from tqdm import tqdm
@@ -13,6 +17,19 @@ from dbcan.configs.base_config import GFFConfig  # keep as-is unless you migrate
 import dbcan.constants.gff_constants as G  # for __all__
 
 logger = logging.getLogger(__name__)
+
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _open_gff_text(path, **kwargs):
+    """Open a GFF for text reading; gzip (``.gz`` suffix or gzip magic bytes) is read transparently."""
+    p = Path(path)
+    if p.suffix == ".gz":
+        return gzip.open(p, "rt", **kwargs)
+    with p.open("rb") as fh:
+        is_gz = fh.read(2) == _GZIP_MAGIC
+    return gzip.open(p, "rt", **kwargs) if is_gz else p.open(**kwargs)
+
 
 # Utility: read GFF to DataFrame
 def read_gff_to_df(path: str, columns=None, drop_comments: bool = True) -> pd.DataFrame:
@@ -32,9 +49,9 @@ def read_gff_to_df(path: str, columns=None, drop_comments: bool = True) -> pd.Da
 
     # Never treat '#' as inline comment; some protein_id contain '#'
     # Use the python engine for robust parsing of mixed content.
-    df = pd.read_csv(
+    df = read_tsv(
         p,
-        sep='\t',
+        id_columns=[columns[0], columns[-1]],
         header=None,
         names=columns,
         comment=None,      # critical: keep inline '#'
@@ -90,7 +107,7 @@ def annotate_prodigal_gff_streaming(
     Output lines match GFFProcessor.write_gff for each input feature row.
     """
     wrote = 0
-    with input_path.open(encoding="utf-8", errors="replace") as inf, output_path.open(
+    with _open_gff_text(input_path, encoding="utf-8", errors="replace") as inf, output_path.open(
         "w", encoding="utf-8"
     ) as outf:
         for line in tqdm(inf, desc="Generating Prodigal GFF (streaming)", unit="lines", mininterval=2.0):
@@ -146,6 +163,14 @@ def _sort_features_in_record(record):
         )
     )
     return record
+
+
+# total_cgc_info.tsv columns that rank the full-length labels of a protein (best_full_length_labels)
+_FULL_LENGTH_RANK_COLUMNS = (
+    PU.ANNOTATE_LENGTH_COLUMN, PU.TARGET_LENGTH_COLUMN, PU.IEVALUE_COLUMN,
+    PU.ANNOTATE_FROM_COLUMN, PU.ANNOTATE_TO_COLUMN, PU.TARGET_FROM_COLUMN, PU.TARGET_TO_COLUMN,
+    PU.SIGNATURE_BITSCORE_COLUMN,
+)
 
 
 def _natural_key(s: str):
@@ -205,7 +230,7 @@ class GFFProcessor:
                 return {}
 
             logger.info(f"Loading CAZyme data from {self.cazyme_overview_path}")
-            df = pd.read_csv(self.cazyme_overview_path, sep='\t')
+            df = read_tsv(self.cazyme_overview_path)
 
             required_cols = [G.GFF_GENE_ID_COL, G.GFF_TOOLS_COUNT_COL, G.GFF_RECOMMEND_RESULTS_COL]
             if not all(col in df.columns for col in required_cols):
@@ -224,17 +249,36 @@ class GFFProcessor:
 
             logger.info(f"Loading CGC signature data from {self.cgc_sig_path}")
             try:
-                cgc_sig_chunks = pd.read_csv(
+                with open(self.cgc_sig_path) as fh:
+                    header = fh.readline().rstrip("\n").split("\t")
+                usecols = list(G.GFF_CGC_SIG_COLUMNS)
+                names = [G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL]
+                if PU.SIGNATURE_SOURCE_COLUMN in header:
+                    usecols.append(header.index(PU.SIGNATURE_SOURCE_COLUMN))
+                    names.append(PU.SIGNATURE_SOURCE_COLUMN)
+                # Columns used to pick the best full-length label of a non-CAZyme protein. Tables
+                # written before the bit score was added have no Bitscore column: all labels are kept.
+                rank_full_length = PU.SIGNATURE_SOURCE_COLUMN in header and PU.SIGNATURE_BITSCORE_COLUMN in header
+                if rank_full_length:
+                    for col in _FULL_LENGTH_RANK_COLUMNS:
+                        if col in header and col not in names:
+                            usecols.append(header.index(col))
+                            names.append(col)
+                # pandas returns usecols in file order: give the names in that order too
+                usecols, names = (list(t) for t in zip(*sorted(zip(usecols, names))))
+                cgc_sig_chunks = read_tsv(
                     self.cgc_sig_path,
-                    sep='\t',
-                    usecols=G.GFF_CGC_SIG_COLUMNS,
+                    id_columns=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
+                    usecols=usecols,
                     header=None,
                     skiprows=1,
-                    names=[G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL],
+                    names=names,
                     chunksize=100_000
                 )
                 cgc_sig_df_list = []
                 chunk_count = 0
+                cazyme_ids = set(overview_df[G.GFF_PROTEIN_ID_COL])
+                dropped_full_length = 0
                 for chunk in cgc_sig_chunks:
                     chunk_count += 1
                     for col in (G.GFF_FUNCTION_ANNOTATION_COL, G.GFF_PROTEIN_ID_COL, G.GFF_TYPE_COL):
@@ -242,10 +286,34 @@ class GFFProcessor:
                     before_rows = len(chunk)
                     chunk = chunk.dropna(subset=[G.GFF_PROTEIN_ID_COL])
                     chunk[G.GFF_CGC_ANNOTATION_COL] = chunk[G.GFF_TYPE_COL] + '|' + chunk[G.GFF_FUNCTION_ANNOTATION_COL]
-                    cgc_sig_df_list.append(chunk[[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]])
+                    if PU.SIGNATURE_SOURCE_COLUMN in chunk.columns:
+                        # A full-length database label (TC, TF DIAMOND, sulfatase) cannot be placed on the
+                        # protein, so it cannot be told apart from the CAZyme domain: CAZyme wins.
+                        drop = (chunk[PU.SIGNATURE_SOURCE_COLUMN].isin(PU.FULL_LENGTH_SIGNATURE_SOURCES)
+                                & chunk[G.GFF_PROTEIN_ID_COL].isin(cazyme_ids))
+                        dropped_full_length += int(drop.sum())
+                        chunk = chunk[~drop]
+                    cgc_sig_df_list.append(chunk)
                 cgc_sig_df = pd.concat(cgc_sig_df_list, ignore_index=True) if cgc_sig_df_list else pd.DataFrame(
                     columns=[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]
                 )
+                if rank_full_length and not cgc_sig_df.empty:
+                    # A non-CAZyme protein with several full-length labels (e.g. TC and Sulfatase) is one
+                    # protein with competing whole-protein names: only the best one is used.
+                    full = cgc_sig_df[PU.SIGNATURE_SOURCE_COLUMN].isin(PU.FULL_LENGTH_SIGNATURE_SOURCES)
+                    best = best_full_length_labels(cgc_sig_df[full], protein_col=G.GFF_PROTEIN_ID_COL)
+                    n_drop = int(full.sum()) - len(best)
+                    if n_drop:
+                        n_prot = int((cgc_sig_df.loc[full, G.GFF_PROTEIN_ID_COL].value_counts() > 1).sum())
+                        logger.info("%d full-length label(s) (TC/TF(DIAMOND)/sulfatase) not used in cgc.gff on %d "
+                                    "non-CAZyme protein(s) with more than one: the hit with the highest bit "
+                                    "score is kept (all stay in %s)", n_drop, n_prot, self.cgc_sig_path.name)
+                    cgc_sig_df = cgc_sig_df[~full | cgc_sig_df.index.isin(best.index)]
+                cgc_sig_df = cgc_sig_df[[G.GFF_PROTEIN_ID_COL, G.GFF_CGC_ANNOTATION_COL]]
+                if dropped_full_length:
+                    logger.info("%d TC/TF(DIAMOND)/sulfatase label(s) on CAZyme proteins not used in cgc.gff "
+                                "(full-length database hits; they stay in %s)", dropped_full_length,
+                                self.cgc_sig_path.name)
                 logger.info(f"CGC signature chunks read: {chunk_count}, total rows: {len(cgc_sig_df)}; "
                             f"TC rows: {(cgc_sig_df[G.GFF_CGC_ANNOTATION_COL].str.startswith('TC|').sum() if not cgc_sig_df.empty else 0)}")
             except Exception as e:
@@ -363,7 +431,7 @@ class GFFProcessor:
 
         records = []
         try:
-            with in_path.open() as fh:
+            with _open_gff_text(in_path) as fh:
                 for idx, rec in enumerate(GFF.parse(fh)):
                     _sort_features_in_record(rec)
                     records.append((idx, rec))
@@ -428,7 +496,7 @@ class NCBIEukProcessor(GFFProcessor):
 
     def _process_gff_format(self, input_file, output_file, cgc_data):
         try:
-            with Path(input_file).open() as in_file, Path(output_file).open('w') as out_file:
+            with _open_gff_text(input_file) as in_file, Path(output_file).open('w') as out_file:
                 for record in tqdm(GFF.parse(in_file), desc="Generating NCBI Euk GFF"):
                     for feature in record.features:
                         if feature.type == G.GFF_GENE_FEATURE:
@@ -468,7 +536,7 @@ class NCBIProkProcessor(GFFProcessor):
 
     def _process_gff_format(self, input_file, output_file, cgc_data):
         try:
-            with Path(input_file).open() as in_file, Path(output_file).open('w') as out_file:
+            with _open_gff_text(input_file) as in_file, Path(output_file).open('w') as out_file:
                 for record in tqdm(GFF.parse(in_file), desc="Generating NCBI Prok GFF"):
                     for feature in record.features:
                         if feature.type == G.GFF_GENE_FEATURE:
@@ -519,7 +587,7 @@ class JGIProcessor(GFFProcessor):
             else:
                 logger.error(f"Input protein sequences file not found: {self.input_total_faa_path}")
 
-            with Path(input_file).open() as in_file, Path(output_file).open('w') as out_file:
+            with _open_gff_text(input_file) as in_file, Path(output_file).open('w') as out_file:
                 for record in tqdm(GFF.parse(in_file), desc="Generating JGI GFF"):
                     for feature in record.features:
                         if feature.type == G.GFF_GENE_FEATURE:
@@ -544,6 +612,9 @@ class ProdigalProcessor(GFFProcessor):
             return False
         thresh_mb = int(getattr(self.config, "prodigal_streaming_threshold_mb", 50))
         size_b = input_path.stat().st_size
+        with Path(input_path).open("rb") as fh:
+            if fh.read(2) == _GZIP_MAGIC:
+                size_b *= 8  # compressed size; a GFF unpacks to roughly 6-10x
         return size_b > thresh_mb * 1_000_000
 
     def _process_gff_format(self, input_file, output_file, cgc_data):
@@ -564,7 +635,7 @@ class ProdigalProcessor(GFFProcessor):
                     f"threshold {getattr(self.config, 'prodigal_streaming_threshold_mb', 50)} MB for auto-streaming)."
                 )
                 wrote = 0
-                with inp.open() as in_file, out.open("w") as out_file:
+                with _open_gff_text(inp) as in_file, out.open("w") as out_file:
                     for record in tqdm(GFF.parse(in_file), desc="Generating Prodigal GFF"):
                         for feature in record.features:
                             protein_id = feature.qualifiers.get(G.GFF_ID_ATTR_PRODIGAL, [G.GFF_UNKNOWN_ANNOTATION])[0]
@@ -580,9 +651,41 @@ class ProdigalProcessor(GFFProcessor):
             raise
 
 
+class ResolverGFFProcessor(GFFProcessor):
+    """funannotate, BRAKER, GFF3 and GTF: gene -> transcript -> CDS resolution
+    (dbcan.IO.gff_resolver). One row per gene; the annotated isoform is kept, else the longest CDS.
+    Also writes gff_resolution.tsv."""
+
+    def process_gff(self) -> bool:
+        from dbcan.IO.gff_resolver import resolve_gff, write_cgc_gff, write_resolution_tsv, read_fasta_ids
+
+        if not self.input_gff_path.exists():
+            logger.error(f"Input GFF file not found: {self.input_gff_path}")
+            return False
+        if not self.input_total_faa_path.exists():
+            logger.error(f"Input protein sequences file not found: {self.input_total_faa_path}")
+            return False
+        logger.info("Loading annotation tables (CAZyme / CGC signatures)")
+        cgc_data = self.load_cgc_type()
+        annotations = {pid: v.get(G.GFF_CGC_ANNOTATION_COL, G.GFF_NULL_ANNOTATION) for pid, v in cgc_data.items()}
+        protein_ids = read_fasta_ids(self.input_total_faa_path, clean=False)
+        logger.info(f"[GFF] Resolving genes of {self.input_gff_path} (--gff_type {self.config.gff_type})")
+        result = resolve_gff(self.input_gff_path, self.config.gff_type, protein_ids, annotations)
+        wrote = write_cgc_gff(result, self.output_gff_path, annotations)
+        write_resolution_tsv(result, self.output_dir_path / G.GFF_RESOLUTION_FILE)
+        logger.info(result.summary())
+        logger.info(f"GFF processing complete: {self.output_gff_path} ({wrote} genes)")
+        return True
+
+
 def get_gff_processor(config: GFFConfig) -> GFFProcessor:
-    """Factory: build a processor by gff_type."""
-    gff_type = config.gff_type
+    """Factory: build a processor by gff_type (case-insensitive)."""
+    from dbcan.IO.gff_resolver import normalize_gff_type
+
+    gff_type = normalize_gff_type(config.gff_type)
+    config.gff_type = gff_type
+    if gff_type in G.GFF_RESOLVER_FORMATS:
+        return ResolverGFFProcessor(config)
     if gff_type == G.GFF_FORMAT_NCBI_EUK:
         return NCBIEukProcessor(config)
     elif gff_type == G.GFF_FORMAT_NCBI_PROK:

@@ -39,6 +39,60 @@ GFF_FORMAT_NCBI_EUK = base_constants.GFF_FORMAT_NCBI_EUK
 GFF_FORMAT_NCBI_PROK = base_constants.GFF_FORMAT_NCBI_PROK
 GFF_FORMAT_JGI = base_constants.GFF_FORMAT_JGI
 GFF_FORMAT_PRODIGAL = base_constants.GFF_FORMAT_PRODIGAL
+GFF_FORMAT_FUNANNOTATE = base_constants.GFF_FORMAT_FUNANNOTATE
+GFF_FORMAT_BRAKER = base_constants.GFF_FORMAT_BRAKER
+GFF_FORMAT_GFF3 = base_constants.GFF_FORMAT_GFF3
+GFF_FORMAT_GTF = base_constants.GFF_FORMAT_GTF
+GFF_LEGACY_FORMATS = base_constants.GFF_LEGACY_FORMATS
+GFF_RESOLVER_FORMATS = base_constants.GFF_RESOLVER_FORMATS
+GFF_FORMAT_CHOICES = base_constants.GFF_FORMAT_CHOICES
+
+# gene -> protein resolution report
+GFF_RESOLUTION_FILE = base_constants.GFF_RESOLUTION_FILE
+GFF_MIN_MATCH_DEFAULT = base_constants.GFF_MIN_MATCH_DEFAULT
+GFF_STATUS_MATCHED = "matched"
+GFF_STATUS_UNMATCHED = "unmatched"
+GFF_STATUS_NONCODING = "noncoding"
+# gene_biotype/gene_type value of protein-coding genes (a childless gene with another biotype is
+# reported as non-coding)
+GFF_PROTEIN_CODING_BIOTYPE = "protein_coding"
+GFF_RESOLUTION_COLUMNS = [
+    "gene_id", "contig", "start", "end", "strand", "protein_id", "matched_by", "status",
+    "n_transcripts", "isoform_proteins",
+]
+
+# GFF3 feature types used by the resolver
+GFF_RESOLVER_CDS_TYPES = ("CDS", "cds")
+GFF_RESOLVER_GENE_TYPES = (
+    "gene", "protein_coding_gene", "pseudogene", "ncRNA_gene", "tRNA_gene", "rRNA_gene",
+)
+GFF_RESOLVER_TRANSCRIPT_TYPES = (
+    "mRNA", "transcript", "tRNA", "rRNA", "ncRNA", "lnc_RNA", "lncRNA", "snRNA", "snoRNA",
+    "pseudogenic_transcript", "primary_transcript", "miRNA", "pre_miRNA",
+)
+# Pseudogenes: kept as non-coding null rows (Other|pseudogene) unless their CDS names a protein
+GFF_RESOLVER_PSEUDO_TYPES = ("pseudogene", "pseudogenic_transcript")
+GFF_PSEUDOGENE_FEATURE = "pseudogene"
+# gffread-style transcripts without a gene parent: the gene is named by these attributes
+GFF_RESOLVER_GENE_KEY_ATTRS = ("geneID", "gene_id", "gene")
+# Identifiers matched first (exact FASTA ID), before Name/locus_tag/gene-level keys and aliases
+GFF_RESOLVER_STRONG_KEY_ATTRS = (
+    "protein_id", "proteinId", "ID", "transcript_id", "orig_protein_id", "orig_transcript_id",
+)
+# Rows below the transcript level that never identify a gene or protein; not kept in memory.
+GFF_RESOLVER_IGNORED_TYPES = (
+    "exon", "intron", "five_prime_UTR", "three_prime_UTR", "5'-UTR", "3'-UTR", "UTR",
+    "start_codon", "stop_codon", "region", "chromosome", "contig", "scaffold", "supercontig",
+    "remark", "source", "tss", "tts", "transcription_start_site", "transcription_end_site",
+)
+# Prefixes / suffixes that annotation pipelines add to the protein-bearing identifier
+# (NCBI 'cds-'/'rna-', Ensembl 'CDS:'/'transcript:', funannotate '.cds', BRAKER '.CDS1', gffread '-P1' ...).
+GFF_RESOLVER_ID_PREFIXES = (
+    "cds-", "cds:", "CDS:", "rna-", "transcript:", "mRNA:", "gene-", "gene:", "mrna-",
+)
+GFF_RESOLVER_ID_SUFFIX_PATTERNS = (
+    r"\.cds\d*$", r"-CDS\d*$", r"\.CDS\.?\d*$", r":cds$", r"_cds$", r"-P\d*$",
+)
 
 # GFF attribute names
 GFF_PROTEIN_ID_ATTR_NCBI = base_constants.GFF_PROTEIN_ID_ATTR_NCBI

@@ -1,6 +1,6 @@
 import os
-import re
 import logging
+from pathlib import Path
 import pandas as pd
 from dbcan.configs.cgcfinder_config import CGCFinderConfig
 import dbcan.constants.cgcfinder_constants as C
@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Prefer I/O module to parse GFF (compatible with both cases and function names)
 from dbcan.IO.gff import read_gff_to_df as io_read_gff_df
+from dbcan.IO.cgc_ids import canonical_type, gene_type
 
 
 class CGCFinder:
@@ -45,7 +46,9 @@ class CGCFinder:
 
     @property
     def additional_genes(self):
-        return self.config.additional_genes or []
+        """--additional_genes in the spelling of the Gene Type column (stp -> STP, SULFATLAS ->
+        Sulfatase), without duplicates; custom types are kept as written."""
+        return list(dict.fromkeys(canonical_type(g) for g in (self.config.additional_genes or []) if str(g).strip()))
 
     @property
     def additional_logic(self) -> str:
@@ -149,14 +152,24 @@ class CGCFinder:
             return False
 
     def mark_signature_genes(self):
-        """Mark core/additional/signature genes"""
-        try:
-            core_pattern = '|'.join(re.escape(s) for s in C.CGC_CORE_SIG_TYPES)
-            add_pattern = '|'.join(re.escape(s) for s in (self.additional_genes or [])) if self.additional_genes else ''
+        """Give each gene its one CGC role: its final Gene Type (see :meth:`get_gene_type`).
 
-            self.df[C.IS_CORE_COLUMN] = self.df[C.CGC_ANNOTATION_COLUMN].str.contains(core_pattern, na=False, regex=True)
-            self.df[C.IS_ADDITIONAL_COLUMN] = self.df[C.CGC_ANNOTATION_COLUMN].str.contains(add_pattern, na=False, regex=True) if add_pattern else False
+        A gene is core iff its Gene Type is CAZyme; it is an additional signature iff its Gene Type
+        is another type listed in --additional_genes. The other labels of a multi-label gene
+        ('CAZyme|GH23_e1056+STP|SBP_bac_3', 'TC|3.A.1.14.3+STP|Peripla_BP_2') stay in the
+        annotation text but fill no role.
+        """
+        try:
+            core_types = set(C.CGC_CORE_SIG_TYPES)
+            wanted = set(self.additional_genes) - core_types
+            gene_types = self.df[C.CGC_ANNOTATION_COLUMN].map(self.get_gene_type)
+            self.df[C.GENE_ROLE_COLUMN] = gene_types
+            self.df[C.IS_CORE_COLUMN] = gene_types.isin(core_types)
+            self.df[C.IS_ADDITIONAL_COLUMN] = gene_types.isin(wanted)
             self.df[C.IS_SIGNATURE_COLUMN] = self.df[C.IS_CORE_COLUMN] | self.df[C.IS_ADDITIONAL_COLUMN]
+            found = set(gene_types)
+            for cat in sorted(wanted - found):
+                logger.warning(f"--additional_genes {cat}: no gene has this Gene Type")
 
             logger.info(f"Marked signatures: core={int(self.df[C.IS_CORE_COLUMN].sum())}, "
                         f"additional={int(self.df[C.IS_ADDITIONAL_COLUMN].sum())}")
@@ -167,7 +180,10 @@ class CGCFinder:
             return False
 
     def find_cgc_clusters(self):
-        """Identify CGC clusters based on the defined criteria"""
+        """Identify CGC clusters based on the defined criteria.
+
+        Returns the list of clusters (empty when no CGC is found), or None when clustering failed.
+        """
         try:
             if not hasattr(self, 'df') or self.df.empty:
                 logger.error("No GFF data loaded or no signature genes marked.")
@@ -199,6 +215,12 @@ class CGCFinder:
 
                 last_index = None
                 start_index = None
+                core_windows = []  # (left_pos, right_pos) of the validated CGC cores on this contig
+
+                def close_window():
+                    base_cluster_df = self._get_base_cluster_window(contig_df, start_index, last_index)
+                    if self.validate_cluster(base_cluster_df):
+                        core_windows.append(tuple(sorted((pos_map[start_index], pos_map[last_index]))))
 
                 for i, sig_index in enumerate(sig_indices):
                     if last_index is None:
@@ -214,19 +236,15 @@ class CGCFinder:
                     if distance_valid and null_gene_valid:
                         last_index = sig_index
                     else:
-                        base_cluster_df = self._get_base_cluster_window(contig_df, start_index, last_index)
-                        cluster_df = self._extend_cluster(contig_df, start_index, last_index)
-                        if self.validate_cluster(base_cluster_df):
-                            clusters.append(self.process_cluster(cluster_df, cgc_id))
-                            cgc_id += 1
+                        close_window()
                         start_index = last_index = sig_index
 
                 if last_index is not None and start_index is not None:
-                    base_cluster_df = self._get_base_cluster_window(contig_df, start_index, last_index)
-                    cluster_df = self._extend_cluster(contig_df, start_index, last_index)
-                    if self.validate_cluster(base_cluster_df):
-                        clusters.append(self.process_cluster(cluster_df, cgc_id))
-                        cgc_id += 1
+                    close_window()
+
+                for left, right in self._resolve_extensions(contig_df, core_windows):
+                    clusters.append(self.process_cluster(contig_df.loc[idx_array[left:right + 1]], cgc_id))
+                    cgc_id += 1
 
             logger.info(f"Found {len(clusters)} CGC clusters")
             return clusters
@@ -234,7 +252,7 @@ class CGCFinder:
             logger.error(f"Error finding CGC clusters: {str(e)}")
             import traceback
             traceback.print_exc()
-            return []
+            return None
 
     # NEW: safe base-window slicer using positional indices
     def _get_base_cluster_window(self, contig_df: pd.DataFrame, start_index, end_index) -> pd.DataFrame:
@@ -253,6 +271,33 @@ class CGCFinder:
             except Exception:
                 pass
         return contig_df.iloc[0:0]
+
+    def _resolve_extensions(self, contig_df: pd.DataFrame, core_windows):
+        """Positional (left, right) bounds of each CGC on a contig after --extend_mode, without overlaps.
+
+        ``core_windows`` are the (left, right) positions of the validated CGC cores, in contig order. An
+        extension never reaches into the core of the neighbouring CGC, and where the extensions of two
+        neighbouring CGCs would share genes, each shared gene goes to the CGC whose core is nearer
+        (counted in genes; a tie goes to the upstream CGC). So every gene belongs to at most one CGC.
+        """
+        idx_array = contig_df.index.to_numpy()
+        bounds = []
+        for left, right in core_windows:
+            ext = self._extend_cluster(contig_df, idx_array[left], idx_array[right])
+            pos = contig_df.index.get_indexer(ext.index).tolist()
+            bounds.append([min(pos + [left]), max(pos + [right])])
+        for k in range(len(bounds) - 1):
+            a_core_right = core_windows[k][1]
+            b_core_left = core_windows[k + 1][0]
+            bounds[k][1] = min(bounds[k][1], b_core_left - 1)
+            bounds[k + 1][0] = max(bounds[k + 1][0], a_core_right + 1)
+            if bounds[k][1] >= bounds[k + 1][0]:
+                lo, hi = bounds[k + 1][0], bounds[k][1]
+                # shared genes lo..hi: nearer to core k (a_core_right) or core k+1 (b_core_left)
+                split = max(lo - 1, min(hi, (a_core_right + b_core_left) // 2))
+                bounds[k][1] = split
+                bounds[k + 1][0] = split + 1
+        return [tuple(b) for b in bounds]
 
     # NEW: extend cluster on both sides by bp or gene count
     def _extend_cluster(self, contig_df: pd.DataFrame, start_index, end_index) -> pd.DataFrame:
@@ -311,37 +356,36 @@ class CGCFinder:
         return contig_df.loc[labels]
 
     def validate_cluster(self, cluster_df):
+        """Check the CGC rule on a candidate window; every gene counts once, by its Gene Type.
+
+        ``CAZyme`` in --additional_genes asks for one CAZyme more than --min_core_cazyme; alone it
+        means "at least two CAZymes" (CAZyme pairs).
+        """
         if len(cluster_df) < max(1, self.min_cluster_genes):
             return False
+        roles = set(cluster_df[C.GENE_ROLE_COLUMN])
         cazyme_count = int(cluster_df[C.IS_CORE_COLUMN].sum())
-        has_core = cazyme_count >= self.min_core_cazyme
+        wanted = self.additional_genes
+        core_types = set(C.CGC_CORE_SIG_TYPES)
 
-        # fix: compare with string "CAZyme" instead of list C.CGC_CORE_SIG_TYPES
-        if len(self.additional_genes) == 1 and self.additional_genes[0] == "CAZyme":
+        if wanted == ["CAZyme"]:
             return cazyme_count >= max(2, self.min_core_cazyme)
+        if cazyme_count < self.min_core_cazyme:
+            return False
+        if not wanted:
+            return True
 
-        additional_annotations = set()
-        if self.additional_genes:
-            for annotation in cluster_df[cluster_df[C.IS_ADDITIONAL_COLUMN]][C.CGC_ANNOTATION_COLUMN]:
-                for gene_type in self.additional_genes:
-                    if gene_type in annotation:
-                        additional_annotations.add(gene_type)
-
-        if not self.additional_genes:
-            return has_core
-
+        present = {cat for cat in wanted if cat not in core_types and cat in roles}
+        if any(cat in core_types for cat in wanted) and cazyme_count >= self.min_core_cazyme + 1:
+            present.add("CAZyme")
         if self.additional_logic == 'all':
-            has_required = set(self.additional_genes).issubset(additional_annotations)
-        else:
-            has_required = len(additional_annotations) >= max(1, self.additional_min_categories)
-
-        return has_core and has_required
+            return len(present) == len(wanted)
+        return len(present) >= max(1, self.additional_min_categories)
 
     @staticmethod
     def get_gene_type(annotation_str):
-        PRIORITY = C.PRIORITY
-        types = [ann.split('|')[0] for ann in annotation_str.split('+')]
-        return sorted(types, key=lambda t: PRIORITY.get(t, 99))[0] if types else C.NULL_GENE_TYPE
+        """Final Gene Type of a CGC_annotation (shared with substrate prediction and plots)."""
+        return gene_type(annotation_str)
 
     def process_cluster(self, cluster_df, cgc_id):
         return [{
@@ -417,7 +461,7 @@ class CGCFinder:
             logger.info(f"CGC summary has been written to {summary_path}")
         except Exception as e:
             logger.error(f"Error outputting CGC clusters: {str(e)}")
-            import traceback; traceback.print_exc()
+            raise
 
     def run(self):
         if not self.read_gff():
@@ -425,6 +469,9 @@ class CGCFinder:
         if not self.mark_signature_genes():
             return False
         clusters = self.find_cgc_clusters()
+        if clusters is None:
+            # a crash is not "no CGCs": write no (empty) result tables and fail the step
+            return False
         self.output_clusters(clusters)
         logger.info("CGCFinder run completed")
         return True

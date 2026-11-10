@@ -28,6 +28,7 @@ GFF_COLUMNS = base_constants.GFF_COLUMNS
 IS_CORE_COLUMN = 'is_core'
 IS_ADDITIONAL_COLUMN = 'is_additional'
 IS_SIGNATURE_COLUMN = 'is_signature'
+GENE_ROLE_COLUMN = 'gene_role'   # the gene's final Gene Type: the only CGC role it can fill
 
 # GFF file attribute names
 CGC_ANNOTATION_ATTR = base_constants.CGC_ANNOTATION_COLUMN
@@ -79,4 +80,4 @@ CGC_RESULT_FILE = base_constants.CGC_RESULT_FILE
 CGC_OUTPUT_COLUMNS = [CGC_ID_FIELD, GENE_TYPE_FIELD, CONTIG_ID_COLUMN, CGC_PROTEIN_ID_FIELD,
                     GENE_START_FIELD, GENE_STOP_FIELD, GENE_STRAND_FIELD, GENE_ANNOTATION_FIELD]
 
-PRIORITY = {'CAZyme': 0, 'TC': 1, 'TF': 2, 'STP': 3, 'Sulfatase': 4, 'Peptidase': 5}
+PRIORITY = base_constants.CGC_GENE_TYPE_PRIORITY

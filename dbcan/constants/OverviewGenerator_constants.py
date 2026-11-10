@@ -45,7 +45,8 @@ OVERVIEW_OVERLAP_THRESHOLD = 0.5
 MIN_TOOLS_FOR_RECOMMENDATION = 2
 
 # Regex patterns
-CAZY_ID_PATTERN = r"^(GH|GT|CBM|AA|CE|PL)"
+# Whole family token only (GH13, GH13_6, CBM50); '^(GH|...)' alone also matched accessions like AAK49401.1.
+CAZY_ID_PATTERN = base_constants.CAZY_FAMILY_TOKEN_PATTERN
 
 # Separators
 RESULT_SEPARATOR = "+"

@@ -1,114 +1,189 @@
 .. _cazyme-annotation:
 
 CAZyme Annotation
-==================
+=================
 
-Introduction
--------------
-
-CAZyme annotation is a critical step in identifying and classifying Carbohydrate-Active Enzymes (CAZymes) in biological sequences. The ``run_dbcan`` tool enables comprehensive annotation of CAZymes from various input types:
-
-* Prokaryotic genomes (nucleotide sequences)
-* Metagenomic contigs (nucleotide sequences)
-* Protein sequences (prokaryotic or eukaryotic)
-
-The annotation process integrates multiple analytical tools to ensure high sensitivity and specificity in CAZyme identification.
-
-Command Syntax
-----------------
+Step 1 of the pipeline. Three tools search every protein: DIAMOND against CAZy, pyHMMER against the dbCAN family
+HMMs and against the dbCAN-sub subfamily HMMs. ``overview.tsv`` merges them, one row per protein.
 
 .. code-block:: shell
 
-   run_dbcan CAZyme_annotation --input_raw_data <INPUT_FILE> --output_dir <OUTPUT_DIRECTORY> --db_dir <DATABASE_DIRECTORY> --mode <MODE>
+   run_dbcan CAZyme_annotation --mode prok    --input_raw_data genome.fna   --output_dir out --db_dir db
+   run_dbcan CAZyme_annotation --mode meta    --input_raw_data contigs.fna  --output_dir out --db_dir db
+   run_dbcan CAZyme_annotation --mode protein --input_raw_data proteins.faa --output_dir out --db_dir db
 
-Key Parameters
-~~~~~~~~~~~~~~~~
+A protein FASTA is enough here; a GFF is needed only for the CGC steps.
+
+Input modes
+-----------
+
+.. list-table::
+   :widths: 14 86
+   :header-rows: 1
+
+   * - ``--mode``
+     - Input
+   * - ``prok``
+     - Bacterial or archaeal genome (DNA). Genes are predicted with pyrodigal, trained on the input.
+   * - ``meta``
+     - Metagenome assembly, MAGs or many genomes in one file (DNA). pyrodigal metagenome mode, no training, streamed.
+   * - ``protein``
+     - Any proteome, including fungi and other eukaryotes annotated with
+       `funannotate <https://github.com/nextgenusfs/funannotate>`_, `BRAKER <https://github.com/Gaius-Augustus/BRAKER>`_,
+       NCBI or JGI.
+
+Always give ``--mode`` (``--help`` marks it required). The input may be gzipped; any other value is rejected
+(case-insensitive).
+
+.. warning::
+
+   pyrodigal predicts **prokaryotic** genes only. On a fungal genome it splits most genes at their introns
+   (*Xylona heveae*: 32,471 ORFs of median 104 aa instead of 8,201 genes). run_dbcan logs a ``WARNING`` when the
+   median protein is below 150 aa and more than 30% are shorter than 100 aa, but does not stop. Use
+   ``--mode protein`` with a eukaryotic annotation instead.
+
+Main options
+------------
+
+.. list-table::
+   :widths: 40 60
+   :header-rows: 1
+
+   * - Option
+     - Description (default)
+   * - ``--methods``
+     - Comma-separated tools: ``diamond``, ``hmm``, ``dbCANsub`` (all three). Give the option once.
+   * - ``--threads``
+     - Threads for pyrodigal, DIAMOND and pyHMMER (all logical CPUs).
+   * - ``--e_value_threshold``
+     - DIAMOND E-value vs CAZy; the best hit per protein is kept (``1e-102``).
+   * - ``--e_value_threshold_dbcan`` / ``--coverage_threshold_dbcan``
+     - dbCAN HMM per-domain i-Evalue / HMM coverage (``1e-15`` / ``0.35``).
+   * - ``--e_value_threshold_dbsub`` / ``--coverage_threshold_dbsub``
+     - Same for dbCAN-sub (``1e-15`` / ``0.35``).
+   * - ``--run_signalp``, ``--run_deeptmhmm``
+     - Optional signal peptide / topology columns: :doc:`signalp6_deeptmhmm`.
+
+Memory options (``--large``, ``--batch_size``, ...) are in ``run_dbcan CAZyme_annotation --help`` and in
+:doc:`../FAQ/troubleshooting`.
+
+.. note::
+
+   **HMM thresholds.** A domain is kept when its independent E-value (``i-Evalue``) is below the threshold and its
+   coverage of the **HMM profile**, ``(HMM To - HMM From + 1) / HMM Length``, is above it (not the fraction of the
+   protein). Hits that overlap by more than 50% of the shorter one are reduced to the one with the better i-Evalue
+   (see `Overlapping domains`_).
+
+Output files
+------------
+
+.. list-table::
+   :widths: 32 68
+   :header-rows: 1
+
+   * - File
+     - Content
+   * - ``overview.tsv``
+     - Merged result, one row per protein with at least one hit (columns below)
+   * - ``uniInput.faa``
+     - Proteins searched by all tools (pyrodigal translations, or your cleaned FASTA)
+   * - ``uniInput.gff``
+     - pyrodigal genes (``prok``/``meta`` only); used automatically by the CGC steps
+   * - ``diamond.out``
+     - DIAMOND hits against CAZy
+   * - ``dbCAN_hmm_results.tsv``
+     - dbCAN HMM domains after filtering
+   * - ``dbCANsub_hmm_results.tsv``
+     - dbCAN-sub domains with subfamily EC numbers and substrates (``dbCANsub_hmm_raw.tsv``: unfiltered)
+
+.. _overview-columns:
+
+Columns of ``overview.tsv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :widths: 20 80
    :header-rows: 1
 
-   * - Parameter
-     - Description
-   * - ``--input_raw_data``
-     - Path to input sequence file (FASTA format)
-   * - ``--output_dir``
-     - Directory for output files
-   * - ``--db_dir``
-     - Directory containing database files
-   * - ``--mode``
-     - Analysis mode: ``prok`` (prokaryote), ``meta`` (metagenome), or ``protein`` (protein sequences)
-   * - ``--methods``
-     - Optional: Specify tools to use (``diamond``, ``hmm``, and/or ``dbCANsub``, default is ``all``)
-       Usage: ``--methods diamond --methods hmm --methods dbCANsub`` for multiple methods or just choose one/two.
+   * - Column
+     - Content
+   * - ``Gene ID``
+     - Protein ID from ``uniInput.faa``.
+   * - ``EC#``
+     - EC numbers of the matched dbCAN-sub subfamilies as ``EC:count`` (count = characterized proteins with that EC
+       in the subfamily; written ``:1`` when the eHMM name has no count). ``;`` between the ECs of one subfamily,
+       ``|`` between subfamilies, ``-`` if none.
+   * - ``dbCAN_hmm``
+     - dbCAN families with protein coordinates, e.g. ``GH23(101-244)``; domains joined with ``+``.
+   * - ``dbCAN_sub``
+     - dbCAN-sub subfamilies with coordinates, e.g. ``GH23_e819(102-244)``; joined with ``+``.
+   * - ``DIAMOND``
+     - CAZy families of the best CAZy hit, joined with ``+`` (e.g. ``CBM50+GH23``). Only family and subfamily names
+       are kept from the CAZy header (no accessions, EC numbers or file names), each once.
+   * - ``#ofTools``
+     - Number of tools (0-3) with a hit.
+   * - ``Recommend Results``
+     - Consensus, only when ``#ofTools`` >= 2 (else ``-``); one name per domain, ``|``-joined in protein order.
+       Preference: a dbCAN HMM subfamily (name with ``_``, e.g. ``GH5_4``) > the dbCAN-sub subfamily > the dbCAN HMM
+       family; without both HMM tools: dbCAN HMM, then dbCAN-sub, then DIAMOND.
+   * - ``Substrate``
+     - Substrates of the dbCAN-sub hits, unique and sorted, joined with ``;`` (``-`` if unknown); see below.
+   * - ``SignalP`` / ``DeepTMHMM``
+     - Only with ``--run_signalp`` / ``--run_deeptmhmm``.
 
-Usage Examples
----------------
+**Use proteins with** ``#ofTools`` **>= 2.** The CGC steps do the same: only these proteins are CAZymes in
+``cgc.gff``, named by their ``Recommend Results``.
 
-Analyzing Prokaryotic Genomes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**How the** ``Substrate`` **column is filled.** For every EC number of a matched subfamily:
 
-When working with bacterial or archaeal genomes, use the ``prok`` mode:
+#. ``dbCAN-sub-substrate.tsv`` in ``--db_dir`` (optional; the dbCAN-sub web server table) is used when it has the
+   (subfamily, EC) pair, so the result matches the web server;
+#. otherwise (family, EC) is looked up in ``fam-substrate-mapping.tsv``, first for the subfamily's own family, then
+   for the other families of its composition (the EC of ``CBM1_e3`` belongs to GH45);
+#. a complete EC without an entry, and a subfamily without EC, fall back to the family-level substrate (or to the
+   family's only substrate); an incomplete EC (``a.b.c.-``) has no fallback.
 
-.. code-block:: shell
+.. note::
 
-   run_dbcan CAZyme_annotation --input_raw_data EscheriaColiK12MG1655.fna --output_dir output_EscheriaColiK12MG1655_fna --db_dir db --mode prok
+   Subfamilies without any EC therefore get the family-level substrate, e.g. GH71 -> ``alpha-glucan``, while the
+   dbCAN-sub web server shows **no** substrate for them. This is the expected difference between the two.
 
-Analyzing Protein Sequences
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In ``dbCANsub_hmm_results.tsv`` the ``Substrate`` column has one entry per EC, in the order of ``Subfam EC``,
+separated by ``;``. Several substrates of one (family, EC) are joined with ``,`` inside that entry; ``-`` = no
+substrate for that EC.
 
-For pre-translated protein sequences, use the ``protein`` mode:
+Protein input: IDs and sequences
+--------------------------------
 
-.. code-block:: shell
+In ``--mode protein`` the FASTA is copied into ``uniInput.faa`` with these changes:
 
-   run_dbcan CAZyme_annotation --input_raw_data EscheriaColiK12MG1655.faa --output_dir output_EscheriaColiK12MG1655_faa --db_dir db --mode protein
+* only the first word of each header is kept; IDs containing ``JGI`` (any case) get ``-`` instead of ``|``;
+* IDs longer than 80 characters are truncated; duplicated IDs get ``_1``, ``_2``, ... (keep IDs unique: these
+  suffixes cannot be matched to a GFF);
+* a trailing stop (``*`` or ``.``) is removed and internal ones become ``X`` (``gffread -y`` writes ``.``, which
+  DIAMOND rejects; ``gffread -y ... -S`` writes ``*``).
 
-Analyzing Eukaryotic Proteins
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The GFF is not rewritten; its IDs are cleaned the same way when they are matched for CGC prediction.
 
-Eukaryotic proteins are processed the same way using ``protein`` mode:
+IDs are always read as text, so numeric (``>0``, ``>007``) and ``NA``/``None``-like IDs are kept (5.2.9 and earlier
+lost them in ``overview.tsv``; there, prefix them, e.g. ``>prot_0``).
 
-.. code-block:: shell
-
-   run_dbcan CAZyme_annotation --input_raw_data Xylona_heveae_TC161.faa --output_dir output_Xylona_heveae_TC161_faa --db_dir db --mode protein
-
-.. code-block:: shell
-
-   run_dbcan CAZyme_annotation --input_raw_data Xylhe1_GeneCatalog_proteins_20130827.aa.fasta --output_dir output_Xylhe1_faa --db_dir db --mode protein
-
-.. tip::
-
-   For large eukaryotic datasets, consider change the computational resources with ``--threads`` to specify the number of CPU cores.
-   The default is ``all cores`` of your machine.
-
-Output Files
---------------
-
-The annotation process generates several key output files in your specified output directory:
-
-* ``uniInput.faa`` - Unified input file for all tools
-* ``overview.txt`` - Summary of identified CAZymes
-* ``dbCAN_hmm_results.tsv`` - Detailed HMMER results
-* ``diamond.out`` - DIAMOND search results
-* ``dbCANsub_hmm_results.tsv`` - dbCAN sub-HMM results including substrate specificity
-* ``dbCAN_hmm_alignment_details.tsv`` - per-domain alignment diagnostics
-  (alignment span, match-state intervals, i-Evalue, coverage); written for each
-  HMM library while match-state overlap resolution is active, see below
-
-Customizing the Analysis
-----------------------------
-
-To customize which analytical methods are used:
+Choosing tools with ``--methods``
+---------------------------------
 
 .. code-block:: shell
-   :caption: Using specific tools
 
-   run_dbcan CAZyme_annotation --input_raw_data input.fna --output_dir output --db_dir db --mode prok --methods hmm --methods diamond
+   run_dbcan CAZyme_annotation --input_raw_data genome.fna --mode prok --output_dir out --db_dir db --methods hmm,diamond
 
-Available method combinations: ``hmm``, ``diamond``, ``dbCANsub``, or any combination.
+* Tools that are not selected get an empty result file, so ``overview.tsv`` is always written.
+* With **one** tool ``#ofTools`` is at most 1: ``Recommend Results`` stays ``-`` and no protein is a CAZyme for
+  CGC prediction.
+* Only the selected tools are merged. Result files of other tools left in the folder by an earlier run are ignored
+  (with a warning), and the files of the selected tools are deleted at the start, so a tool that fails contributes
+  an empty table and the command exits with a non-zero status.
 
 Experimental dbCAN HMM policies
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------
 
 Family-specific bit-score/coverage cutoffs and pair-specific overlap
 coexistence are opt-in research interfaces. They do not change the default
@@ -133,82 +208,33 @@ normal overlap filter; families absent from the policy retain the legacy global
 E-value and coverage rule. Policy files calibrated for one taxon or one HMM
 release must not be reused automatically for another.
 
-Match-state overlap resolution
-----------------------------------
+``--dbcan-taxon-profile fungi`` loads the bundled fungal policy
+(``dbcan/data/taxon_profiles/fungi.cutoff.json``) instead of a policy file; it
+is experimental, locked to the ``dbCAN.hmm`` release it was calibrated on (the
+run stops on another release), and explicit ``--dbcan-*-file`` options override
+it. In ``easy_CGC`` / ``easy_substrate`` it also turns on ``--fungi`` (TF HMM
+instead of TF DIAMOND) unless ``--fungi`` or ``--no-fungi`` is given.
 
-Domain conflicts are resolved using target residues assigned to profile-HMM
-match states rather than the continuous sequence alignment span. Residues
-assigned to HMM insert states do not contribute to match-state overlap.
+.. _overlapping-domains:
 
-HMMER reports each domain as a continuous ``Target From``-``Target To`` span,
-but a profile alignment may contain match (M), insert (I) and delete (D) states.
-A target residue aligned to an insert state lies between two consensus match
-positions and still falls inside the continuous span, so a large catalytic
-profile can geometrically span an inserted accessory domain without having any
-match-state evidence over it:
+Overlapping domains
+-------------------
 
-.. code-block:: text
-
-   GH18 alignment span     1 ------------------------------------- 400
-   GH18 match states       1 -------------- 250      340 --------- 400
-   GH18 insert states                    251 ------------ 339
-   CBM18                                        300 --- 334
-
-Under the historical rule the CBM18 span lies almost entirely inside the GH18
-span, so the CBM was removed. Under match-state semantics the two share no
-match-state residues, there is no conflict, and both domains are kept.
+Within one protein and one HMM library (dbCAN, dbCAN-sub, and TF, STP and Pfam in the CGC steps), two domains
+conflict when their alignments (``Target From``-``Target To``) overlap by more than 50% of the shorter one, computed
+as in 5.2.9. Of two conflicting domains the one with the better i-Evalue is kept. All domains of a protein are
+resolved together, best i-Evalue first: a domain is kept unless it conflicts with one already kept. The result does
+not depend on the order of the hits. A pair listed in ``--dbcan-overlap-coexistence-file`` (dbCAN HMM only) never
+conflicts.
 
 .. note::
 
-   An insert state is an HMM alignment concept, not a biological one. A
-   lineage-specific loop or an inserted structural region may still belong to
-   the domain biologically. Match-state occupancy is used here because it is
-   the evidence the profile actually provides for that stretch of sequence, not
-   because inserted residues are "outside" the domain.
+   5.2.9 compared each domain only with the last one kept, so a domain could be lost that conflicts with nothing in
+   the final result. *Xylona heveae* KZF26007.1 (``STP.hmm``) has a protein kinase split by an insert: Pkinase
+   34-161 and 215-363, and Pkinase_Tyr 34-364 over both. 5.2.9 replaced the first half by Pkinase_Tyr and
+   Pkinase_Tyr by the second half; now both Pkinase halves are kept.
 
-Geometric overlap alone does not suppress a hit. The decision is:
+In ``overview.tsv`` a dbCAN-sub subfamily is grouped with the dbCAN HMM domains it overlaps (one name in
+``Recommend Results``); two dbCAN HMM domains are not grouped with each other.
 
-* no substantial match-state overlap → keep both;
-* substantial match-state overlap covered by an explicit coexistence policy
-  (``--dbcan-overlap-coexistence-file``) → keep both;
-* substantial match-state overlap between competing models → resolve by
-  evidence (best i-Evalue first).
-
-"Substantial" means strictly more than 50% of the shorter domain's match-state
-length; an overlap of exactly 50% is not a conflict. Resolution runs over a
-per-protein conflict graph, so the outcome does not depend on the order hits
-appear in the input.
-
-This behaviour is on by default for every HMM library in a run (dbCAN,
-dbCAN-sub, TF, STP, Pfam). ``--dbcan-legacy-overlap`` restores the previous
-alignment-span *geometry* and exists for reproducibility only. Note that the
-order-independent conflict-graph resolution applies in both modes: the old
-implementation compared each hit only against the most recently retained one,
-which could keep or drop a hit depending on row order, and that is a bug rather
-than behaviour worth reproducing.
-
-The public result tables keep their historical columns in both modes:
-``Target From`` and ``Target To`` remain the reported alignment location and are
-not replaced by match-state intervals. While match-state resolution is active,
-the intervals used for the decision are additionally written to a companion
-``*_alignment_details.tsv`` file (for example
-``dbCAN_hmm_alignment_details.tsv``) with the HMM name, target, alignment span,
-match-state intervals, i-Evalue and coverage. Downstream steps read that file so
-they consume already-resolved domains instead of re-deriving the architecture
-from the continuous span.
-
-.. note::
-
-   HMM coverage is unchanged: it is still ``(hmm_to - hmm_from + 1) /
-   hmm_length``, i.e. HMM coordinate-span coverage. That is not identical to
-   match-state occupancy when delete states occur, but the ``0.35`` default is
-   tied to historical calibration, so coverage semantics are deliberately left
-   as they are.
-
-.. admonition:: Next Steps
-
-   After completing CAZyme annotation, you may want to proceed to :doc:`CGC Information Generation <CGC_information_generation>` to identify CAZyme gene clusters.
-
-.. tip::
-
-   Optional **signal peptide** and **transmembrane topology** columns (SignalP 6.0 / DeepTMHMM) require separate installation and testing. See :doc:`signalp6_deeptmhmm`.
+Next: :doc:`CGC_information_generation` (step 2).

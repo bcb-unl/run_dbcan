@@ -50,6 +50,12 @@ GFF input
 
 Both ``cgc.gff`` and ``*.fix.gff`` are supported for read counting.
 
+Reads are counted per gene with the ``dbcan_utils cal_coverage`` rules and defaults (see :doc:`abundance`):
+the two mates of a pair count once (fragments), counting is unstranded, secondary/supplementary/QC-fail/duplicate
+alignments are skipped, genes are keyed by ``protein_id`` (else ``ID``, ``Name``, ``locus_tag``) and rows that
+share an ID are one gene. ``--overlap-base-ratio``, ``--mapping-quality``, ``--identity`` and ``--hifi`` are
+passed on.
+
 **Eukaryotes (multi-exon genes):** ``cgc.gff`` from NCBI eukaryotic annotation stores **one row per gene**
 (full locus from transcription start to end, not one row per CDS exon). Read counts and CGC plots therefore
 represent the **whole gene**; introns are inside the arrow span. This matches ``cgc_standard_out.tsv`` and
@@ -98,6 +104,15 @@ Plot all CGCs (one PDF + heatmap per cluster)::
       --metric log2_tpm \
       --heatmap-rows sample \
       --deg-marker both
+
+The other expression figures::
+
+    dbcan_plot DEG_volcano -i MAG_sample.dbCAN --expression-dir MAG_sample.expression
+    dbcan_plot DEG_CGC_bar -i MAG_sample.dbCAN --expression-dir MAG_sample.expression
+    dbcan_plot CGC_expression_heatmap -i MAG_sample.dbCAN --expression-dir MAG_sample.expression --top 50
+
+They write ``plots/DEG_volcano.pdf``, ``plots/DEG_CGC_bar.pdf`` and ``plots/CGC_expression_heatmap.pdf`` under
+``--expression-dir`` (``--pdf`` sets another path) and exit with status 1 when their input table is missing or empty.
 
 Plot a single CGC::
 
