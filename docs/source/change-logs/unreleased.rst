@@ -132,6 +132,8 @@ Unreleased
 #. The GFF match report counts a childless gene with a non-coding biotype (e.g. *E. coli* ``ralA``) as non-coding.
 #. ``dbcan_asmfree`` substrate abundance reads ``fam-substrate-mapping.tsv`` with leading ``#`` version lines and
    splits a class cell on ``;`` as well as ``,``.
+#. ``dbcan`` and its subpackages have ``__init__.py`` files: a ``dbcan/constants.py`` left in ``site-packages`` by an
+   install of 5.1.x no longer breaks the import (``'dbcan.constants' is not a package``).
 #. SignalP6 or DeepTMHMM that exits 0 but writes no (or an empty) result file is a failed step (non-zero exit; the
    other tool's column is still written); an ``overview.tsv`` without genes gets the ``-`` columns of the requested tools.
 #. CAZyme overview: a result table of a method selected with ``--methods`` that cannot be read, or that has rows but
