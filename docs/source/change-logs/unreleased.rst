@@ -136,6 +136,8 @@ Unreleased
    other tool's column is still written); an ``overview.tsv`` without genes gets the ``-`` columns of the requested tools.
 #. CAZyme overview: a result table of a method selected with ``--methods`` that cannot be read, or that has rows but
    lacks required columns, fails the step (non-zero exit) instead of being skipped; empty tables are still accepted.
+#. ``gff_process`` reads a gzipped ``--input_gff`` (``.gz``) for every ``--gff_type``, like the gene/protein match
+   check; before, a ``.gz`` GFF passed the check and failed only after the signature searches.
 
 .. rubric:: Known issues / to test
 

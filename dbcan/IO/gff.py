@@ -1,3 +1,4 @@
+import gzip
 import logging
 import sys
 import multiprocessing
@@ -16,6 +17,19 @@ from dbcan.configs.base_config import GFFConfig  # keep as-is unless you migrate
 import dbcan.constants.gff_constants as G  # for __all__
 
 logger = logging.getLogger(__name__)
+
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _open_gff_text(path, **kwargs):
+    """Open a GFF for text reading; gzip (``.gz`` suffix or gzip magic bytes) is read transparently."""
+    p = Path(path)
+    if p.suffix == ".gz":
+        return gzip.open(p, "rt", **kwargs)
+    with p.open("rb") as fh:
+        is_gz = fh.read(2) == _GZIP_MAGIC
+    return gzip.open(p, "rt", **kwargs) if is_gz else p.open(**kwargs)
+
 
 # Utility: read GFF to DataFrame
 def read_gff_to_df(path: str, columns=None, drop_comments: bool = True) -> pd.DataFrame:
@@ -93,7 +107,7 @@ def annotate_prodigal_gff_streaming(
     Output lines match GFFProcessor.write_gff for each input feature row.
     """
     wrote = 0
-    with input_path.open(encoding="utf-8", errors="replace") as inf, output_path.open(
+    with _open_gff_text(input_path, encoding="utf-8", errors="replace") as inf, output_path.open(
         "w", encoding="utf-8"
     ) as outf:
         for line in tqdm(inf, desc="Generating Prodigal GFF (streaming)", unit="lines", mininterval=2.0):
@@ -417,7 +431,7 @@ class GFFProcessor:
 
         records = []
         try:
-            with in_path.open() as fh:
+            with _open_gff_text(in_path) as fh:
                 for idx, rec in enumerate(GFF.parse(fh)):
                     _sort_features_in_record(rec)
                     records.append((idx, rec))
@@ -482,7 +496,7 @@ class NCBIEukProcessor(GFFProcessor):
 
     def _process_gff_format(self, input_file, output_file, cgc_data):
         try:
-            with Path(input_file).open() as in_file, Path(output_file).open('w') as out_file:
+            with _open_gff_text(input_file) as in_file, Path(output_file).open('w') as out_file:
                 for record in tqdm(GFF.parse(in_file), desc="Generating NCBI Euk GFF"):
                     for feature in record.features:
                         if feature.type == G.GFF_GENE_FEATURE:
@@ -522,7 +536,7 @@ class NCBIProkProcessor(GFFProcessor):
 
     def _process_gff_format(self, input_file, output_file, cgc_data):
         try:
-            with Path(input_file).open() as in_file, Path(output_file).open('w') as out_file:
+            with _open_gff_text(input_file) as in_file, Path(output_file).open('w') as out_file:
                 for record in tqdm(GFF.parse(in_file), desc="Generating NCBI Prok GFF"):
                     for feature in record.features:
                         if feature.type == G.GFF_GENE_FEATURE:
@@ -573,7 +587,7 @@ class JGIProcessor(GFFProcessor):
             else:
                 logger.error(f"Input protein sequences file not found: {self.input_total_faa_path}")
 
-            with Path(input_file).open() as in_file, Path(output_file).open('w') as out_file:
+            with _open_gff_text(input_file) as in_file, Path(output_file).open('w') as out_file:
                 for record in tqdm(GFF.parse(in_file), desc="Generating JGI GFF"):
                     for feature in record.features:
                         if feature.type == G.GFF_GENE_FEATURE:
@@ -618,7 +632,7 @@ class ProdigalProcessor(GFFProcessor):
                     f"threshold {getattr(self.config, 'prodigal_streaming_threshold_mb', 50)} MB for auto-streaming)."
                 )
                 wrote = 0
-                with inp.open() as in_file, out.open("w") as out_file:
+                with _open_gff_text(inp) as in_file, out.open("w") as out_file:
                     for record in tqdm(GFF.parse(in_file), desc="Generating Prodigal GFF"):
                         for feature in record.features:
                             protein_id = feature.qualifiers.get(G.GFF_ID_ATTR_PRODIGAL, [G.GFF_UNKNOWN_ANNOTATION])[0]
