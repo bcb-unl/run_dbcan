@@ -612,6 +612,9 @@ class ProdigalProcessor(GFFProcessor):
             return False
         thresh_mb = int(getattr(self.config, "prodigal_streaming_threshold_mb", 50))
         size_b = input_path.stat().st_size
+        with Path(input_path).open("rb") as fh:
+            if fh.read(2) == _GZIP_MAGIC:
+                size_b *= 8  # compressed size; a GFF unpacks to roughly 6-10x
         return size_b > thresh_mb * 1_000_000
 
     def _process_gff_format(self, input_file, output_file, cgc_data):

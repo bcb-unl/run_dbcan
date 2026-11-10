@@ -223,3 +223,21 @@ def test_threads_reach_gene_prediction(tmp_path):
             "--db_dir", str(tmp_path), "--threads", "2"])
     assert result.exit_code == 0, result.output
     assert inp.call_args.args[0].threads == 2
+
+
+def test_signalp_rerun_does_not_reuse_old_predictions(outdir):
+    """signalp6 exits 0 but writes nothing: the previous run's prediction_results.txt must not be used."""
+    import subprocess
+    old = outdir / "signalp6_out"
+    old.mkdir()
+    (old / "prediction_results.txt").write_text(
+        "# SignalP-6.0\n# ID\tPrediction\tOTHER\tSP(Sec/SPI)\tCS Position\np1\tSP\t0.01\t0.99\tCS pos: 20-21\n")
+    cfg = SignalPTMHMMConfig(output_dir=str(outdir), run_signalp=True)
+
+    def fake(cmd, *a, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with patch("dbcan.annotation.signalp_tmhmm.subprocess.run", side_effect=fake):
+        with pytest.raises(DbcanStepError, match="SignalP6"):
+            run_dbCAN_topology_annotation(cfg)
+    assert not (old / "prediction_results.txt").exists()

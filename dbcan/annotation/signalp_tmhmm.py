@@ -190,6 +190,11 @@ class SignalPTMHMMProcessor:
     def run_signalp_predict(self, faa: Path) -> Path | None:
         out_dir = self.output_dir / C.SIGNALP_OUT_DIR
         out_dir.mkdir(exist_ok=True)
+        # the folder is reused between runs: drop the previous predictions so that a run that
+        # writes nothing is seen as failed instead of reporting the old file
+        stale = out_dir / C.SIGNALP_RESULT_TSV
+        if stale.exists():
+            stale.unlink()
         faa_abs = faa.expanduser().resolve()
         out_dir_abs = out_dir.expanduser().resolve()
         cmd = [

@@ -425,3 +425,13 @@ def test_childless_non_coding_biotype_gene_is_reported_as_noncoding(tmp_path):
         assert status["gene2"] == "noncoding", gff_type
         # a childless protein-coding gene is still a missing protein
         assert status["gene3"] == "unmatched", gff_type
+
+
+def test_open_text_reads_gzip_without_gz_suffix(tmp_path):
+    import gzip as _gz
+    from dbcan.IO.gff_resolver import _open_text
+    p = tmp_path / "genes.gff3"
+    with _gz.open(p, "wt") as fh:
+        fh.write("##gff-version 3\nc1\tx\tgene\t1\t9\t.\t+\t.\tID=g1\n")
+    with _open_text(p) as fh:
+        assert fh.read().startswith("##gff-version 3")
